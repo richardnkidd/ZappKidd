@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategic AI Model Selector</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f1e 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: glow 3s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 1; }
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 40px;
+            font-size: 1.1rem;
+        }
+
+        .selector-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .category-sidebar {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+            position: sticky;
+            top: 20px;
+        }
+
+        .category-sidebar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .category-sidebar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .category-sidebar::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.3);
+            border-radius: 4px;
+        }
+
+        .category-sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(102, 126, 234, 0.5);
+        }
+
+        .category-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        .category-item {
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .category-item:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: rgba(102, 126, 234, 0.3);
+            transform: translateX(5px);
+        }
+
+        .category-item.active {
+            background: rgba(102, 126, 234, 0.2);
+            border-color: #667eea;
+            font-weight: 600;
+        }
+
+        .category-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 3px;
+            background: #667eea;
+            transform: scaleY(0);
+            transition: transform 0.3s ease;
+        }
+
+        .category-item.active::before {
+            transform: scaleY(1);
+        }
+
+        .main-content {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-height: 600px;
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .task-title {
+            font-size: 2rem;
+            color: #fff;
+        }
+
+        .context-badges {
+            display: flex;
+            gap: 10px;
+        }
+
+        .badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            background: rgba(102, 126, 234, 0.2);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+        }
+
+        .model-recommendation {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .model-recommendation[style*="grid-template-columns: 1fr 1fr 1fr"] {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+
+        @media (max-width: 1024px) {
+            .model-recommendation[style*="grid-template-columns: 1fr 1fr 1fr"] {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .model-card {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .model-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+        }
+
+        .model-card.primary {
+            border-color: rgba(102, 126, 234, 0.5);
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .model-label {
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            background: #667eea;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .model-name {
+            font-size: 1.4rem;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+
+        .model-rationale {
+            color: #bbb;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .model-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9rem;
+            color: #888;
+        }
+
+        .prompt-section {
+            margin-bottom: 30px;
+        }
+
+        .prompt-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .prompt-title {
+            font-size: 1.3rem;
+            color: #667eea;
+        }
+
+        .copy-button {
+            padding: 8px 16px;
+            background: rgba(102, 126, 234, 0.2);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            border-radius: 6px;
+            color: #667eea;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .copy-button:hover {
+            background: rgba(102, 126, 234, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .copy-button.copied {
+            background: rgba(76, 175, 80, 0.3);
+            border-color: rgba(76, 175, 80, 0.5);
+            color: #4caf50;
+        }
+
+        .prompt-box {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #e0e0e0;
+            position: relative;
+            overflow-x: auto;
+        }
+
+        .workflow-section {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .workflow-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+
+        .workflow-steps {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+
+        .workflow-step {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 12px 20px;
+            white-space: nowrap;
+            min-width: fit-content;
+            transition: all 0.3s ease;
+        }
+
+        .workflow-step:hover {
+            background: rgba(102, 126, 234, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .workflow-arrow {
+            color: #667eea;
+            font-size: 1.2rem;
+        }
+
+        .cost-analysis {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .cost-item {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .cost-label {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        .cost-value {
+            font-size: 1.2rem;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .integration-tools {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        .tool-tag {
+            padding: 6px 12px;
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: #4caf50;
+        }
+
+        @media (max-width: 768px) {
+            .selector-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .model-recommendation {
+                grid-template-columns: 1fr;
+            }
+            
+            .cost-analysis {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Strategic AI Model Selector</h1>
+        <p class="subtitle">Personalized for cross-functional PM & creative workflows</p>
+        
+        <div class="selector-grid">
+            <div class="category-sidebar">
+                <h3 class="category-title">Select Your Task</h3>
+                <div id="categories"></div>
+            </div>
+            
+            <div class="main-content" id="mainContent">
+                <div class="welcome-message" style="text-align: center; padding-top: 150px; color: #888;">
+                    <h2 style="margin-bottom: 20px;">Welcome to Your AI Command Center</h2>
+                    <p>Select a task category to see personalized model recommendations,<br>
+                    pre-configured prompts, and workflow integrations.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const taskData = {
+            "deep-research": {
+                title: "Deep Research & Analysis",
+                contexts: ["Professional", "Nonprofit", "Strategy"],
+                primary: {
+                    model: "Perplexity Pro + Claude Opus 4",
+                    rationale: "Perplexity's real-time citations combined with Claude's synthesis capabilities. Perfect for grant research, market analysis, and policy deep-dives.",
+                    cost: "$20/mo + $0.015/1k",
+                    context: "Unlimited searches + 200k"
+                },
+                secondary: {
+                    model: "GPT-4o with Web Browsing",
+                    rationale: "Faster for quick fact-checking and current events. Good for initial scoping before deep analysis.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                prompt: `[Research Framework]
+Topic: {YOUR_TOPIC}
+Depth: Comprehensive with primary sources
+Perspective: Skeptical, evidence-based
+
+Phase 1 - Landscape Mapping:
+- Current state analysis with quantified metrics
+- Key stakeholders and their incentives
+- Historical context (last 5-10 years of evolution)
+- Competing narratives and their proponents
+
+Phase 2 - Critical Analysis:
+- Methodological weaknesses in existing research
+- Conflicts of interest in source materials
+- Understudied angles and research gaps
+- Cross-industry pattern matching
+
+Phase 3 - Strategic Synthesis:
+- Probabilistic scenario modeling (base/bear/bull cases)
+- Second-order effects and unintended consequences
+- Implementation roadmap with dependency mapping
+- Risk mitigation strategies
+
+Output format: Executive briefing with actionable insights`,
+                workflow: [
+                    "Perplexity Pro (gather sources)",
+                    "→",
+                    "Claude Opus (synthesize)",
+                    "→",
+                    "Notion Database",
+                    "→",
+                    "GPT-4o (visualizations)"
+                ],
+                tools: ["Perplexity", "Claude API", "Notion", "Zapier"]
+            },
+            "creative-writing": {
+                title: "Creative Writing Suite",
+                contexts: ["Personal", "Creative", "Professional"],
+                primary: {
+                    model: "Claude Sonnet 4",
+                    rationale: "Superior narrative coherence and character development. Maintains voice consistency across long-form pieces.",
+                    cost: "$0.003/1k tokens",
+                    context: "200k tokens"
+                },
+                secondary: {
+                    model: "GPT-4o + DALL-E 3",
+                    rationale: "Multimodal storytelling - generate scene visuals alongside prose. Better for experimental formats.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                prompt: `[Cinematic Writing Framework]
+Genre: {GENRE} with {SUBGENRE} elements
+Tone: {Sorkin dialogue meets Villeneuve visuals}
+
+Structure Requirements:
+- Opening: In medias res with sensory immersion
+- Pacing: 60/30/10 rule (action/dialogue/description)
+- POV: Limited third with strategic omniscient breaks
+- Subtext: Every line serves plot AND character
+
+Stylistic DNA:
+- Metaphor frequency: 1 per 500 words (cinematic, not purple)
+- Sentence rhythm: Vary between Hemingway staccato and Woolf streams
+- Show/Tell ratio: 80/20 with earned telling moments
+- White space: Use for pacing control
+
+Character Framework:
+- Want vs Need clearly defined
+- Unique lexicon/speech patterns per character
+- Physical tells that reveal internal state
+- Backstory revealed through behavior, not exposition
+
+Include: Scene blocking notes for eventual film adaptation`,
+                workflow: [
+                    "GPT-4o (initial draft)",
+                    "→",
+                    "Claude Sonnet (polish)",
+                    "→",
+                    "Sudowrite (genre-specific)",
+                    "→",
+                    "Google Docs"
+                ],
+                tools: ["GPT-4", "Claude", "Sudowrite", "Google Workspace"]
+            },
+            "google-automation": {
+                title: "Google Workspace Automation",
+                contexts: ["Professional", "Nonprofit", "Technical"],
+                primary: {
+                    model: "Gemini 1.5 Pro",
+                    rationale: "Native Google API integration, superior Apps Script knowledge, and direct workspace access.",
+                    cost: "$0.00125/1k tokens",
+                    context: "1M tokens (2M via API)"
+                },
+                secondary: {
+                    model: "GPT-4o",
+                    rationale: "Best for complex ES6+ patterns and quota-safe batching. Excellent error handling and modern JavaScript idioms.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                tertiary: {
+                    model: "Claude Opus 4",
+                    rationale: "Use for large multi-file projects with complex state management. Best documentation generation.",
+                    cost: "$0.015/1k tokens",
+                    context: "200k tokens"
+                },
+                prompt: `[Google Apps Script Automation]
+Objective: {AUTOMATION_GOAL}
+Scope: {Single function | Multi-file project}
+Integration: {Sheets | Docs | Gmail | Calendar | Drive}
+
+Requirements:
+1. Modern ES6+ JavaScript with JSDoc annotations
+2. Comprehensive error handling with user notifications
+3. Batch operations for quota management
+4. Timezone-aware date handling (America/Los_Angeles)
+5. Audit trail via console.log for debugging
+
+Code Structure:
+- Configuration object at top for easy customization
+- Pure functions where possible
+- Cache service for expensive operations
+- Trigger-safe implementation (6-min execution limit)
+
+Include:
+- Setup instructions for non-technical users
+- Common modification scenarios
+- Performance optimization tips
+- Integration with Zapier webhooks where applicable`,
+                workflow: [
+                    "Gemini 1.5 (script generation)",
+                    "→",
+                    "Apps Script Editor",
+                    "→",
+                    "Test deployment",
+                    "→",
+                    "Zapier integration"
+                ],
+                tools: ["Gemini", "Google Apps Script", "Zapier", "GitHub"]
+            },
+            "financial-modeling": {
+                title: "Real Estate Financial Modeling",
+                contexts: ["Real Estate", "Professional", "Investment"],
+                primary: {
+                    model: "GPT-4o + Code Interpreter",
+                    rationale: "Live Monte Carlo simulations, instant chart generation, and real-time scenario testing. Most multifamily models fit within 128k tokens easily.",
+                    cost: "$0.015/1k tokens",
+                    context: "128k tokens + execution"
+                },
+                secondary: {
+                    model: "Claude Opus 4",
+                    rationale: "Use for complex multi-asset portfolios exceeding 128k tokens. Superior at maintaining state across massive models and explaining intricate waterfalls.",
+                    cost: "$0.015/1k tokens",
+                    context: "200k tokens"
+                },
+                prompt: `[Institutional-Grade RE Model]
+Property Type: {PROPERTY_TYPE}
+Investment Strategy: {Core | Core+ | Value-Add | Opportunistic}
+Hold Period: {X} years with {Y} year extension options
+
+Model Architecture:
+1. Revenue Build-up
+   - Rent roll with unit-level detail
+   - Market rent growth: MSA-specific forecasts
+   - Vacancy: Physical + economic with lease-up curves
+   - Other income streams with % of EGI
+
+2. Operating Expenses
+   - Line-item detail with CPI escalations
+   - Management fee structure (% of EGI)
+   - Replacement reserves ($X/unit/year)
+   - Real estate taxes with reassessment logic
+
+3. Capital Structure
+   - Senior debt: LTV, rate, amortization, IO period
+   - Mezzanine layers with payment waterfalls
+   - GP/LP split with promotes at hurdles
+
+4. Returns Analysis
+   - LP IRR/Multiple at base case
+   - GP IRR with promote participation
+   - Sensitivity tables: ±50bps cap rate, ±10% rents
+   - Monte Carlo simulation across key variables
+
+Output: Full Excel model with dashboard + investment memo`,
+                workflow: [
+                    "Claude Opus (model architecture)",
+                    "→",
+                    "Google Sheets",
+                    "→",
+                    "GPT-4 Code Interpreter (validation)",
+                    "→",
+                    "Notion (memo)"
+                ],
+                tools: ["Claude", "Google Sheets", "Excel", "Argus"]
+            },
+            "nonprofit-operations": {
+                title: "Nonprofit Management Suite",
+                contexts: ["Nonprofit", "Strategy", "Communications"],
+                primary: {
+                    model: "Claude Opus 4",
+                    rationale: "Maintains donor context and grant requirements across long documents. Better at mission-aligned language.",
+                    cost: "$0.015/1k tokens",
+                    context: "200k tokens"
+                },
+                secondary: {
+                    model: "GPT-4o",
+                    rationale: "Faster for donor personalization at scale. Better emotional resonance in fundraising appeals.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                prompt: `[Nonprofit Strategic Framework]
+Organization: {ORG_NAME}
+Mission Focus: {MISSION_AREA}
+Document Type: {Grant Proposal | Donor Report | Board Deck | Impact Assessment}
+
+Strategic Positioning:
+- Theory of Change with measurable outcomes
+- Competitive landscape analysis
+- Unique value proposition
+- Partnership ecosystem mapping
+
+Content Requirements:
+- Data-driven impact metrics (X beneficiaries, Y% improvement)
+- Compelling beneficiary stories (anonymized)
+- Financial sustainability narrative
+- DEI integration throughout
+- Funder-specific language alignment
+
+Tone Calibration:
+- Professional yet passionate
+- Evidence-based but human-centered
+- Ambitious but achievable
+- Transparent about challenges
+
+Include:
+- Executive summary (1-page max)
+- Logic model visualization
+- Budget narrative connecting dollars to outcomes
+- Risk mitigation strategies`,
+                workflow: [
+                    "Grant research (Perplexity)",
+                    "→",
+                    "Claude Opus (draft)",
+                    "→",
+                    "Team review (Google Docs)",
+                    "→",
+                    "Final polish (GPT-4o)"
+                ],
+                tools: ["Claude", "Google Workspace", "Asana", "DonorSearch"]
+            },
+            "project-management": {
+                title: "Strategic Project Management",
+                contexts: ["Professional", "Cross-functional", "Technical"],
+                primary: {
+                    model: "GPT-4o",
+                    rationale: "Excellent at generating comprehensive project artifacts quickly. Great API for automation.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                secondary: {
+                    model: "Claude Sonnet 4",
+                    rationale: "Better stakeholder communication and risk narrative development. More nuanced dependency analysis.",
+                    cost: "$0.003/1k tokens",
+                    context: "200k tokens"
+                },
+                prompt: `[Strategic PM Framework]
+Project: {PROJECT_NAME}
+Methodology: {Agile-Waterfall Hybrid}
+Stakeholders: {Technical | Executive | Cross-functional}
+
+Deliverables Package:
+1. One-Page Strategic Brief
+   - Problem/solution fit
+   - Success metrics (leading + lagging)
+   - Resource requirements
+   - Go/no-go decision criteria
+
+2. Execution Roadmap
+   - Phased approach with MVPs
+   - Dependency mapping (technical + organizational)
+   - Resource leveling across initiatives
+   - Buffer management strategy
+
+3. Risk Register
+   - Pre-mortem analysis
+   - Quantified impact (time/cost/scope)
+   - Mitigation vs acceptance strategies
+   - Trigger identification
+
+4. Communication Plan
+   - RACI with escalation paths
+   - Stakeholder-specific views
+   - Automated status updates via Zapier
+   - Retrospective cadence
+
+Output format: Notion database with linked artifacts`,
+                workflow: [
+                    "GPT-4o (artifact generation)",
+                    "→",
+                    "Notion PM workspace",
+                    "→",
+                    "Zapier automations",
+                    "→",
+                    "Slack updates"
+                ],
+                tools: ["GPT-4", "Notion", "Zapier", "Asana", "Slack"]
+            },
+            "video-creative": {
+                title: "Video & Visual Storytelling",
+                contexts: ["Creative", "Professional", "Marketing"],
+                primary: {
+                    model: "Gemini 1.5 Pro",
+                    rationale: "Unmatched multimodal understanding. Can analyze existing footage and suggest edits. Native YouTube integration.",
+                    cost: "$0.00125/1k tokens",
+                    context: "2M tokens"
+                },
+                secondary: {
+                    model: "GPT-4o with Vision",
+                    rationale: "Better for storyboarding and shot list generation. Superior DALL-E 3 integration for concept art.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                prompt: `[Cinematic Video Framework]
+Project Type: {Documentary | Narrative | Commercial | Social}
+Duration: {X} minutes
+Platform: {YouTube | Instagram | Film Festival}
+
+Pre-Production Package:
+1. Treatment (1-page)
+   - Logline + elevator pitch
+   - Visual style references (film/photographer)
+   - Emotional arc mapping
+   - Key moments/scenes
+
+2. Shot List
+   - Coverage strategy per scene
+   - Camera movement motivation
+   - Lens choices for emotional impact
+   - B-roll requirements
+
+3. Post-Production Plan
+   - Editing rhythm/pacing notes
+   - Color grade reference (LUT suggestions)
+   - Sound design moments
+   - Music/scoring direction
+
+Technical Specs:
+- Camera/lens package justification
+- Lighting diagrams for key scenes
+- Location scouting priorities
+- Crew size/role requirements
+
+Include: Moodboard + reference reel links`,
+                workflow: [
+                    "Gemini 1.5 (footage analysis)",
+                    "→",
+                    "GPT-4o (shot lists)",
+                    "→",
+                    "Adobe Premiere (edit)",
+                    "→",
+                    "Frame.io (review)"
+                ],
+                tools: ["Gemini", "Adobe CC", "Frame.io", "Milanote"]
+            },
+            "api-orchestration": {
+                title: "API & Automation Orchestration",
+                contexts: ["Technical", "Business", "Scalability"],
+                primary: {
+                    model: "GPT-4o",
+                    rationale: "Best knowledge of modern APIs and webhook patterns. Excellent at generating Zapier/Make.com flows.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                secondary: {
+                    model: "Claude Opus 4",
+                    rationale: "Superior for complex state management and error handling. Better documentation generation.",
+                    cost: "$0.015/1k tokens",
+                    context: "200k tokens"
+                },
+                prompt: `[API Orchestration Architecture]
+Use Case: {INTEGRATION_GOAL}
+APIs: {List all services: Notion, Anthropic, OpenAI, Google, etc.}
+Trigger: {Webhook | Schedule | Event-based}
+
+System Design:
+1. Architecture Pattern
+   - Event-driven with queuing
+   - Error handling: Exponential backoff + DLQ
+   - Idempotency keys for safe retries
+   - Rate limiting respect (per-API basis)
+
+2. Data Flow
+   - Input validation schemas
+   - Transformation logic
+   - State management approach
+   - Output formatting
+
+3. Monitoring/Observability
+   - Health check endpoints
+   - Latency tracking per step
+   - Cost tracking per API call
+   - Alert thresholds
+
+Implementation Options:
+- Zapier: Visual flow with code steps
+- Make.com: Advanced branching logic
+- Custom: Node.js/Python with PM2
+- Hybrid: Zapier + custom webhooks
+
+Include: Cost optimization strategies`,
+                workflow: [
+                    "System design (GPT-4o)",
+                    "→",
+                    "Zapier prototype",
+                    "→",
+                    "Custom code (Claude)",
+                    "→",
+                    "Production deployment"
+                ],
+                tools: ["Zapier", "Make.com", "Pipedream", "GitHub Actions"]
+            },
+            "code-review": {
+                title: "Code Review & Debugging",
+                contexts: ["Technical", "Professional", "Quality Assurance"],
+                primary: {
+                    model: "Claude Opus 4",
+                    rationale: "200k context handles large diffs and entire codebases. Superior step-by-step debugging reasoning and security vulnerability detection.",
+                    cost: "$0.015/1k tokens",
+                    context: "200k tokens"
+                },
+                secondary: {
+                    model: "GPT-4o + Code Interpreter",
+                    rationale: "Can execute failing test cases and validate fixes in real-time. Better for iterative debugging with live validation.",
+                    cost: "$0.015/1k tokens",
+                    context: "128k tokens + execution"
+                },
+                prompt: `[Code Review & Debug Protocol]
+Repository: {REPO_NAME}
+Language: {PRIMARY_LANGUAGE}
+Focus Areas: {Security | Performance | Maintainability | All}
+
+Review Framework:
+1. Static Analysis
+   - Code smell detection (DRY, SOLID violations)
+   - Complexity metrics (cyclomatic, cognitive)
+   - Security vulnerabilities (OWASP Top 10)
+   - Performance bottlenecks
+
+2. Architecture Review
+   - Design pattern appropriateness
+   - Dependency management
+   - API contract stability
+   - Test coverage analysis
+
+3. Bug Investigation
+   - Reproduce steps validation
+   - Root cause analysis
+   - Fix verification
+   - Regression test creation
+
+Output Format:
+- Critical issues (must fix)
+- Recommendations (should fix)
+- Suggestions (nice to have)
+- Refactoring opportunities
+
+Include: Code snippets with before/after examples`,
+                workflow: [
+                    "GitHub PR webhook",
+                    "→",
+                    "Claude Opus (review)",
+                    "→",
+                    "GPT-4o (test execution)",
+                    "→",
+                    "GitHub comments"
+                ],
+                tools: ["GitHub", "GitLab", "Cursor", "VS Code"]
+            },
+            "data-analysis": {
+                title: "Data Analysis & Visualization",
+                contexts: ["Analytics", "Business Intelligence", "Research"],
+                primary: {
+                    model: "GPT-4o + Code Interpreter",
+                    rationale: "Unmatched for inline Python execution, pandas operations, and matplotlib/seaborn visualizations. Handles CSV/Excel natively.",
+                    cost: "$0.015/1k tokens",
+                    context: "128k tokens + execution"
+                },
+                secondary: {
+                    model: "Claude Opus 4",
+                    rationale: "Better for explaining statistical methodologies and creating comprehensive analysis narratives. Use when interpretation matters more than computation.",
+                    cost: "$0.015/1k tokens",
+                    context: "200k tokens"
+                },
+                prompt: `[Data Analysis Framework]
+Dataset: {DATASET_NAME}
+Analysis Type: {Exploratory | Hypothesis Testing | Predictive | Descriptive}
+Business Question: {SPECIFIC_QUESTION}
+
+Analysis Pipeline:
+1. Data Profiling
+   - Shape, dtypes, missing values
+   - Distribution analysis
+   - Outlier detection
+   - Correlation matrix
+
+2. Statistical Analysis
+   - Descriptive statistics
+   - Hypothesis tests with p-values
+   - Effect size calculations
+   - Confidence intervals
+
+3. Visualization Suite
+   - Distribution plots
+   - Time series (if applicable)
+   - Correlation heatmaps
+   - Business-friendly charts
+
+4. Insights & Recommendations
+   - Key findings (top 3-5)
+   - Statistical significance
+   - Business implications
+   - Next steps
+
+Output: Jupyter-style report with inline visualizations`,
+                workflow: [
+                    "Upload data",
+                    "→",
+                    "GPT-4o Code Interpreter",
+                    "→",
+                    "Export visualizations",
+                    "→",
+                    "Notion/Google Sheets"
+                ],
+                tools: ["GPT-4", "Google Colab", "Tableau", "Google Sheets"]
+            },
+            "email-automation": {
+                title: "Email Automation & Parsing",
+                contexts: ["Communications", "CRM", "Marketing"],
+                primary: {
+                    model: "GPT-4o",
+                    rationale: "Superior function calling for Gmail API integration. Excellent at parsing varied email formats and generating contextual responses.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                secondary: {
+                    model: "Claude Sonnet 4",
+                    rationale: "More nuanced tone matching and better at maintaining conversation context across long threads. Use for sensitive stakeholder communications.",
+                    cost: "$0.003/1k tokens",
+                    context: "200k tokens"
+                },
+                prompt: `[Email Automation Framework]
+Use Case: {Outreach | Follow-up | Parsing | Classification}
+Volume: {X} emails/day
+Personalization Level: {High | Medium | Template-based}
+
+Automation Rules:
+1. Parsing Logic
+   - Extract: {Name, Company, Intent, Urgency}
+   - Classify: {Sales, Support, Partnership, Other}
+   - Sentiment analysis
+   - Action triggers
+
+2. Response Generation
+   - Tone matching (formal/casual detection)
+   - Context preservation
+   - Personalization variables
+   - CTA optimization
+
+3. Workflow Integration
+   - CRM updates (HubSpot/Salesforce)
+   - Task creation (Asana/Notion)
+   - Calendar scheduling
+   - Follow-up sequences
+
+Safety Checks:
+- Never auto-send without review flag
+- Sensitive topic detection
+- Duplicate prevention
+- Unsubscribe handling`,
+                workflow: [
+                    "Gmail trigger",
+                    "→",
+                    "Zapier parse",
+                    "→",
+                    "GPT-4o process",
+                    "→",
+                    "CRM update + draft"
+                ],
+                tools: ["Gmail", "Zapier", "HubSpot", "Mailchimp"]
+            },
+            "knowledge-synthesis": {
+                title: "Knowledge Base Synthesis",
+                contexts: ["Research", "Documentation", "Learning"],
+                primary: {
+                    model: "NotebookLM",
+                    rationale: "Purpose-built for document synthesis with native citation support. Handles 50+ sources with automatic cross-referencing.",
+                    cost: "Free (Google)",
+                    context: "500k tokens/source"
+                },
+                secondary: {
+                    model: "Claude Opus 4",
+                    rationale: "Use for synthesizing 500+ documents or when you need API access for automation. Superior at finding contradictions across sources.",
+                    cost: "$0.015/1k tokens",
+                    context: "200k tokens"
+                },
+                prompt: `[Knowledge Synthesis Protocol]
+Source Materials: {X documents, Y videos, Z web pages}
+Synthesis Goal: {Comprehensive review | Specific question | Trend analysis}
+Output Format: {Executive brief | Academic paper | Wiki}
+
+Synthesis Framework:
+1. Source Mapping
+   - Credibility assessment
+   - Recency weighting
+   - Bias identification
+   - Coverage gaps
+
+2. Thematic Analysis
+   - Core themes extraction
+   - Cross-source validation
+   - Contradiction flagging
+   - Evolution tracking
+
+3. Insight Generation
+   - Novel connections
+   - Trend identification
+   - Future implications
+   - Research gaps
+
+4. Knowledge Graph
+   - Entity relationships
+   - Concept hierarchy
+   - Citation network
+   - Confidence levels
+
+Deliverable: Hyperlinked knowledge base with source attribution`,
+                workflow: [
+                    "Upload sources",
+                    "→",
+                    "NotebookLM processing",
+                    "→",
+                    "Review + Q&A",
+                    "→",
+                    "Export to Notion"
+                ],
+                tools: ["NotebookLM", "Obsidian", "Roam Research", "Notion"]
+            },
+            "travel-planning": {
+                title: "Travel Planning & Itineraries",
+                contexts: ["Personal", "Business Travel", "Event Planning"],
+                primary: {
+                    model: "Gemini 1.5 Pro",
+                    rationale: "Native Google Maps/Flights/Hotels integration. Real-time availability checking and route optimization. Multimodal for destination visuals.",
+                    cost: "$0.00125/1k tokens",
+                    context: "1M tokens"
+                },
+                secondary: {
+                    model: "GPT-4o",
+                    rationale: "Better for complex multi-city itineraries and constraint juggling. Superior at finding unique experiences and local recommendations.",
+                    cost: "$0.005/1k tokens",
+                    context: "128k tokens"
+                },
+                prompt: `[Travel Planning Framework]
+Destination(s): {LOCATION(S)}
+Duration: {X} days
+Travel Style: {Luxury | Budget | Adventure | Business}
+Interests: {Culture | Food | Nature | Architecture}
+
+Itinerary Components:
+1. Logistics Optimization
+   - Flight routing (cost vs. time)
+   - Accommodation strategy
+   - Local transportation
+   - Visa/document requirements
+
+2. Daily Planning
+   - Morning/afternoon/evening structure
+   - Travel time buffers
+   - Restaurant reservations
+   - Attraction tickets
+
+3. Local Intelligence
+   - Hidden gems beyond tourist spots
+   - Seasonal considerations
+   - Cultural events calendar
+   - Safety advisories
+
+4. Contingency Planning
+   - Weather alternatives
+   - Backup restaurants
+   - Emergency contacts
+   - Flexible day options
+
+Output: Mobile-friendly itinerary with offline maps`,
+                workflow: [
+                    "Requirements input",
+                    "→",
+                    "Gemini (routes + availability)",
+                    "→",
+                    "GPT-4o (experiences)",
+                    "→",
+                    "Google Trips export"
+                ],
+                tools: ["Google Travel", "Airbnb", "Wanderlog", "TripIt"]
+            }
+        };
+
+        let selectedTask = null;
+
+        function renderCategories() {
+            const categoriesEl = document.getElementById('categories');
+            const categories = [
+                { id: 'deep-research', name: 'Deep Research & Analysis' },
+                { id: 'creative-writing', name: 'Creative Writing Suite' },
+                { id: 'google-automation', name: 'Google Workspace Automation' },
+                { id: 'financial-modeling', name: 'Real Estate Financial Modeling' },
+                { id: 'nonprofit-operations', name: 'Nonprofit Management' },
+                { id: 'project-management', name: 'Strategic Project Management' },
+                { id: 'video-creative', name: 'Video & Visual Storytelling' },
+                { id: 'api-orchestration', name: 'API & Automation Orchestration' },
+                { id: 'code-review', name: 'Code Review & Debugging' },
+                { id: 'data-analysis', name: 'Data Analysis & Visualization' },
+                { id: 'email-automation', name: 'Email Automation & Parsing' },
+                { id: 'knowledge-synthesis', name: 'Knowledge Base Synthesis' },
+                { id: 'travel-planning', name: 'Travel Planning & Itineraries' }
+            ];
+
+            categories.forEach(cat => {
+                const div = document.createElement('div');
+                div.className = 'category-item';
+                div.textContent = cat.name;
+                div.onclick = () => selectTask(cat.id);
+                categoriesEl.appendChild(div);
+            });
+        }
+
+        function selectTask(taskId) {
+            selectedTask = taskId;
+            
+            // Update active state
+            document.querySelectorAll('.category-item').forEach((el, index) => {
+                if (index === Object.keys(taskData).indexOf(taskId)) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            });
+
+            renderTaskDetails(taskData[taskId]);
+        }
+
+        function renderTaskDetails(task) {
+            const mainContent = document.getElementById('mainContent');
+            
+            // Dynamic ROI values per task type
+            const roiData = {
+                'deep-research': { budget: '$50-150', timeSaved: '20-25 hrs/mo', roi: '10-15x' },
+                'creative-writing': { budget: '$30-80', timeSaved: '15-20 hrs/mo', roi: '8-12x' },
+                'google-automation': { budget: '$20-50', timeSaved: '25-30 hrs/mo', roi: '15-20x' },
+                'financial-modeling': { budget: '$50-100', timeSaved: '20-25 hrs/mo', roi: '12-18x' },
+                'nonprofit-operations': { budget: '$40-100', timeSaved: '15-20 hrs/mo', roi: '8-12x' },
+                'project-management': { budget: '$40-80', timeSaved: '10-15 hrs/mo', roi: '6-10x' },
+                'video-creative': { budget: '$30-60', timeSaved: '10-15 hrs/mo', roi: '5-8x' },
+                'api-orchestration': { budget: '$50-200', timeSaved: '30-40 hrs/mo', roi: '20-30x' },
+                'code-review': { budget: '$50-150', timeSaved: '15-20 hrs/mo', roi: '10-15x' },
+                'data-analysis': { budget: '$30-50', timeSaved: '20-30 hrs/mo', roi: '15-25x' },
+                'email-automation': { budget: '$20-40', timeSaved: '10-15 hrs/mo', roi: '10-15x' },
+                'knowledge-synthesis': { budget: '$0-50', timeSaved: '25-35 hrs/mo', roi: '20-30x' },
+                'travel-planning': { budget: '$10-30', timeSaved: '5-10 hrs/trip', roi: '5-10x' }
+            };
+            
+            const roi = roiData[selectedTask] || { budget: '$50-100', timeSaved: '15-20 hrs/mo', roi: '8-12x' };
+            
+            // Handle tertiary model for Google Automation
+            const secondaryCard = task.tertiary ? `
+                <div class="model-card">
+                    <span class="model-label" style="background: #888;">Alternative A</span>
+                    <h3 class="model-name">${task.secondary.model}</h3>
+                    <p class="model-rationale">${task.secondary.rationale}</p>
+                    <div class="model-meta">
+                        <span>💰 ${task.secondary.cost}</span>
+                        <span>📊 ${task.secondary.context}</span>
+                    </div>
+                </div>
+                <div class="model-card">
+                    <span class="model-label" style="background: #666;">Alternative B</span>
+                    <h3 class="model-name">${task.tertiary.model}</h3>
+                    <p class="model-rationale">${task.tertiary.rationale}</p>
+                    <div class="model-meta">
+                        <span>💰 ${task.tertiary.cost}</span>
+                        <span>📊 ${task.tertiary.context}</span>
+                    </div>
+                </div>
+            ` : `
+                <div class="model-card">
+                    <span class="model-label" style="background: #888;">Alternative</span>
+                    <h3 class="model-name">${task.secondary.model}</h3>
+                    <p class="model-rationale">${task.secondary.rationale}</p>
+                    <div class="model-meta">
+                        <span>💰 ${task.secondary.cost}</span>
+                        <span>📊 ${task.secondary.context}</span>
+                    </div>
+                </div>
+            `;
+            
+            mainContent.innerHTML = `
+                <div class="task-header">
+                    <h2 class="task-title">${task.title}</h2>
+                    <div class="context-badges">
+                        ${task.contexts.map(ctx => `<span class="badge">${ctx}</span>`).join('')}
+                    </div>
+                </div>
+
+                <div class="model-recommendation" ${task.tertiary ? 'style="grid-template-columns: 1fr 1fr 1fr;"' : ''}>
+                    <div class="model-card primary">
+                        <span class="model-label">Primary Choice</span>
+                        <h3 class="model-name">${task.primary.model}</h3>
+                        <p class="model-rationale">${task.primary.rationale}</p>
+                        <div class="model-meta">
+                            <span>💰 ${task.primary.cost}</span>
+                            <span>📊 ${task.primary.context}</span>
+                        </div>
+                    </div>
+                    ${secondaryCard}
+                </div>
+
+                <div class="prompt-section">
+                    <div class="prompt-header">
+                        <h3 class="prompt-title">Pre-Configured Prompt Template</h3>
+                        <button class="copy-button" onclick="copyPrompt()">Copy to Clipboard</button>
+                    </div>
+                    <div class="prompt-box" id="promptBox">${task.prompt}</div>
+                </div>
+
+                <div class="workflow-section">
+                    <h3 class="workflow-title">Recommended Workflow</h3>
+                    <div class="workflow-steps">
+                        ${task.workflow.map(step => 
+                            step === '→' 
+                                ? '<span class="workflow-arrow">→</span>' 
+                                : `<div class="workflow-step">${step}</div>`
+                        ).join('')}
+                    </div>
+                </div>
+
+                <div class="workflow-section">
+                    <h3 class="workflow-title">Cost-Benefit Analysis</h3>
+                    <div class="cost-analysis">
+                        <div class="cost-item">
+                            <div class="cost-label">Monthly Budget</div>
+                            <div class="cost-value">${roi.budget}</div>
+                        </div>
+                        <div class="cost-item">
+                            <div class="cost-label">Time Saved</div>
+                            <div class="cost-value">${roi.timeSaved}</div>
+                        </div>
+                        <div class="cost-item">
+                            <div class="cost-label">ROI Multiple</div>
+                            <div class="cost-value">${roi.roi}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="workflow-section">
+                    <h3 class="workflow-title">Your Tool Integrations</h3>
+                    <div class="integration-tools">
+                        ${task.tools.map(tool => `<span class="tool-tag">${tool}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function copyPrompt() {
+            const promptText = document.getElementById('promptBox').textContent;
+            navigator.clipboard.writeText(promptText).then(() => {
+                const button = document.querySelector('.copy-button');
+                button.textContent = 'Copied!';
+                button.classList.add('copied');
+                setTimeout(() => {
+                    button.textContent = 'Copy to Clipboard';
+                    button.classList.remove('copied');
+                }, 2000);
+            });
+        }
+
+        // Initialize
+        renderCategories();
+    </script>
+</body>
+</html>

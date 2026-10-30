@@ -39,10 +39,12 @@ export function SaveIndicator() {
       icon = 'pencil';
       break;
     case 'conflict':
-      text = 'Someone else changed this — choose which version to keep';
-      tone = 'kaki';
-      icon = 'alert';
-      break;
+      // The conflict banner on the page is the visible message; this keeps screen readers informed.
+      return (
+        <div className="save-indicator-wrap" role="status" aria-live="polite" aria-atomic="true">
+          <span className="visually-hidden">Someone else changed this. Choose which version to keep.</span>
+        </div>
+      );
     case 'error':
       text = `Not saved — ${save.message}`;
       tone = 'kaki';

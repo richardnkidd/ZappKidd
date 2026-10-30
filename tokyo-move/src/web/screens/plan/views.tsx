@@ -9,7 +9,7 @@ import { Disclosure } from '../../components/Disclosure';
 import { Icon } from '../../components/Icon';
 import { ItemCard } from '../../components/ItemCard';
 import { Card, Section } from '../../components/Layout';
-import { OwnerChip, PersonBadge } from '../../components/People';
+import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, plural } from '../../lib/format';
 import { groupByPhase, groupByStatus, groupByWorkstream, sortPlanItems, type PlanItemData, type SortKey } from '../../lib/plan';
@@ -109,6 +109,7 @@ const SORT_LABEL: Record<SortKey, string> = {
 };
 
 export function ListView({ items, dir, today }: { items: PlanItemData[]; dir: Directory; today: string }) {
+  const plain = usePlain();
   const [sort, setSort] = useState<SortKey>('date');
   const sorted = useMemo(() => sortPlanItems(items, sort, (o) => dir.ownerLabel(o)), [items, sort, dir]);
   const th = (key: SortKey, label: string) => (
@@ -161,7 +162,7 @@ export function ListView({ items, dir, today }: { items: PlanItemData[]; dir: Di
                       <OptionalTag />
                     </>
                   )}
-                  {m.data?.next_action && <p className="small muted table-next preline">{m.data.next_action}</p>}
+                  {m.data?.next_action && <p className="small muted table-next preline">{plain(m.data.next_action)}</p>}
                 </th>
                 <td>
                   <OwnerChip owner={m.owner} proposed={m.owner_proposed} compact />
@@ -290,7 +291,7 @@ function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
         <span className="lane__what">{d.meaning ?? a.title}</span>
         <span className="lane__when">
           <DateText date={d.date ?? null} />
-          {d.confidence && <span className="chip chip--neutral chip--sm">{ANCHOR_CONFIDENCE_LABEL[d.confidence] ?? d.confidence}</span>}
+          {d.confidence && d.confidence !== 'awaiting' && <span className="chip chip--neutral chip--sm">{ANCHOR_CONFIDENCE_LABEL[d.confidence] ?? d.confidence}</span>}
         </span>
       </li>
     );

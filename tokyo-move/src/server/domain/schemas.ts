@@ -85,7 +85,9 @@ export const WORK_STATUSES = [
   'planned', 'in_progress', 'blocked', 'waiting_external', 'completed', 'eliminated', 'not_applicable',
 ] as const;
 /** Record types whose status must be a WorkStatus. */
-export const WORK_STATUS_TYPES: ReadonlySet<RecordType> = new Set(['milestone', 'arrival', 'horizon']);
+export const WORK_STATUS_TYPES: ReadonlySet<RecordType> = new Set(['milestone', 'arrival', 'horizon', 'workstream']);
+/** Record types that carry `data.traveler_progress` (independent per-traveler status on a shared item). */
+export const TRAVELER_PROGRESS_TYPES: ReadonlySet<RecordType> = new Set(['milestone', 'arrival']);
 export const STATUS_NEEDS_REASON: ReadonlySet<string> = new Set(['eliminated', 'not_applicable', 'blocked']);
 export const STATUS_NEEDS_EVIDENCE: ReadonlySet<string> = new Set(['completed']);
 export const statusSlug = z.string().regex(/^[a-z][a-z0-9_]{1,39}$/, 'Expected a lowercase status such as in_progress');
@@ -121,7 +123,28 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     conditional: text(1000).nullable(),
     dependency_note: text(1000).nullable(),
   },
-  workstream: {},
+  workstream: {
+    next_action: text(2000),
+    done_evidence: text(2000),
+    collaborators: z.array(line(200)).max(30),
+  },
+  inventory: {
+    location: line(300).nullable(),
+    quantity: line(100).nullable(),
+    dimensions_weight: line(200).nullable(),
+    disposition: line(200),
+    value_text: line(200).nullable(),
+    restriction_check: text(1000).nullable(),
+    quote_source: text(500).nullable(),
+    decision_evidence: text(1000).nullable(),
+    notes: text(2000).nullable(),
+  },
+  property: {
+    known_context: text(2000),
+    people_resources: text(1000),
+    evidence_caution: text(1000),
+    evidence_status: text(500).nullable(),
+  },
   question: {
     answer: text(5000).nullable(),
     local_note: text(5000).nullable(),
@@ -251,16 +274,6 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     linked_record_id: line(200).nullable(),
   },
 };
-
-/** Types whose existing data keys may be edited with simple JSON values (no schema in the shared contract). */
-export const GENERIC_PATCH_TYPES: ReadonlySet<RecordType> = new Set(['inventory', 'property']);
-export const genericValue = z.union([
-  text(2000),
-  z.number().finite(),
-  z.boolean(),
-  z.null(),
-  z.array(line(300)).max(50),
-]);
 
 /** Types that cannot be edited through the generic PATCH, with where to go instead. */
 export const PATCH_REDIRECT: Partial<Record<RecordType, string>> = {

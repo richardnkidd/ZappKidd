@@ -77,7 +77,7 @@ export class PeopleIndex {
 }
 
 const EACH_ADULT = /\b(each|both|every)\s+(working\s+|affected\s+)?(adult|adults|account holder|traveler)s?\b|\bnamed patient\b|\ball participants\b|\bboth adults\b/i;
-const OWNER_SUFFIX = /^(?:custodian|prepares|verifies|approves?|chooses|decides|only|individually|jointly)$/i;
+const OWNER_SUFFIX = /^(?:custodian|prepares|verifies|approves?|chooses|decides|only|individually|jointly)\b.*$/i;
 
 export interface OwnerParse {
   owner: OwnerRef;
@@ -100,7 +100,7 @@ export function normalizeCollaborator(token: string): string | null {
 export function parseOwner(text: string | null | undefined, people: PeopleIndex): OwnerParse {
   const raw = text ?? '';
   const proposed = /\(proposed\)/i.test(raw);
-  const stripped = raw.replace(/\(proposed\)/gi, ' ');
+  const stripped = raw.replace(/\(proposed\)/gi, ' ').replace(/\brelevant\b/gi, ' ').replace(/\bshipment owner\b/gi, ' ');
   const tokens = stripped
     .split(/\s*(?:\+|;|,|\/|\band\b|\bor\b)\s*/i)
     .map((t) => t.trim())

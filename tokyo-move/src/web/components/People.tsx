@@ -1,13 +1,13 @@
 import type { OwnerRef, Person } from '@shared/types';
+import { plainRefs } from '../lib/format';
 import { buildDirectory, type Directory } from '../lib/records';
-import { useSnapshot } from '../state/snapshot';
+import { useOptionalSnapshot } from '../state/snapshot';
 import { Icon, PawIcon } from './Icon';
 
 const EMPTY_DIR = buildDirectory([], null);
 
 export function useDir(): Directory {
-  const { dir } = useSnapshot();
-  return dir ?? EMPTY_DIR;
+  return useOptionalSnapshot()?.dir ?? EMPTY_DIR;
 }
 
 function toneFor(person: Person | null, dir: Directory): 'a' | 'b' | 'pet' | 'none' {
@@ -48,7 +48,7 @@ interface OwnerChipProps {
   prefix?: string;
 }
 
-/** "Nic", "Together", "Unassigned" or "Proposed: Nic" (provisional until accepted). */
+/** "<name>", "Together", "Unassigned" or "Proposed: <name>" (provisional until accepted). */
 export function OwnerChip({ owner, proposed = false, compact = false, prefix }: OwnerChipProps) {
   const dir = useDir();
   const o = !owner || owner === 'unassigned' ? 'unassigned' : owner;
@@ -77,4 +77,10 @@ export function OwnerChip({ owner, proposed = false, compact = false, prefix }: 
       </span>
     </span>
   );
+}
+
+/** Imported text with internal codes removed or swapped for plain titles. Display-only. */
+export function usePlain(): (text: string | null | undefined) => string {
+  const idx = useOptionalSnapshot()?.idx;
+  return (text) => plainRefs(text, (key) => idx?.byKey.get(key)?.title ?? null);
 }

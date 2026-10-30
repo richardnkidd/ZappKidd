@@ -17,7 +17,7 @@ import type { Decision, Directory, Indexes } from '../../lib/records';
 import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
-import { approvalSummary, needsMyApproval, YourTurnTag } from './decisionText';
+import { approvalSummary, YourTurnTag } from './decisionText';
 
 /* ------------------------------------------------------------------ approve */
 
@@ -345,16 +345,12 @@ function DecisionsList({ idx, dir, today }: { idx: Indexes; dir: Directory; toda
     };
     const openOnes = idx.decisions
       .filter((d) => d.status === 'open' || d.status === 'proposed')
-      .sort((a, b) => {
-        // Decisions waiting on me first, proposals after confirmed-open ones, then by date.
-        const mine = Number(needsMyApproval(b, dir)) - Number(needsMyApproval(a, dir));
-        return mine !== 0 ? mine : byDate(a, b);
-      });
+      .sort(byDate); // stable order: a card never jumps away just because you approved it
     const closed = idx.decisions
       .filter((d) => d.status !== 'open' && d.status !== 'proposed')
       .sort((a, b) => ((b.data?.decided_at ?? b.updated_at) > (a.data?.decided_at ?? a.updated_at) ? 1 : -1));
     return { openOnes, closed };
-  }, [idx, dir]);
+  }, [idx]);
 
   return (
     <div className="stack stack--loose">

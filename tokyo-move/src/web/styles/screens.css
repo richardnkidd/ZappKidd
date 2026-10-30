@@ -372,10 +372,19 @@ a.coming__title {
   .filterbar__panel {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: var(--s-3) var(--s-4);
   }
   .filterbar__check {
     grid-column: 1 / -1;
   }
+}
+.filterbar__check.choice {
+  border: 0;
+  background: transparent;
+  padding-left: 0;
+}
+.filterbar__check.choice:has(input:checked) {
+  background: transparent;
 }
 .plan-note {
   max-width: none;
@@ -415,12 +424,7 @@ a.coming__title {
 }
 @media (min-width: 768px) {
   .board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (min-width: 1200px) {
-  .board {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
     gap: var(--s-3);
   }
 }
@@ -579,8 +583,8 @@ a.coming__title {
   flex-wrap: wrap;
 }
 .inline-edit__value {
-  flex: 1 1 200px;
-  min-width: 0;
+  flex: 1 1 0;
+  min-width: 7ch;
 }
 .inline-edit--editing {
   display: flex;

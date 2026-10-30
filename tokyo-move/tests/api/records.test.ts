@@ -330,6 +330,25 @@ describe('editing records', () => {
     expect(badOwner.status).toBe(422);
   });
 
+  it('edits inventory, property and workstream items with their own field lists', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    const inv = (await c.get('/api/records/inventory:INV01')).body.record;
+    const ok = await c.patch('/api/records/inventory:INV01', { baseVersion: inv.version, changes: { data: { location: 'Hallway closet', quantity: '3 boxes', disposition: 'Ship' } } });
+    expect(ok.status).toBe(200);
+    expect(ok.body.record.data).toMatchObject({ location: 'Hallway closet', quantity: '3 boxes', disposition: 'Ship', category: inv.data.category });
+    expect((await c.patch('/api/records/inventory:INV01', { baseVersion: ok.body.record.version, changes: { data: { category: 'Renamed' } } })).status).toBe(422);
+    expect((await c.patch('/api/records/inventory:INV01', { baseVersion: ok.body.record.version, changes: { data: { surprise: 'x' } } })).status).toBe(422);
+    const prop = (await c.get('/api/records/property:PROP01')).body.record;
+    const p2 = await c.patch('/api/records/property:PROP01', { baseVersion: prop.version, changes: { data: { evidence_status: 'Contract re-read on paper' } } });
+    expect(p2.body.record.data.evidence_status).toBe('Contract re-read on paper');
+    expect((await c.patch('/api/records/property:PROP01', { baseVersion: p2.body.record.version, changes: { data: { milestone_links: [] } } })).status).toBe(422);
+    const ws = (await c.get('/api/records?type=workstream')).body.records[0];
+    const w2 = await c.patch(`/api/records/${ws.id}`, { baseVersion: ws.version, changes: { data: { next_action: 'Draft the checklist' } } });
+    expect(w2.body.record.data.next_action).toBe('Draft the checklist');
+    expect((await c.patch(`/api/records/${ws.id}`, { baseVersion: w2.body.record.version, changes: { data: { milestone_keys: [] } } })).status).toBe(422);
+  });
+
   it('a no-op edit does not bump the version or write audit', async () => {
     const h = await harness();
     const c = await loginAs(h, 'avery');

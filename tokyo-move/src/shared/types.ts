@@ -137,6 +137,8 @@ export interface BaseRecord<T extends RecordType = RecordType, D = Record<string
   created_at: string;
   updated_at: string;
   updated_by: string | null;
+  /** Field paths edited in-app since the last import (re-import keeps these). Present on server responses. */
+  locally_edited?: string[];
 }
 
 /* ---------- Deadlines ---------- */
@@ -308,6 +310,8 @@ export interface DecisionData {
   decided_option_id: string | null;
   decided_at: string | null;
   history_note: string | null;
+  /** For deferred decisions: civil date to revisit. */
+  revisit_on?: string | null;
   /** Non-blocking related workstream/decision keys imported from the source 'Dependencies' column. */
   related?: string[];
 }
@@ -597,6 +601,8 @@ export interface TaskLink {
   last_synced_at: string | null;
   last_error: string | null;
   remote_revision: string | null;
+  /** Changes awaiting an authorized writer (pending_update), as sent by the person. */
+  pending_changes?: Record<string, unknown> | null;
   version: number;
   created_at: string;
   updated_at: string;

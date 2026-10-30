@@ -158,6 +158,8 @@ describe('per-traveler progress', () => {
     h.db.prepare('UPDATE records SET data = ? WHERE id = ?').run(JSON.stringify(data), row.id);
     expect((await status(c, row.id, row.version, { traveler: 'jun', status: 'in_progress' })).status).toBe(422);
     expect((await status(c, row.id, row.version, { traveler: 'avery', status: 'in_progress' })).status).toBe(200);
+    const horizon = (await c.get('/api/records?type=horizon')).body.records[0];
+    expect((await status(c, horizon.id, horizon.version, { traveler: 'avery', status: 'in_progress' })).status).toBe(422);
     const risk = (await c.get('/api/records?type=risk')).body.records[0];
     expect((await status(c, risk.id, risk.version, { traveler: 'avery', status: 'open' })).status).toBe(422);
     const unchanged = recordRow(h.db, m.id);

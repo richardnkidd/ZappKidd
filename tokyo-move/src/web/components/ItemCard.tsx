@@ -1,9 +1,8 @@
 import type { ReactNode } from 'react';
 import type { DeadlineState } from '@shared/engine-contracts';
 import type { DeadlineKind, OwnerRef } from '@shared/types';
-import { plain } from '../lib/format';
 import { DateText, DeadlineBadge, OptionalTag, StatusBadge } from './Badges';
-import { OwnerChip } from './People';
+import { OwnerChip, usePlain } from './People';
 import { RecordLink } from './RecordLink';
 
 export interface ItemCardProps {
@@ -26,6 +25,7 @@ export interface ItemCardProps {
 
 /** One row/card in a list: title (the link), next action, owner, date + kind. Whole card is clickable. */
 export function ItemCard(p: ItemCardProps) {
+  const plain = usePlain();
   return (
     <li className={`item item--${p.tone ?? 'default'}`}>
       <div className="item__main">

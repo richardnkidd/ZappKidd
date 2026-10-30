@@ -21,16 +21,15 @@ import {
 import {
   CREATE_KEY_PREFIX,
   CREATE_STATUS,
-  GENERIC_PATCH_TYPES,
   PATCHABLE_DATA,
   PATCH_REDIRECT,
   STATUS_NEEDS_EVIDENCE,
   STATUS_NEEDS_REASON,
+  TRAVELER_PROGRESS_TYPES,
   WORK_STATUSES,
   WORK_STATUS_TYPES,
   createDataSchemas,
   createRecordBody,
-  genericValue,
   patchRecordBody,
   statusBody,
   type CreatableType,
@@ -290,12 +289,9 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
       const incoming = ch.data;
       const issues: ValidationIssue[] = [];
       const allowed = PATCHABLE_DATA[row.type];
-      const generic = GENERIC_PATCH_TYPES.has(row.type);
       for (const key of Object.keys(incoming)) {
         if (FORBIDDEN_KEYS.has(key)) {
           issues.push(issue(`data.${key}`, 'Not an editable field'));
-        } else if (generic) {
-          if (!Object.prototype.hasOwnProperty.call(cur.data, key)) issues.push(issue(`data.${key}`, 'Unknown field'));
         } else if (!allowed || !Object.prototype.hasOwnProperty.call(allowed, key)) {
           issues.push(issue(`data.${key}`, 'This field cannot be edited here'));
         }
@@ -304,7 +300,7 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
 
       const merged = mergeOneLevel(cur.data, incoming);
       for (const key of Object.keys(incoming)) {
-        const schema = generic ? genericValue : allowed?.[key];
+        const schema = allowed?.[key];
         if (!schema) continue;
         const result = schema.safeParse(merged[key]);
         if (!result.success) {
@@ -412,8 +408,8 @@ export function changeStatus(deps: Deps, ctx: AuthContext, id: string, rawBody: 
     } else if (row.type === 'review_session' || row.type === 'anchor') {
       throw validation('This record type does not use the status endpoint', [issue('status', 'Not applicable')]);
     }
-    if (body.traveler !== undefined && !WORK_STATUS_TYPES.has(row.type)) {
-      throw validation('Per-traveler progress is only available on roadmap, arrival and horizon items', [issue('traveler', 'Not applicable')]);
+    if (body.traveler !== undefined && !TRAVELER_PROGRESS_TYPES.has(row.type)) {
+      throw validation('Per-traveler progress is only available on roadmap and arrival items', [issue('traveler', 'Not applicable')]);
     }
 
     // Server-enforced status rules.

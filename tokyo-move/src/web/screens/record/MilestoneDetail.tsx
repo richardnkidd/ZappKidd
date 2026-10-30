@@ -16,9 +16,9 @@ import { DateText, DeadlineBadge, OptionalTag, PriorityTag, StatusBadge, SyncBad
 import { Button } from '../../components/Controls';
 import { Icon } from '../../components/Icon';
 import { Fact, Section } from '../../components/Layout';
-import { OwnerChip, PersonBadge, useDir } from '../../components/People';
+import { OwnerChip, PersonBadge, useDir, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
-import { civil, instant, plain, safeHref } from '../../lib/format';
+import { civil, instant, safeHref } from '../../lib/format';
 import { deadlineVerification } from '../../lib/home';
 import { dataOf, type Directory, type Indexes, type Milestone } from '../../lib/records';
 import { attempt } from '../../lib/safe';
@@ -259,6 +259,7 @@ function LinkedTasks({ record, idx, level }: { record: Milestone; idx: Indexes; 
 
 export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone; idx: Indexes; dir: Directory; level: Level }) {
   const { actions } = useSnapshot();
+  const plain = usePlain();
   const { today, deadlinesByRecord } = useData();
   const d = record.data ?? ({} as Milestone['data']);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -309,7 +310,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
         <InlineEdit
           label="Next action"
           value={d.next_action ?? ''}
-          display={d.next_action ? <p className="preline">{d.next_action}</p> : <p className="muted">No next action written yet.</p>}
+          display={d.next_action ? <p className="preline">{plain(d.next_action)}</p> : <p className="muted">No next action written yet.</p>}
           input="textarea"
           version={record.version}
           dirtyKey={`next:${record.id}`}
@@ -441,7 +442,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
 
       <Dependencies record={record} idx={idx} dir={dir} level={level} />
       <LinkedTasks record={record} idx={idx} level={level} />
-      <Notes record={record} idx={idx} dir={dir} />
+      <Notes record={record} idx={idx} dir={dir} level={level} />
       <SourceHistory record={record} idx={idx} dir={dir} />
 
       <StatusDialog open={statusOpen} onClose={() => setStatusOpen(false)} record={record} currentStatus={record.status} />

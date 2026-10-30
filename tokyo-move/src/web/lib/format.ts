@@ -87,6 +87,16 @@ export function humanizeKey(key: string): string {
  * Display-only cleanup of imported text: removes parenthesised internal reference codes such as " (W02)" or
  * " (W02 and W06)" so normal screens carry no IDs. The original text stays untouched in Source & history.
  */
+const REF = /\b(?:DOC|INV|PROP|EX|FW|FN|W|S|Q|D|R|B|A|Y)\d{2,3}\b/g;
+
+/** Like plain(), and also swaps a bare reference code for the quoted title of the thing it points to. */
+export function plainRefs(text: string | null | undefined, titleOf: (key: string) => string | null): string {
+  return plain(text).replace(REF, (m) => {
+    const t = titleOf(m);
+    return t ? `“${t}”` : m;
+  });
+}
+
 export function plain(text: string | null | undefined): string {
   if (!text) return '';
   return text

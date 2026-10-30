@@ -8,7 +8,7 @@ import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
 
-export function Notes({ record, idx, dir }: { record: AnyRecord; idx: Indexes; dir: Directory }) {
+export function Notes({ record, idx, dir, level = 2 }: { record: AnyRecord; idx: Indexes; dir: Directory; level?: 2 | 3 }) {
   const { actions, setDirty } = useSnapshot();
   const { zone } = usePrefs();
   const w = useWrite();
@@ -48,7 +48,7 @@ export function Notes({ record, idx, dir }: { record: AnyRecord; idx: Indexes; d
   };
 
   return (
-    <Section title="Notes" count={notes.length || undefined} headingLevel={3}>
+    <Section title="Notes" count={notes.length || undefined} headingLevel={level}>
       {notes.length > 0 ? (
         <ul className="notes">
           {notes.map((n) => (

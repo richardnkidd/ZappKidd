@@ -53,6 +53,10 @@ interface SnapshotCtx {
 
 const Ctx = createContext<SnapshotCtx | null>(null);
 
+/** Exposed so tests can supply a fake snapshot without network access. */
+export const SnapshotContext = Ctx;
+export type { SnapshotCtx };
+
 const AUTO_REFRESH_MS = 90_000;
 
 export function SnapshotProvider({ children }: { children: ReactNode }) {
@@ -190,6 +194,11 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
     [snapshot, idx, dir, status, loadedAt, error, refresh, effectiveSave, setDirty, actions],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+}
+
+/** Like useSnapshot, but returns null outside a provider (used by tiny presentational pieces). */
+export function useOptionalSnapshot(): SnapshotCtx | null {
+  return useContext(Ctx);
 }
 
 export function useSnapshot(): SnapshotCtx {

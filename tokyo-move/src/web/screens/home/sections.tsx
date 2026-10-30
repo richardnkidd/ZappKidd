@@ -11,10 +11,10 @@ import { ErrorBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
 import { ItemCard } from '../../components/ItemCard';
 import { Card, EmptyState, Section, Skeleton } from '../../components/Layout';
-import { OwnerChip, PersonBadge } from '../../components/People';
+import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { describeAuditList } from '../../lib/audit';
-import { civil, instant, plain, plural } from '../../lib/format';
+import { civil, instant, plural } from '../../lib/format';
 import {
   deadlineOwner,
   deadlineVerification,
@@ -149,6 +149,7 @@ export function DecisionsSection({ idx, dir, filter, ctx }: CommonProps & { dir:
 
 export function BlockedSection({ idx, filter, ctx }: CommonProps) {
   const { today } = useData();
+  const plain = usePlain();
   const all = useMemo(() => selectBlocked(idx, filter, ctx), [idx, filter, ctx]);
   const shown = all.slice(0, 5);
   return (
@@ -322,6 +323,7 @@ export function ComingUpSection({ idx, dir, filter, ctx }: CommonProps & { dir: 
 
 export function ReadySection({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const { readiness } = useData();
+  const plain = usePlain();
   const { refresh } = useSnapshot();
   return (
     <Section title="Who’s ready" className="sec-ready" intro="Each traveler on their own. Optional future work never holds anyone back.">

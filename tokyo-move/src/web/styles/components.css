@@ -780,6 +780,7 @@ legend {
   border-bottom: 1px solid var(--line);
 }
 .table thead th {
+  vertical-align: middle;
   background: var(--surface-2);
   font-size: var(--fs-0);
   font-weight: 650;

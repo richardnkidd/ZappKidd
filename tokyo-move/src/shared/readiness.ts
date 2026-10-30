@@ -138,6 +138,8 @@ export function travelerReadiness(person: Person, records: BaseRecord[], gates: 
   const arrival = person.anchors.arrival ? (byCode.get(person.anchors.arrival) ?? null) : null;
 
   const skip = new Set(gates.explicitly_not_gates.map((g) => g.key));
+  // The release record is the explicit go-ahead itself, so it is never one of the steps that must be met first.
+  if (gates.release_key) skip.add(gates.release_key);
   const seen = new Set<string>();
   const pre: GateStatus[] = []; // required (and conditional=yes) before departure
   const afterArrival: GateStatus[] = [];

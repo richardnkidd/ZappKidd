@@ -76,8 +76,9 @@ export interface OverlapLine {
 
 export interface OverlapComparison {
   lines: OverlapLine[];
-  beforeKnown: number;
-  afterKnown: number;
+  /** null when nothing in the section is known yet (the engine never reports unknown as $0). */
+  beforeKnown: number | null;
+  afterKnown: number | null;
   unknownBefore: number;
   unknownAfter: number;
 }

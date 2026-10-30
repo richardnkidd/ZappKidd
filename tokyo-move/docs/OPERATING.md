@@ -54,9 +54,9 @@ tell you there is none ("No database at …private/data/kadode-demo.db"). They n
   ("Too many sign-in attempts. Try again in about N minutes").
 - **Sessions** are random tokens in an `HttpOnly` cookie; only a hash is stored. "Switch person" / "Sign out" in the
   account dialog ends the session on the server too.
-- **Private notes** ("Only me") are visible only to their author, in the app, in exports and in backups' API views.
-  Note that a backup or export file made by one adult contains that adult's private notes and the password hashes
-  (backup): store them accordingly.
+- **Private notes** ("Only me") are visible only to their author, in the app and in exports. A **backup file** holds
+  everything (every private note, and the password hashes), and an export made by one adult contains that adult's
+  private notes: store both accordingly.
 
 ## 3. Where things live
 
@@ -138,8 +138,9 @@ visible under "Source & history" on each item), and every correction leaves a re
 - Each (correction, record) pair is applied **once** (tracked, so re-imports do not repeat receipts), while the edit
   itself is re-applied to the freshly parsed plan every time so the stored result always agrees with source + corrections.
   An operation that no longer fits (the record or text is gone) is logged as `correction_not_applicable`, not forced.
-- To undo a correction: remove it from the file and import with `--force`.
-- The correction files are part of what is fingerprinted, so changing one counts as a new import.
+- To drop a correction, remove it from the file and import again: the plan then follows the source plus the remaining
+  corrections for every field nobody edited in the app.
+- The correction files are part of what is fingerprinted, so adding, changing or removing one counts as a new import.
 
 ## 6. The task list: three states
 

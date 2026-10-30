@@ -161,7 +161,7 @@ describe('monthly lines', () => {
     expect(v.lines[0]?.months_in_horizon).toBeNull();
     expect(v.lines[0]?.horizon_usd).toBeNull();
     expect(v.by_section.staged_overlap.unknown_keys).toEqual(['P1']);
-    expect(v.by_section.staged_overlap.known_usd).toBe(0);
+    expect(v.by_section.staged_overlap.known_usd).toBeNull(); // nothing known is not $0
     const monthlyPhase = cost('P2', { section: 'tokyo_monthly', estimate: usd(200), commitment_state: 'estimate', phase: { traveler: 'jun', start_anchor: 'EHR', start_date: null, end_anchor: null, end_date: null, months: null, note: null } });
     expect(budget([monthlyPhase], []).lines[0]?.months_in_horizon).toBeNull();
     // an overlap with no phase at all is unknown too
@@ -174,6 +174,44 @@ describe('monthly lines', () => {
     const v = budget([c], []);
     expect(v.lines[0]).toMatchObject({ months_in_horizon: 2, horizon_usd: 1000 });
     expect(v.sustainability.staged_overlap.known_usd).toBe(1000);
+  });
+});
+
+describe('nothing known is null, not $0', () => {
+  it('a section whose lines are all unknown reports null; an empty section is a true 0', () => {
+    const v = budget([cost('A', { applicability: 'review' }), cost('B', { section: 'tokyo_monthly' })], []);
+    expect(v.by_section.one_time.known_usd).toBeNull();
+    expect(v.by_section.one_time.known_count).toBe(0);
+    expect(v.by_section.one_time.unknown_count).toBe(1);
+    expect(v.by_section.tokyo_monthly.known_usd).toBeNull();
+    expect(v.by_section.tokyo_monthly.monthly_known_usd).toBeUndefined();
+    expect(v.by_section.us_monthly.known_usd).toBe(0); // no lines at all
+    expect(v.by_section.us_monthly.unknown_count).toBe(0);
+    // one known line makes the sum a real number again, even beside unknown ones
+    const mixed = budget([cost('A', { applicability: 'review' }), cost('C', { estimate: usd(40), unpaid_balance: usd(40), commitment_state: 'estimate' })], []);
+    expect(mixed.by_section.one_time).toMatchObject({ known_usd: 40, known_count: 1, unknown_count: 1 });
+    // an excluded-only section is a real zero
+    expect(budget([cost('E', { applicability: 'exclude', exclusion_reason: 'Not needed.' })], []).by_section.one_time.known_usd).toBe(0);
+  });
+
+  it('the known need is null when nothing at all is known, in both views', () => {
+    const v = budget([cost('A', { applicability: 'review' }), cost('J', { estimate: jpy(1000), commitment_state: 'estimate' })], []);
+    expect(v.cash_model.need_usd_known).toBeNull();
+    expect(v.sustainability.need_usd_known).toBeNull();
+    expect(v.cash_model.headroom_usd).toBeNull();
+    // a known return reserve (even $0) or any known line makes it a number
+    expect(budget([cost('A', { applicability: 'review' })], [RESERVE(0)]).cash_model.need_usd_known).toBe(0);
+    expect(budget([cost('K', { estimate: usd(10), unpaid_balance: usd(10), commitment_state: 'estimate' })], []).cash_model.need_usd_known).toBe(10);
+    // no lines and no funding: nothing is known
+    expect(budget([], []).cash_model.need_usd_known).toBeNull();
+  });
+
+  it('the staged-overlap what-if compares nulls, not $0 → $0, until an amount is known', () => {
+    const overlap = cost('O', { section: 'staged_overlap', estimate: usd(900), commitment_state: 'estimate', phase: { traveler: null, start_anchor: 'TN', start_date: null, end_anchor: 'TR', end_date: null, months: null, note: null } });
+    const unknown = budget([overlap], []);
+    expect(unknown.by_section.staged_overlap.known_usd).toBeNull();
+    const dated = anchors.map((a) => (a.code === 'TR' ? { ...a, date: '2027-08-05' } : a));
+    expect(budget([overlap], [], PLANNING, dated).by_section.staged_overlap.known_usd).toBeCloseTo(900, 4);
   });
 });
 

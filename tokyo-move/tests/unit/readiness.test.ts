@@ -32,6 +32,14 @@ function setStatus(records: BaseRecord[], key: string, status: WorkStatus, reaso
   });
 }
 
+/** Answer a conditional step for one traveler on the record itself (record.data.applies_to). */
+function answer(records: BaseRecord[], key: string, personId: string, value: 'yes' | 'no' | 'unknown'): BaseRecord[] {
+  return patch(records, `milestone:${key}`, (r) => {
+    const d = r.data as unknown as MilestoneData;
+    d.applies_to = { ...(d.applies_to ?? {}), [personId]: value };
+  });
+}
+
 function person(id: string) {
   const p = demo().people.find((x) => x.id === id);
   if (!p) throw new Error(id);
@@ -45,18 +53,25 @@ describe('nonworking adult readiness needs no future-work items', () => {
     // simulate the adult's own required gates being completed; W05 (optional future work) stays 'planned'
     const done = complete(records, gates.required_before_departure);
     expect(done.find((r) => r.id === 'milestone:W05')?.status).toBe('planned');
-    const r = travelerReadiness(person('jun'), done, gates, TODAY);
+    // an unanswered conditional step (applicability still unknown) keeps the traveler out of "ready"
+    const unanswered = travelerReadiness(person('jun'), done, gates, TODAY);
+    expect(unanswered.state).toBe('preparing');
+    expect(unanswered.conditional_unknown.map((g) => g.key)).toEqual(['W18']);
+    expect(unanswered.headline).toContain('1 step still needs a yes or no');
+    expect(unanswered.next_action).toBeNull();
+    // once it is answered "no", Jun is ready without any future-work item
+    const r = travelerReadiness(person('jun'), answer(done, 'W18', 'jun', 'no'), gates, TODAY);
     expect(r.state).toBe('ready_to_release');
     expect(r.blockers).toEqual([]);
     expect(r.open).toEqual([]);
     expect(r.met.map((g) => g.key).sort()).toEqual([...gates.required_before_departure].sort());
     expect(r.headline).not.toMatch(/%/);
-    expect(r.conditional_unknown.map((g) => g.key)).toEqual(['W18']);
+    expect(r.conditional_unknown).toEqual([]);
   });
 
   it('an optional future-work record listed as a gate never counts and emits no blocker', () => {
     const { records } = demo();
-    const gates = { ...gatesFor('jun'), required_before_departure: [...gatesFor('jun').required_before_departure, 'W05'], explicitly_not_gates: [] };
+    const gates = { ...gatesFor('jun'), required_before_departure: [...gatesFor('jun').required_before_departure, 'W05'], explicitly_not_gates: [], conditional: [] };
     const blockedOptional = setStatus(complete(records, gatesFor('jun').required_before_departure), 'W05', 'blocked', 'Waiting on a future decision');
     const r = travelerReadiness(person('jun'), blockedOptional, gates, TODAY);
     expect(r.state).toBe('ready_to_release');
@@ -148,7 +163,7 @@ describe('shared rows with per-traveler progress and scoped dependencies', () =>
         jun: { status: 'planned', reason: null, evidence: [], updated_at: null, updated_by: null },
       };
     });
-    r = complete(r, ['W02', 'W04', 'W06', 'W17']);
+    r = answer(complete(r, ['W02', 'W04', 'W06', 'W17']), 'W18', 'avery', 'no');
     const avery = travelerReadiness(person('avery'), r, gatesFor('avery'), TODAY);
     expect(avery.state).toBe('ready_to_release');
     expect(avery.met.map((g) => g.key)).toContain('W07');
@@ -210,7 +225,7 @@ describe('states', () => {
 
   it('a release record listed among the required steps is never counted as one, so readiness can be reached before release', () => {
     const { records } = demo();
-    const gates: TravelerGateConfig = { ...gatesFor('avery'), required_before_departure: ['W06', 'W17', 'W24'], required_at_or_after_arrival: [], release_key: 'W24' };
+    const gates: TravelerGateConfig = { ...gatesFor('avery'), required_before_departure: ['W06', 'W17', 'W24'], required_at_or_after_arrival: [], conditional: [], release_key: 'W24' };
     const ready = complete(records, ['W06', 'W17']);
     const r = travelerReadiness(person('avery'), ready, gates, TODAY);
     expect(r.state).toBe('ready_to_release');
@@ -232,6 +247,57 @@ describe('states', () => {
   });
 });
 
+describe('conditional steps and applicability', () => {
+  const base = (): TravelerGateConfig => ({ person_id: 'jun', required_before_departure: ['W06'], required_at_or_after_arrival: [], conditional: [{ key: 'W18', condition: 'Only if a medicine needs a permit.', applies: 'unknown' }], explicitly_not_gates: [] });
+
+  it("the record's own applies_to answer wins over the gate config", () => {
+    const { records } = demo();
+    const done = complete(records, ['W06']);
+    // config unknown + record "yes" => required (must be completed before ready)
+    const yes = travelerReadiness(person('jun'), answer(done, 'W18', 'jun', 'yes'), base(), TODAY);
+    expect(yes.state).not.toBe('ready_to_release'); // W18 is now a required step and is not done (it waits on W17)
+    expect([...yes.open, ...yes.blockers].map((g) => g.key)).toContain('W18');
+    expect(yes.conditional_unknown).toEqual([]);
+    expect(travelerReadiness(person('jun'), complete(answer(done, 'W18', 'jun', 'yes'), ['W18']), base(), TODAY).state).toBe('ready_to_release');
+    // config "yes" + record "no" => not needed, listed with the reason
+    const cfgYes: TravelerGateConfig = { ...base(), conditional: [{ key: 'W18', condition: 'Only if a medicine needs a permit.', applies: 'yes' }] };
+    const no = travelerReadiness(person('jun'), answer(done, 'W18', 'jun', 'no'), cfgYes, TODAY);
+    expect(no.state).toBe('ready_to_release');
+    expect(no.not_needed).toEqual([{ record_id: 'milestone:W18', key: 'W18', title: 'Verify Tokyo clinician and pharmacy continuity', reason: 'Not needed for Jun. Only if a medicine needs a permit.' }]);
+    // config "no" => not needed too; config "unknown" with no answer keeps the traveler out of ready
+    expect(travelerReadiness(person('jun'), done, { ...base(), conditional: [{ key: 'W18', condition: null as never, applies: 'no' }] }, TODAY).not_needed?.[0]?.reason).toBe('Not needed for Jun.');
+    const unknown = travelerReadiness(person('jun'), done, base(), TODAY);
+    expect(unknown.state).toBe('preparing');
+    expect(unknown.headline).toMatch(/1 step still needs a yes or no/);
+    // an explicit "unknown" on the record falls back to unknown, and one traveler's answer never answers for another
+    expect(travelerReadiness(person('jun'), answer(done, 'W18', 'jun', 'unknown'), cfgYes, TODAY).conditional_unknown.map((g) => g.key)).toEqual(['W18']);
+    expect(travelerReadiness(person('jun'), answer(done, 'W18', 'avery', 'no'), base(), TODAY).state).toBe('preparing');
+  });
+
+  it('says how many steps still need a yes or no, in plain words', () => {
+    const { records } = demo();
+    const cfg: TravelerGateConfig = { ...base(), conditional: [{ key: 'W18', condition: 'a', applies: 'unknown' }, { key: 'W11', condition: 'b', applies: 'unknown' }, { key: 'W08', condition: 'c', applies: 'no' }] };
+    const r = travelerReadiness(person('jun'), complete(records, ['W06']), cfg, TODAY);
+    expect(r.state).toBe('preparing');
+    expect(r.headline).toContain('2 steps still need a yes or no');
+    expect(r.headline).not.toMatch(/%/);
+    expect(r.not_needed?.map((n) => n.key)).toEqual(['W08']);
+  });
+});
+
+describe('blocker reasons', () => {
+  it('names the unmet dependency and why, when the waiting record says why', () => {
+    const { records } = demo();
+    const r = patch(records, 'milestone:W11', (x) => {
+      (x.data as unknown as MilestoneData).dependency_reason = { W08: 'the tax adviser decides what can be moved' };
+    });
+    const out = travelerReadiness(person('jun'), r, gatesFor('jun'), TODAY);
+    const w11 = out.blockers.find((g) => g.key === 'W11');
+    expect(w11?.blocker).toContain('Get a coordinated US-Japan tax review — the tax adviser decides what can be moved');
+    expect(w11?.blocker).toMatch(/^Waiting on: /);
+  });
+});
+
 describe('dependencyChain and downstreamOf', () => {
   it('walks dependencies nearest first and marks met ones', () => {
     const { records } = demo();
@@ -245,6 +311,65 @@ describe('dependencyChain and downstreamOf', () => {
     expect(chain.find((c) => c.key === 'W02')?.title).toBe("Establish Avery's residence route");
     expect(dependencyChain('W01', records)).toEqual([]);
     expect(dependencyChain('W999', records)).toEqual([]);
+  });
+
+  it("is one traveler's chain when a traveler is given or inferred: scoped dependencies of others are skipped, progress is theirs", () => {
+    const { records } = demo();
+    // W25 (Jun's release) depends on W03 and W07; W07 depends on W02 for Avery and W03 for Jun (scoped), and has per-traveler progress.
+    const forJun = dependencyChain('W25', records, 'jun');
+    expect(forJun.map((c) => c.key)).toEqual(['W03', 'W07', 'W01', 'W02', 'W06', 'W04']);
+    const w07 = forJun.find((c) => c.key === 'W07')!;
+    expect(w07.status).toBe('planned'); // Jun's own progress on the shared row, not the shared status
+    expect(w07.met).toBe(false);
+    // Avery's chain through the same shared row: Avery's part of W07 is completed, so the walk stops there
+    const forAvery = dependencyChain('W24', records, 'avery');
+    expect(forAvery.find((c) => c.key === 'W07')).toMatchObject({ met: true, status: 'completed' });
+    expect(forAvery.map((c) => c.key)).not.toContain('W03'); // Jun's route is not Avery's dependency
+    // without a traveler the chain is the shared one
+    expect(dependencyChain('W07', records).map((c) => c.key)).toEqual(expect.arrayContaining(['W02', 'W03']));
+    expect(dependencyChain('W07', records, 'avery').map((c) => c.key)).not.toContain('W03');
+    // Jun's own route is a dependency of W07 for Jun; it reaches Avery's route only through Jun's own dependency on it
+    expect(dependencyChain('W07', records, 'jun').map((c) => c.key)).toEqual(['W03', 'W06', 'W01', 'W02', 'W04']);
+  });
+
+  it("infers the traveler from a 'W64.<person>' style key", () => {
+    let { records } = demo();
+    const child = (key: string, deps: string[], scope?: Record<string, string[]>) =>
+      patch(records, 'milestone:W25', (x) => {
+        void x;
+      }).concat([] as BaseRecord[]);
+    void child;
+    const base = records.find((r) => r.id === 'milestone:W25')!;
+    const mk = (key: string, personId: string, deps: string[], scope: Record<string, string[]>): BaseRecord => ({
+      ...structuredClone(base),
+      id: `milestone:${key}`,
+      key,
+      title: `Release ${personId}`,
+      status: 'planned',
+      data: { ...structuredClone(base.data), dependencies: deps, dependency_scope: scope, traveler_scope: [personId] } as Record<string, unknown>,
+    });
+    records = [...records, mk('W64.avery', 'avery', ['W02', 'W03', 'W13'], { W02: ['avery'], W03: ['jun'], W13: ['mochi'] })];
+    expect(dependencyChain('W64.avery', records).map((c) => c.key)).toEqual(['W02', 'W01', 'W04']);
+    expect(dependencyChain('W64.avery', records, 'jun').map((c) => c.key)).toEqual(['W03', 'W01', 'W02', 'W06', 'W04']);
+    // downstream honours the same scope
+    records = [...records, mk('W65.jun', 'jun', ['W64.avery'], {})];
+    expect(downstreamOf('W13', records, 'avery')).not.toContain('W64.avery'); // that dependency is the pet's
+    expect(downstreamOf('W13', records, 'mochi')).toContain('W64.avery');
+    expect(downstreamOf('W13', records)).toContain('W64.avery');
+    expect(downstreamOf('W02', records, 'avery')).toContain('W64.avery');
+    expect(downstreamOf('W64.avery', records)).toEqual(['W65.jun']);
+  });
+
+  it('includes the recorded reason on a chain entry and never walks through optional future work', () => {
+    const { records } = demo();
+    const r = patch(records, 'milestone:W03', (x) => {
+      const d = x.data as unknown as MilestoneData;
+      d.dependencies = ['W02', 'W05'];
+      d.dependency_reason = { W02: 'the route decides which documents are needed' };
+    });
+    const chain = dependencyChain('W03', r);
+    expect(chain.find((c) => c.key === 'W02')?.reason).toBe('the route decides which documents are needed');
+    expect(chain.map((c) => c.key)).not.toContain('W05');
   });
 
   it('is cycle-safe', () => {

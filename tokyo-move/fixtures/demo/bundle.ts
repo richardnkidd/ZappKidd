@@ -186,6 +186,7 @@ function buildRules(): BundleRecord[] {
     rule('RULE-PET-EXAM-WINDOW', 'Mochi examination window opens', {
       traveler_scope: 'mochi', anchor: 'DP', offset: 10, unit: 'calendar_days', direction: 'before', kind: 'legal',
       jurisdiction: 'US-HI', timezone: 'Pacific/Honolulu', source_ids: ['P01'], linked_records: ['W16'], applies: 'yes',
+      bound: 'not_before', // the exam window OPENS on this date; the exam happens on or after it
     }),
     rule('RULE-PET-LOCAL-REGISTRATION', 'Mochi local registration', {
       traveler_scope: 'mochi', anchor: 'TP', offset: 30, unit: 'calendar_days', direction: 'after', kind: 'legal',

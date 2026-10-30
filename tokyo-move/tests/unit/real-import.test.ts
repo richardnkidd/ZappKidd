@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyBundle } from '../../src/import/apply';
-import { BUILTIN_CORRECTIONS, loadCorrectionFiles, mergeCorrections } from '../../src/import/corrections';
+import { applyCorrections, BUILTIN_CORRECTIONS, loadCorrectionFiles, mergeCorrections } from '../../src/import/corrections';
 import { parseSourcePackage } from '../../src/import/normalize';
 import { openDb, type Db } from '../../src/server/db/db';
 import { anchorsFrom, collectDeadlines, previewAnchorChange } from '../../src/shared/deadlines';
@@ -148,9 +148,16 @@ describe.skipIf(!dir)('real source package', () => {
     const w45 = state.records.find((r) => r.id === 'milestone:W45')!;
     const d = w45.data as unknown as MilestoneData;
     expect(d.dependencies).not.toContain('W65');
-    expect(d.completion_criteria).not.toMatch(/\bW65\b/);
+    // Later reviewed wording may mention W65 to say it is independent; it must never tie closure to it.
+    expect(d.completion_criteria).not.toMatch(/closure[^.;]*\btracked in W65\b/);
     expect(d.completion_criteria.length).toBeGreaterThan(20);
     expect(d.contingency).not.toMatch(/\bW65\b/);
+    // The generic correction on its own removes the reference entirely and keeps the rest of the text.
+    const only = applyCorrections(bundle, BUILTIN_CORRECTIONS.filter((c) => c.id === 'C-001')).bundle.records.find((r) => r.id === 'milestone:W45')!;
+    const od = only.data as unknown as MilestoneData;
+    expect(od.dependencies).not.toContain('W65');
+    expect(od.completion_criteria).not.toMatch(/\bW65\b/);
+    expect(od.completion_criteria.length).toBeGreaterThan(20);
     // the preserved source row still shows what the workbook said
     expect(JSON.stringify(w45.source?.raw)).toMatch(/\bW65\b/);
     const receipts = db.prepare("SELECT field, before, after FROM import_changes WHERE correction_id = 'C-001' AND record_id = 'milestone:W45' AND change = 'correction_applied'").all() as { field: string; before: string; after: string }[];
@@ -259,20 +266,41 @@ describe.skipIf(!dir)('real source package', () => {
       expect(gates.required_at_or_after_arrival, k).not.toContain(k);
     }
 
+    // A conditional step is "yes", "no" or still unknown: the record's own answer for this adult wins over the gate config.
+    const answerOf = (c: TravelerGateConfig['conditional'][number]) => {
+      const rec = state.records.find((r) => r.key === c.key && ['milestone', 'arrival', 'horizon'].includes(r.type));
+      return ((rec?.data as { applies_to?: Record<string, string> } | undefined)?.applies_to?.[person.id] ?? c.applies) as 'yes' | 'no' | 'unknown';
+    };
+    const yesKeys = gates.conditional.filter((c) => answerOf(c) === 'yes').map((c) => c.key);
+    const unknownKeys = gates.conditional.filter((c) => answerOf(c) === 'unknown').map((c) => c.key);
+
     // mark this adult's required gates (and "yes" conditionals) completed in memory; no optional item is touched
-    const need = new Set([...gates.required_before_departure, ...gates.conditional.filter((c) => c.applies === 'yes').map((c) => c.key)]);
+    const need = new Set([...gates.required_before_departure, ...yesKeys]);
     need.delete(gates.release_key ?? '');
-    const done = state.records.map((r) => {
+    let done = state.records.map((r) => {
       if (!need.has(r.key) || !['milestone', 'arrival', 'horizon'].includes(r.type)) return r;
       const data = structuredClone(r.data) as Record<string, any>;
       if (data.traveler_progress) for (const p of Object.values<any>(data.traveler_progress)) p.status = 'completed';
       return { ...r, status: 'completed', data } as BaseRecord;
+    });
+    // Every required step done, but some conditional steps are still unanswered: not ready yet, and the headline says how many.
+    if (unknownKeys.length > 0) {
+      const pending = travelerReadiness(person, done, gates, TODAY);
+      expect(pending.state).toBe('preparing');
+      expect(pending.headline).toMatch(new RegExp(`${unknownKeys.length} steps? still needs? a yes or no`));
+      expect(pending.conditional_unknown.map((g) => g.key).sort()).toEqual([...unknownKeys].sort());
+    }
+    // Answer them "no" for this adult (on the records, as the household would): now the adult is ready, with no future-work item done.
+    done = done.map((r) => {
+      if (!unknownKeys.includes(r.key) || !['milestone', 'arrival', 'horizon'].includes(r.type)) return r;
+      return { ...r, data: { ...r.data, applies_to: { ...((r.data as { applies_to?: object }).applies_to ?? {}), [person.id]: 'no' } } } as BaseRecord;
     });
     const result = travelerReadiness(person, done, gates, TODAY);
     expect(result.blockers).toEqual([]);
     expect(result.open).toEqual([]);
     expect(result.state).toBe('ready_to_release');
     expect(result.headline).not.toMatch(/%/);
+    expect((result.not_needed ?? []).map((n) => n.key).sort()).toEqual(expect.arrayContaining([...unknownKeys].sort()));
     // the simulation completes only gates; every optional item keeps exactly the status it was imported with
     for (const k of optionalKeys) expect(done.find((r) => r.id === `milestone:${k}`)?.status).toBe(state.records.find((r) => r.id === `milestone:${k}`)?.status);
     expect(need.size).toBeGreaterThan(0);

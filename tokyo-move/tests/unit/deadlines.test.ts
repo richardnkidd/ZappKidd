@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { anchorsFrom, collectDeadlines, computeRuleDeadlines, defaultNewTaskDue, previewAnchorChange } from '../../src/shared/deadlines';
-import type { DeadlineRuleData } from '../../src/shared/types';
+import type { DeadlineRuleData, MilestoneData } from '../../src/shared/types';
 import type { BaseRecord } from '../../src/shared/types';
 import { demo, patch, setAnchor } from './helpers';
 
@@ -242,5 +242,266 @@ describe('defaultNewTaskDue', () => {
     expect(defaultNewTaskDue('2026-10-29')).toBe('2026-11-12');
     expect(defaultNewTaskDue('2026-12-25')).toBe('2027-01-08');
     expect(defaultNewTaskDue('2028-02-20')).toBe('2028-03-05');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* bounds, business-day advice and holiday calendars                   */
+/* ------------------------------------------------------------------ */
+
+import { businessDayAdvice, travelerDeadlines } from '../../src/shared/deadlines';
+import { holidaysFor } from '../../src/shared/holidays';
+
+describe('businessDayAdvice', () => {
+  it("'by' on a weekend advises the prior business day", () => {
+    expect(businessDayAdvice('2026-10-31', 'by')).toBe('Falls on a Saturday — aim for Fri, Oct 30.'); // Saturday
+    expect(businessDayAdvice('2026-11-01', 'by')).toBe('Falls on a Sunday — aim for Fri, Oct 30.');
+    expect(businessDayAdvice('2026-10-31', undefined)).toBe('Falls on a Saturday — aim for Fri, Oct 30.'); // default bound is 'by'
+  });
+
+  it("'not_before' on a weekend advises the FOLLOWING business day, never an earlier one", () => {
+    const sat = businessDayAdvice('2026-10-31', 'not_before');
+    expect(sat).toBe('The window opens on a Saturday; the first business day inside it is Mon, Nov 2.');
+    expect(sat).not.toMatch(/Fri|Oct 30/);
+    expect(businessDayAdvice('2026-11-01', 'not_before')).toBe('The window opens on a Sunday; the first business day inside it is Mon, Nov 2.');
+  });
+
+  it('is silent on a business day and for bounds where the day itself is the point', () => {
+    expect(businessDayAdvice('2026-10-30', 'by')).toBeNull();
+    expect(businessDayAdvice('2026-10-30', 'not_before')).toBeNull();
+    for (const b of ['on', 'continuous_since', 'recurring'] as const) expect(businessDayAdvice('2026-10-31', b)).toBeNull();
+    expect(businessDayAdvice('not a date', 'by')).toBeNull();
+  });
+
+  it('knows public holidays when a calendar is supplied, and names them', () => {
+    const jp = holidaysFor('JP');
+    const name = (d: string) => (d === '2027-05-03' ? 'Constitution Memorial Day' : d === '2027-02-11' ? 'National Foundation Day' : null);
+    expect(businessDayAdvice('2027-02-11', 'by', jp, name)).toBe('Falls on a public holiday (National Foundation Day) — aim for Wed, Feb 10.');
+    // Golden Week: May 3–5 are holidays, so a window opening on May 3 first has a business day on Thursday May 6
+    expect(businessDayAdvice('2027-05-03', 'not_before', jp, name)).toBe('The window opens on a public holiday (Constitution Memorial Day); the first business day inside it is Thu, May 6.');
+    // a substitute holiday on a Monday after a Sunday holiday
+    expect(businessDayAdvice('2027-03-22', 'by', jp)).toBe('Falls on a public holiday — aim for Fri, Mar 19.');
+    expect(businessDayAdvice('2027-03-22', 'by')).toBeNull(); // without a calendar a Monday is just a Monday
+  });
+});
+
+describe('bounds on computed deadlines', () => {
+  function withExamWindow(dp: string, bound: DeadlineRuleData['bound'], extra: Partial<DeadlineRuleData> = {}) {
+    let { records } = demo();
+    const { people } = demo();
+    records = setAnchor(records, 'DP', dp);
+    records = patch(records, 'deadline_rule:RULE-PET-EXAM-WINDOW', (r) => {
+      const d = r.data as unknown as DeadlineRuleData;
+      d.bound = bound;
+      Object.assign(d, extra);
+    });
+    const found = collectDeadlines({ records, people, today: TODAY }).find((d) => d.id === 'rule:RULE-PET-EXAM-WINDOW')!;
+    return found;
+  }
+
+  it('carries the bound of every deadline (default "by") and the demo exam window is not_before', () => {
+    const { records, people } = demo();
+    const all = collectDeadlines({ records, people, today: TODAY });
+    expect(all.every((d) => d.bound !== undefined)).toBe(true);
+    expect(all.find((d) => d.id === 'rule:RULE-PET-EXAM-WINDOW')?.bound).toBe('not_before');
+    expect(all.find((d) => d.id === 'rule:RULE-PET-NOTICE-MIN')?.bound).toBe('by');
+    expect(all.filter((d) => d.source === 'review').every((d) => d.bound === 'on')).toBe(true);
+  });
+
+  it("a not_before window that opens on a Saturday advises the following Monday (never the Friday before)", () => {
+    // DP 2027-10-12 − 10 days = Saturday 2027-10-02
+    const d = withExamWindow('2027-10-12', 'not_before');
+    expect(d.deadline.date).toBe('2027-10-02');
+    expect(weekdayName(d.deadline.date!)).toBe('Saturday');
+    expect(d.business_day_advice).toBe('The window opens on a Saturday; the first business day inside it is Mon, Oct 4.');
+    expect(d.business_day_advice).not.toMatch(/Fri|Oct 1\b/);
+  });
+
+  it('skips a public holiday on the way to the first business day (US Labor Day, Monday 2027-09-06)', () => {
+    const d = withExamWindow('2027-09-14', 'not_before'); // window opens Saturday 2027-09-04 (a US-HI rule)
+    expect(d.deadline.date).toBe('2027-09-04');
+    expect(d.business_day_advice).toBe('The window opens on a Saturday; the first business day inside it is Tue, Sep 7.');
+  });
+
+  it("a 'by' deadline on a Saturday advises the Friday before", () => {
+    const d = withExamWindow('2027-10-12', 'by');
+    expect(d.business_day_advice).toBe('Falls on a Saturday — aim for Fri, Oct 1.');
+  });
+
+  it("'on', 'continuous_since' and 'recurring' dates carry their bound but no advice", () => {
+    for (const b of ['on', 'continuous_since', 'recurring'] as const) {
+      const d = withExamWindow('2027-09-14', b);
+      expect(d.bound).toBe(b);
+      expect(d.business_day_advice).toBeNull();
+    }
+  });
+
+  it('only dates with an external obligation get advice (not internal targets or estimates)', () => {
+    expect(withExamWindow('2027-09-14', 'by', { kind: 'internal_target' }).business_day_advice).toBeNull();
+    expect(withExamWindow('2027-09-14', 'by', { kind: 'estimate' }).business_day_advice).toBeNull();
+    expect(withExamWindow('2027-09-14', 'by', { kind: 'contractual' }).business_day_advice).not.toBeNull();
+    expect(withExamWindow('2027-09-14', 'by', { applies: 'no' }).business_day_advice).toBeNull();
+  });
+
+  it('uses the Japanese calendar for Japanese rules and the US calendar for US rules, and says the calendar is computed', () => {
+    // 2027-09-23 is Autumnal Equinox Day (Thursday). A JP rule lands on it: DP + 0 → set DP to 2027-09-23.
+    const jp = withExamWindow('2027-09-23', 'by', { offset: 0, jurisdiction: 'JP', timezone: 'Asia/Tokyo' });
+    expect(jp.deadline.date).toBe('2027-09-23');
+    expect(jp.business_day_advice).toBe('Falls on a public holiday (Autumnal Equinox Day) — aim for Wed, Sep 22. (The holiday calendar is computed; verify against the official calendar.)');
+    // the same date is an ordinary day for a US rule
+    const us = withExamWindow('2027-09-23', 'by', { offset: 0, jurisdiction: 'US-HI', timezone: 'Pacific/Honolulu' });
+    expect(us.business_day_advice).toBeNull();
+    // 2027-07-05 is the observed Independence Day for US rules but an ordinary Monday in Japan
+    const usJuly = withExamWindow('2027-07-05', 'by', { offset: 0, jurisdiction: 'US-HI', timezone: 'Pacific/Honolulu' });
+    expect(usJuly.business_day_advice).toContain('public holiday (Independence Day (observed))');
+    expect(withExamWindow('2027-07-05', 'by', { offset: 0, jurisdiction: 'JP', timezone: 'Asia/Tokyo' }).business_day_advice).toBeNull();
+    // a rule whose jurisdiction is not a country (household/contract) falls back to the calendar of its zone
+    expect(withExamWindow('2027-07-05', 'by', { offset: 0, jurisdiction: 'household', timezone: 'Pacific/Honolulu' }).business_day_advice).toContain('public holiday');
+  });
+
+  it('business-day rules use the computed holiday calendar and stay labelled approximate; a supplied list is used as given', () => {
+    const { records, people } = demo();
+    // Mochi arrives Fri 2027-09-24; one business day before is Thu Sep 23, which is a holiday in Japan, so it is Wed Sep 22.
+    const r = patch(setAnchor(records, 'TP', '2027-09-24'), 'deadline_rule:RULE-PET-NOTICE-MIN', (x) => {
+      const d = x.data as unknown as DeadlineRuleData;
+      d.unit = 'business_days';
+      d.offset = 1;
+    });
+    const computed = collectDeadlines({ records: r, people, today: TODAY }).find((d) => d.id === 'rule:RULE-PET-NOTICE-MIN')!;
+    expect(computed.deadline.date).toBe('2027-09-22');
+    expect(computed.approximate).toBe(true);
+    const supplied = collectDeadlines({ records: r, people, today: TODAY, jp_holidays: ['2027-09-21'] }).find((d) => d.id === 'rule:RULE-PET-NOTICE-MIN')!;
+    expect(supplied.deadline.date).toBe('2027-09-23');
+    expect(supplied.approximate).toBe(false);
+  });
+});
+
+function weekdayName(date: string): string {
+  return ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(`${date}T12:00:00Z`).getUTCDay()]!;
+}
+
+describe('commitments and tasks carry bounds and advice', () => {
+  it('an existing user-committed deadline on a weekend says which business day to aim for', () => {
+    const { records, people } = demo();
+    const r = patch(records, 'existing_commitment:EC-GYM', (x) => {
+      (x.data as { recorded_date: string }).recorded_date = '2026-10-31'; // a Saturday
+    });
+    const d = collectDeadlines({ records: r, people, today: TODAY }).find((x) => x.id === 'commitment:EC-GYM')!;
+    expect(d.bound).toBe('by');
+    expect(d.business_day_advice).toBe('Falls on a Saturday — aim for Fri, Oct 30.');
+    const history = collectDeadlines({ records: r, people, today: TODAY }).find((x) => x.id === 'commitment:EC-OLD-PASSPORT')!;
+    expect(history.bound).toBe('on');
+    expect(history.business_day_advice).toBeNull();
+  });
+});
+
+describe('superseded rules', () => {
+  const ruleRec = (key: string, patchData: Partial<DeadlineRuleData>, status = 'active') => {
+    const base = demo().records.find((r) => r.id === 'deadline_rule:RULE-PET-NOTICE-PREP')!;
+    return { ...structuredClone(base), id: `deadline_rule:${key}`, key, title: key, status, data: { ...structuredClone(base.data), label: key, linked_records: [], ...patchData } } as BaseRecord;
+  };
+
+  it("a record pointing at a superseded rule gets the active replacement's date, kind, verification and verified_on", () => {
+    let { records } = demo();
+    const { people } = demo();
+    records = [
+      ...records,
+      ruleRec('RULE-OLD', { offset: 60, kind: 'internal_target', verification: 'not_verified', verified_on: null, superseded_by: 'RULE-MID', linked_records: ['W15'] }, 'superseded'),
+      ruleRec('RULE-MID', { superseded_by: 'RULE-NEW', offset: 50 }, 'superseded'),
+      ruleRec('RULE-NEW', { offset: 45, kind: 'legal', verification: 'verified_official', verified_on: '2026-10-20' }),
+    ];
+    records = patch(records, 'milestone:W15', (x) => {
+      (x.data as unknown as MilestoneData).deadline!.rule_id = 'RULE-OLD';
+    });
+    const all = collectDeadlines({ records, people, today: TODAY });
+    expect(all.find((d) => d.id === 'rule:RULE-OLD')).toBeUndefined();
+    expect(all.find((d) => d.id === 'rule:RULE-MID')).toBeUndefined();
+    expect(all.find((d) => d.id === 'record:W15')).toBeUndefined(); // represented by the active rule
+    const replacement = all.find((d) => d.id === 'rule:RULE-NEW')!;
+    expect(replacement.deadline.date).toBe('2027-07-31'); // TP 2027-09-14 − 45
+    expect(replacement.kind).toBe('legal');
+    expect(replacement.verification).toBe('verified_official');
+    expect(replacement.deadline.verified_on).toBe('2026-10-20');
+    expect(replacement.linked_record_keys).toContain('W15');
+    expect(replacement.superseded_rule_ids).toEqual(['RULE-OLD', 'RULE-MID']);
+  });
+
+  it("a superseded rule's linked records move to its successor even if no record points at the old key", () => {
+    let { records } = demo();
+    const { people } = demo();
+    records = [...records, ruleRec('RULE-OLD2', { superseded_by: 'RULE-NEW2', linked_records: ['W16'] }, 'superseded'), ruleRec('RULE-NEW2', { offset: 30, linked_records: ['W15'] })];
+    const replacement = collectDeadlines({ records, people, today: TODAY }).find((d) => d.id === 'rule:RULE-NEW2')!;
+    expect(replacement.linked_record_keys?.sort()).toEqual(['W15', 'W16']);
+  });
+
+  it('is cycle-safe and falls back to the record\'s own date when nothing active remains', () => {
+    let { records } = demo();
+    const { people } = demo();
+    records = [...records, ruleRec('RULE-A', { superseded_by: 'RULE-B' }, 'superseded'), ruleRec('RULE-B', { superseded_by: 'RULE-A' }, 'superseded')];
+    records = patch(records, 'milestone:W15', (x) => {
+      (x.data as unknown as MilestoneData).deadline!.rule_id = 'RULE-A';
+    });
+    const all = collectDeadlines({ records, people, today: TODAY });
+    expect(all.find((d) => d.id === 'record:W15')?.deadline.date).toBe('2027-07-16'); // its own TP − 60
+    expect(all.find((d) => d.rule_id === 'RULE-A' && d.source === 'rule')).toBeUndefined();
+  });
+
+  it('computeRuleDeadlines ignores superseded, inactive and superseded_by rules', () => {
+    const { records, people } = demo();
+    const rules = [ruleRec('R1', {}, 'superseded'), ruleRec('R2', {}, 'inactive'), ruleRec('R3', { superseded_by: 'R4' }), ruleRec('R4', {})] as unknown as Parameters<typeof computeRuleDeadlines>[0];
+    expect(computeRuleDeadlines(rules, anchorsFrom(records), people, TODAY).map((d) => d.rule_id)).toEqual(['R4']);
+  });
+});
+
+describe('travelerDeadlines', () => {
+  it("returns a traveler's own active rule dates split into before leaving and after arrival", () => {
+    let { records } = demo();
+    const { people } = demo();
+    records = setAnchor(records, 'RR', '2027-10-20');
+    const mochi = travelerDeadlines('mochi', { records, people, today: TODAY });
+    expect(mochi.before_departure.map((d) => d.rule_id).sort()).toEqual(['RULE-PET-EXAM-WINDOW', 'RULE-PET-NOTICE-MIN', 'RULE-PET-NOTICE-PREP']);
+    expect(mochi.after_arrival.map((d) => d.rule_id)).toEqual(['RULE-PET-LOCAL-REGISTRATION']);
+    expect(mochi.before_departure.every((d) => d.traveler === 'mochi')).toBe(true);
+    // dated first (ascending), awaiting last
+    const dates = mochi.before_departure.map((d) => d.deadline.date);
+    expect(dates).toEqual([...dates].sort());
+
+    const jun = travelerDeadlines('jun', { records, people, today: TODAY });
+    expect(jun.before_departure.map((d) => d.rule_id)).toEqual(['RULE-JUN-RELEASE']); // departure release, awaiting Jun's date
+    expect(jun.after_arrival.map((d) => d.rule_id).sort()).toEqual(['RULE-BAGGAGE-OUTER', 'RULE-HEALTH-NOTICE', 'RULE-RESIDENCE-NOTICE']);
+    expect(jun.after_arrival.find((d) => d.rule_id === 'RULE-RESIDENCE-NOTICE')?.deadline.date).toBe('2027-11-03');
+    // household rules and other travelers' rules never appear
+    const ids = [...jun.before_departure, ...jun.after_arrival].map((d) => d.id);
+    expect(ids.some((id) => id.includes('READINESS-REVIEW') || id.includes('AVERY') || id.includes(':avery'))).toBe(false);
+  });
+
+  it('leaves out rules that do not apply or are superseded, and unknown travelers get nothing', () => {
+    let { records } = demo();
+    const { people } = demo();
+    records = patch(records, 'deadline_rule:RULE-PET-NOTICE-MIN', (x) => { (x.data as unknown as DeadlineRuleData).applies = 'no'; });
+    records = patch(records, 'deadline_rule:RULE-PET-NOTICE-PREP', (x) => { x.status = 'superseded'; });
+    const mochi = travelerDeadlines('mochi', { records, people, today: TODAY });
+    expect(mochi.before_departure.map((d) => d.rule_id)).toEqual(['RULE-PET-EXAM-WINDOW']);
+    expect(travelerDeadlines('nobody', { records, people, today: TODAY })).toEqual({ before_departure: [], after_arrival: [] });
+  });
+
+  it('classifies by the anchor the rule is dated from', () => {
+    let { records } = demo();
+    const { people } = demo();
+    const add = (key: string, d: Partial<DeadlineRuleData>) => {
+      const base = records.find((r) => r.id === 'deadline_rule:RULE-PET-NOTICE-PREP')!;
+      records = [...records, { ...structuredClone(base), id: `deadline_rule:${key}`, key, title: key, data: { ...structuredClone(base.data), label: key, linked_records: [], traveler_scope: 'mochi', ...d } } as BaseRecord];
+    };
+    add('RULE-T-BEFORE', { anchor: 'TP', direction: 'before', offset: 5 });
+    add('RULE-T-AFTER', { anchor: 'TP', direction: 'after', offset: 5 });
+    add('RULE-D-AFTER', { anchor: 'DP', direction: 'after', offset: 3 });
+    add('RULE-EVENT-BEFORE', { anchor: 'other', direction: 'before', offset: 14 });
+    add('RULE-EVENT-AFTER', { anchor: 'other', direction: 'after', offset: 30 });
+    const out = travelerDeadlines('mochi', { records, people, today: TODAY });
+    const before = out.before_departure.map((d) => d.rule_id);
+    const after = out.after_arrival.map((d) => d.rule_id);
+    expect(before).toEqual(expect.arrayContaining(['RULE-T-BEFORE', 'RULE-EVENT-BEFORE']));
+    expect(after).toEqual(expect.arrayContaining(['RULE-T-AFTER', 'RULE-D-AFTER', 'RULE-EVENT-AFTER']));
+    expect(before).not.toContain('RULE-T-AFTER');
   });
 });

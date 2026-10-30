@@ -49,7 +49,7 @@ function reasonFor(r: BaseRecord, personId: string): string | null {
   return dataOf(r).status_reason ?? null;
 }
 
-function hasText(value: string | null | undefined): boolean {
+function hasText(value: string | null | undefined): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 

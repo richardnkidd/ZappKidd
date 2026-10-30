@@ -56,6 +56,11 @@ export function isOpenWork(status: string): boolean {
   return !isTerminal(status);
 }
 
+/** Whether the plan holds any optional future items; a move-only plan has none, so their page and links are hidden. */
+export function hasOptionalFuture(idx: Pick<Indexes, 'all'>): boolean {
+  return idx.all.some((r) => r.type === 'future_option' || (r.type === 'milestone' && !!(r.data as { optional_future_work?: boolean } | null)?.optional_future_work));
+}
+
 export interface Indexes {
   all: BaseRecord[];
   byId: Map<string, BaseRecord>;

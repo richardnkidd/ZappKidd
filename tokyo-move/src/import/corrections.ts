@@ -29,7 +29,12 @@ export type CorrectionOp =
   /** Drop every clause (split on ; , . and the word 'and' boundaries kept simple) that matches `pattern`. */
   | { op: 'strip_clause'; record: string; path: string; pattern: string }
   | { op: 'create'; record: NewRecordSpec }
-  | { op: 'setting'; key: string; value: unknown };
+  | { op: 'setting'; key: string; value: unknown }
+  /**
+   * Leave a record (or a task link, `task_link:<canonical id>`) out of the import entirely: it is outside the plan's
+   * scope. Links to it from other records, settings and task links are removed after all corrections have run.
+   */
+  | { op: 'exclude'; record: string; reason: string };
 
 export interface Correction {
   id: string;
@@ -127,6 +132,9 @@ function applyOp(bundle: ImportBundle, correction: Correction, op: CorrectionOp)
     return { ...base, record_id: record.id, field: null, before: null, after: describeSpec(op.record), outcome: 'applied', rationale: correction.rationale };
   }
 
+  // Exclusions need the shared bookkeeping in applyCorrections.
+  if (op.op === 'exclude') return na(op.record, null, 'exclusions are applied by applyCorrections');
+
   const record = bundle.records.find((r) => r.id === op.record);
   if (!record) return na(op.record, op.path, 'record not found');
   if (op.path.split('.').some((seg) => FORBIDDEN_KEYS.has(seg))) return na(op.record, op.path, 'forbidden path');
@@ -175,15 +183,149 @@ function applyOp(bundle: ImportBundle, correction: Correction, op: CorrectionOp)
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Scope exclusion                                                     */
+/* ------------------------------------------------------------------ */
+
+const TASK_LINK_PREFIX = 'task_link:';
+/** Fields that name the record a list entry is about. */
+const REF_FIELDS = ['key', 'record', 'record_id', 'record_key'] as const;
+
+interface Excluded {
+  /** Record ids and `task_link:<canonical id>` refs that were left out. */
+  ids: Set<string>;
+  /** Keys of excluded records that no remaining record also uses (safe to strip from link lists). */
+  keys: Set<string>;
+  rationale: Map<string, string>;
+}
+
+function excludeOne(bundle: ImportBundle, correction: Correction, op: Extract<CorrectionOp, { op: 'exclude' }>, ex: Excluded): CorrectionReceipt {
+  const base = { correction_id: correction.id, op: op.op, field: null, after: null, rationale: op.reason || correction.rationale };
+  if (op.record.startsWith(TASK_LINK_PREFIX)) {
+    const canonical = op.record.slice(TASK_LINK_PREFIX.length);
+    const i = bundle.task_links.findIndex((l) => l.canonical_id === canonical);
+    if (i < 0) return { ...base, record_id: op.record, before: null, outcome: 'not_applicable', rationale: 'task link not found' };
+    const [gone] = bundle.task_links.splice(i, 1);
+    ex.ids.add(op.record);
+    return { ...base, record_id: op.record, before: { title: gone!.title, status: gone!.status }, outcome: 'applied' };
+  }
+  const i = bundle.records.findIndex((r) => r.id === op.record);
+  if (i < 0) return { ...base, record_id: op.record, before: null, outcome: 'not_applicable', rationale: 'record not found' };
+  const [gone] = bundle.records.splice(i, 1);
+  ex.ids.add(gone!.id);
+  ex.keys.add(gone!.key);
+  ex.rationale.set(gone!.id, base.rationale);
+  return { ...base, record_id: gone!.id, before: { title: gone!.title, status: gone!.status }, outcome: 'applied' };
+}
+
+/** Remove excluded keys/ids from string lists and map keys, recursively. Returns the new value, or `undefined` if unchanged. */
+function stripRefs(value: unknown, drop: (s: string) => boolean): unknown {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const next: unknown[] = [];
+    for (const item of value) {
+      // A bare reference, or an entry that identifies an excluded record (e.g. a gate `{ key, reason }`), goes entirely.
+      if ((typeof item === 'string' && drop(item)) || (isObject(item) && REF_FIELDS.some((f) => typeof item[f] === 'string' && drop(item[f] as string)))) {
+        changed = true;
+        continue;
+      }
+      const inner = stripRefs(item, drop);
+      if (inner !== undefined) changed = true;
+      next.push(inner === undefined ? item : inner);
+    }
+    return changed ? next : undefined;
+  }
+  if (isObject(value)) {
+    let changed = false;
+    const next: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (FORBIDDEN_KEYS.has(k)) continue;
+      if (drop(k)) {
+        changed = true;
+        continue;
+      }
+      if (typeof v === 'string' && drop(v)) {
+        // A single reference field (e.g. a workstream key) that pointed at an excluded record.
+        changed = true;
+        next[k] = null;
+        continue;
+      }
+      const inner = stripRefs(v, drop);
+      if (inner !== undefined) changed = true;
+      next[k] = inner === undefined ? v : inner;
+    }
+    return changed ? next : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * After every correction has run: drop records an `exclude` left out (even if a later op re-created them), task links
+ * attached to them, and every link to them in other records' data and in settings. Source values are never touched.
+ */
+function sweepExcluded(bundle: ImportBundle, correction: Correction, ex: Excluded, receipts: CorrectionReceipt[]): void {
+  if (ex.ids.size === 0) return;
+  bundle.records = bundle.records.filter((r) => !ex.ids.has(r.id));
+  // A key is only stripped from link lists when no remaining record uses the same key.
+  for (const r of bundle.records) ex.keys.delete(r.key);
+  const drop = (s: string) => ex.keys.has(s) || ex.ids.has(s);
+  const why = 'Removed a link to an item outside the move.';
+
+  bundle.task_links = bundle.task_links.filter((l) => {
+    if (!l.record_id || !ex.ids.has(l.record_id)) return true;
+    receipts.push({
+      correction_id: correction.id, record_id: `${TASK_LINK_PREFIX}${l.canonical_id ?? l.id}`, op: 'exclude', field: null,
+      before: { title: l.title, status: l.status }, after: null, outcome: 'applied', rationale: ex.rationale.get(l.record_id) ?? why,
+    });
+    return false;
+  });
+
+  for (const r of bundle.records) {
+    const data = (r.data ?? {}) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(data)) {
+      if (drop(k)) {
+        delete data[k];
+      } else {
+        const next = typeof v === 'string' && drop(v) ? null : stripRefs(v, drop);
+        if (next === undefined) continue;
+        data[k] = next;
+      }
+      receipts.push({ correction_id: correction.id, record_id: r.id, op: 'exclude', field: k, before: v, after: data[k] ?? null, outcome: 'applied', rationale: why });
+    }
+  }
+  const settings = bundle.settings as Record<string, unknown>;
+  for (const [k, v] of Object.entries(settings)) {
+    const next = stripRefs(v, drop);
+    if (next === undefined) continue;
+    settings[k] = next;
+    receipts.push({ correction_id: correction.id, record_id: `setting:${k}`, op: 'exclude', field: k, before: v, after: next, outcome: 'applied', rationale: why });
+  }
+}
+
 /** Apply corrections, in order, to a deep copy of the bundle. Never throws for a missing target. */
 export function applyCorrections(bundle: ImportBundle, corrections: readonly Correction[]): CorrectionResult {
   const out = clone(bundle);
   const receipts: CorrectionReceipt[] = [];
+  const ex: Excluded = { ids: new Set(), keys: new Set(), rationale: new Map() };
+  let lastExcluding: Correction | null = null;
   for (const correction of corrections) {
     const ops = [...(correction.ops ?? []), ...(correction.expand ? correction.expand(out) : [])];
-    for (const op of ops) receipts.push(applyOp(out, correction, op));
+    for (const op of ops) {
+      if (op.op === 'exclude') {
+        receipts.push(excludeOne(out, correction, op, ex));
+        lastExcluding = correction;
+      } else {
+        receipts.push(applyOp(out, correction, op));
+      }
+    }
   }
+  if (lastExcluding) sweepExcluded(out, lastExcluding, ex, receipts);
   return { bundle: out, receipts };
+}
+
+/** Record ids (and `task_link:` refs) that applied `exclude` receipts left out of the import. */
+export function excludedIds(receipts: readonly CorrectionReceipt[]): string[] {
+  return receipts.filter((r) => r.op === 'exclude' && r.outcome === 'applied' && r.field === null).map((r) => r.record_id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -191,7 +333,7 @@ export function applyCorrections(bundle: ImportBundle, corrections: readonly Cor
 /* ------------------------------------------------------------------ */
 
 const PATH_OPS = new Set(['set', 'add', 'remove', 'replace_text', 'strip_clause']);
-const ALL_OPS = new Set([...PATH_OPS, 'create', 'setting']);
+const ALL_OPS = new Set([...PATH_OPS, 'create', 'setting', 'exclude']);
 
 function validateOp(raw: unknown, where: string): CorrectionOp {
   if (!isObject(raw) || typeof raw.op !== 'string' || !ALL_OPS.has(raw.op)) throw new Error(`${where}: unknown or missing "op"`);
@@ -208,6 +350,9 @@ function validateOp(raw: unknown, where: string): CorrectionOp {
     }
   }
   if (raw.op === 'setting' && (typeof raw.key !== 'string' || !('value' in raw))) throw new Error(`${where}: "setting" needs "key" and "value"`);
+  if (raw.op === 'exclude' && (typeof raw.record !== 'string' || typeof raw.reason !== 'string' || !raw.reason.trim())) {
+    throw new Error(`${where}: "exclude" needs string "record" and a non-empty "reason"`);
+  }
   return raw as unknown as CorrectionOp;
 }
 

@@ -1,5 +1,7 @@
 import { Link, useLocation } from 'react-router';
 import { Icon, type IconName } from '../components/Icon';
+import { hasOptionalFuture } from '../lib/records';
+import { useLoaded } from '../state/snapshot';
 
 interface NavItem {
   to: string;
@@ -33,7 +35,14 @@ export const MORE_NAV: { to: string; label: string; icon: IconName; blurb: strin
   { to: '/settings', label: 'Settings', icon: 'gear', blurb: 'Dates, display and household preferences.' },
 ];
 
+/** The "More" places, without Future work while the plan holds no optional future items. */
+export function useMoreNav(): typeof MORE_NAV {
+  const loaded = useLoaded();
+  return loaded && hasOptionalFuture(loaded.idx) ? MORE_NAV : MORE_NAV.filter((item) => item.to !== '/future');
+}
+
 export function MainNav() {
+  const moreNav = useMoreNav();
   const { pathname, state } = useLocation();
   // A record opened from somewhere keeps that place highlighted; one opened directly highlights nothing.
   const from = (state as { backgroundLocation?: { pathname?: string } } | null)?.backgroundLocation?.pathname ?? null;
@@ -58,7 +67,7 @@ export function MainNav() {
         })}
       </ul>
       <ul className="app-nav__more" aria-label="More places">
-        {MORE_NAV.map((item) => (
+        {moreNav.map((item) => (
           <li key={item.to}>
             <Link to={item.to} className="nav-sublink" aria-current={pathname === item.to || pathname.startsWith(`${item.to}/`) ? 'page' : undefined}>
               <Icon name={item.icon} size={18} />

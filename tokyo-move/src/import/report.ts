@@ -174,6 +174,15 @@ export function buildReconciliationReport(input: ReportInput): string {
     if (rs.length > 60) out.push(`\n… ${rs.length - 60} more receipts (see import_changes in the database).`);
   }
 
+  /* ---- scope ---- */
+  const left = receipts.filter((r) => r.op === 'exclude' && r.outcome === 'applied' && r.field === null);
+  if (left.length > 0) {
+    h(3, 'Outside the move: not imported');
+    out.push('These source items fail the scope rule ("would this exist, with this deadline, if we were not moving?"). They are not in the app at all; the source package and the task list still hold them. Links to them from other items were removed (see the receipts in the database).');
+    out.push('');
+    out.push(table(['Item', 'Title', 'Why'], left.map((r) => [r.record_id, (r.before as { title?: string } | null)?.title ?? '', r.rationale])));
+  }
+
   /* ---- dangling ---- */
   h(2, '5. Dangling references');
   const d = parsed.validation.dangling_refs;

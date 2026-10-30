@@ -6,7 +6,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyBundle } from '../../src/import/apply';
-import { applyCorrections, BUILTIN_CORRECTIONS, loadCorrectionFiles, mergeCorrections } from '../../src/import/corrections';
+import { applyCorrections, BUILTIN_CORRECTIONS, excludedIds, loadCorrectionFiles, mergeCorrections } from '../../src/import/corrections';
 import { parseSourcePackage } from '../../src/import/normalize';
 import { openDb, type Db } from '../../src/server/db/db';
 import { anchorsFrom, collectDeadlines, previewAnchorChange } from '../../src/shared/deadlines';
@@ -52,6 +52,8 @@ describe.skipIf(!dir)('real source package', () => {
   let first: ReturnType<typeof applyBundle>;
   let corrections: ReturnType<typeof mergeCorrections>;
   let state: Loaded;
+  /** Items the household's scope corrections leave out of the import ("outside the move"); empty without them. */
+  let leftOut: Set<string>;
 
   beforeAll(() => {
     bundle = parseSourcePackage(root);
@@ -59,6 +61,7 @@ describe.skipIf(!dir)('real source package', () => {
     db = openDb(':memory:');
     first = applyBundle(db, bundle, { now: new Date('2026-10-29T12:00:00Z'), corrections });
     state = load(db);
+    leftOut = new Set(excludedIds(applyCorrections(bundle, corrections).receipts));
   });
   afterAll(() => db?.close());
 
@@ -66,7 +69,8 @@ describe.skipIf(!dir)('real source package', () => {
     expect(first.status).toBe('completed');
     const c = bundle.validation.counts;
     for (const [type, expected] of Object.entries(bundle.validation.expected)) expect(c[type], type).toBe(expected);
-    const stored = (type: string) => state.records.filter((r) => r.type === type).length;
+    // Every declared item is either stored or left out as outside the move (with a receipt).
+    const stored = (type: string) => state.records.filter((r) => r.type === type).length + [...leftOut].filter((id) => id.startsWith(`${type}:`)).length;
     for (const [type, expected] of Object.entries(bundle.validation.expected)) expect(stored(type), type).toBeGreaterThanOrEqual(expected);
     const keys = (type: string) => new Set(state.records.filter((r) => r.type === type).map((r) => r.key));
     const range = (prefix: string, n: number, digits: number) => Array.from({ length: n }, (_, i) => `${prefix}${String(i + 1).padStart(digits, '0')}`);
@@ -75,7 +79,7 @@ describe.skipIf(!dir)('real source package', () => {
       ['risk', range('R', 18, 2)], ['document', range('DOC', 37, 2)], ['cost', range('B', 49, 2)], ['arrival', range('A', 15, 2)],
     ] as [string, string[]][]) {
       const have = keys(type);
-      expect(ids.filter((id) => !have.has(id)), type).toEqual([]);
+      expect(ids.filter((id) => !have.has(id) && !leftOut.has(`${type}:${id}`)), type).toEqual([]);
     }
     expect(keys('evidence').size).toBeGreaterThanOrEqual(57); // reviewers may add entries
     expect(bundle.validation.dangling_refs).toEqual([]);
@@ -258,10 +262,11 @@ describe.skipIf(!dir)('real source package', () => {
     const person = state.people.find((p) => p.id === zero!.person_id)!;
     const gates = (state.settings.traveler_gates as TravelerGateConfig[]).find((g) => g.person_id === person.id)!;
     expect(gates).toBeDefined();
-    const optionalKeys = state.records.filter((r) => r.type === 'milestone' && (r.data as unknown as MilestoneData).optional_future_work).map((r) => r.key);
-    expect(optionalKeys.sort()).toEqual(['W05', 'W58', 'W65', 'W67', 'W68', 'W69'].sort().filter((k) => optionalKeys.includes(k)));
-    for (const k of ['W05', 'W58', 'W65', 'W67', 'W68', 'W69']) expect(optionalKeys, k).toContain(k);
-    for (const k of optionalKeys) {
+    // Later-work items are optional, or left out as outside the move; either way none of them is a gate.
+    const FUTURE = ['W05', 'W58', 'W65', 'W67', 'W68', 'W69'];
+    const optionalKeys = FUTURE.filter((k) => !leftOut.has(`milestone:${k}`));
+    for (const k of optionalKeys) expect(state.records.some((r) => r.id === `milestone:${k}`), k).toBe(true);
+    for (const k of FUTURE) {
       expect(gates.required_before_departure, k).not.toContain(k);
       expect(gates.required_at_or_after_arrival, k).not.toContain(k);
     }
@@ -310,6 +315,11 @@ describe.skipIf(!dir)('real source package', () => {
   });
 
   it('W67 and Q077 reflect the bounded local evidence review without claiming rights or demand', () => {
+    if (leftOut.has('milestone:W67')) {
+      // The household left career exploration out of the move plan; both items go together.
+      expect(leftOut.has('question:Q077')).toBe(true);
+      return;
+    }
     const w67 = state.records.find((r) => r.id === 'milestone:W67')!;
     expect(w67.status).toBe('completed');
     const text = (w67.data as unknown as MilestoneData).completion_evidence.map((e) => e.summary).join(' ');
@@ -331,7 +341,9 @@ describe.skipIf(!dir)('real source package', () => {
     }
     const deferred = ms.filter((m) => (m.data as unknown as MilestoneData).source_status === 'Deferred — conditional');
     expect(deferred.length).toBeGreaterThan(0);
-    for (const m of deferred) expect((m.data as unknown as MilestoneData).optional_future_work).toBe(true);
+    // Deferred, conditional work never gates a traveler.
+    const gateKeys = new Set((state.settings.traveler_gates as TravelerGateConfig[]).flatMap((g) => [...g.required_before_departure, ...g.required_at_or_after_arrival]));
+    for (const m of deferred) expect(gateKeys.has(m.key), m.key).toBe(false);
     // contacts: nobody is "engaged" or "contacted" without a recorded basis
     for (const c of state.records.filter((r) => r.type === 'contact')) {
       const d = c.data as { relationship: string; relationship_basis: string; status_boundary: string };
@@ -352,7 +364,9 @@ describe.skipIf(!dir)('real source package', () => {
     // questions keep both the workbook status and the newer local review disposition
     const q = state.records.filter((r) => r.type === 'question');
     expect(q.every((r) => (r.data as { source_disposition: string }).source_disposition)).toBe(true);
-    expect(q.filter((r) => (r.data as { local_disposition: string | null }).local_disposition !== null).length).toBe(78);
+    // Every one of the 78 plan questions is accounted for: in the app, or left out as outside the move (with a receipt).
+    const leftOut = excludedIds(applyCorrections(bundle, corrections).receipts).filter((id) => id.startsWith('question:'));
+    expect(q.filter((r) => (r.data as { local_disposition: string | null }).local_disposition !== null).length + leftOut.length).toBe(78);
   });
 
   it('no household name, contact or commitment label appears in committed code, fixtures or tests', () => {

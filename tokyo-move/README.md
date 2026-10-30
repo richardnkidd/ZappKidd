@@ -79,7 +79,8 @@ npm run preview
 
 The first run installs dependencies, imports the plan from `private/source-package/` (with the reviewed corrections;
 it prints counts, "Household overrides: …" and receipts, never record text), builds the app, starts it on
-`127.0.0.1:8787` and opens your browser. Pick a person to sign in. Later runs skip the steps that are already done.
+`127.0.0.1:8787` and opens your browser. Pick a person to sign in. Later runs skip the steps that are already done,
+and import again on their own when you unzip a newer private bundle (your in-app edits are kept).
 Leave the Terminal window open while you use it; close it or press `Ctrl-C` to stop.
 
 | Want to… | Run |

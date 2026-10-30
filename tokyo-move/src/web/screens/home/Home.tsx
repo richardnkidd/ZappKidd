@@ -8,6 +8,7 @@ import { PageTitle } from '../../components/Layout';
 import { useIsDesktop } from '../../layout/useMedia';
 import { greetingFor, hourIn } from '../../lib/format';
 import type { FilterContext, OwnerFilter } from '../../lib/home';
+import { hasOptionalFuture } from '../../lib/records';
 import { solarTermFor } from '../../lib/solarTerms';
 import { useMe } from '../../state/auth';
 import { useData } from '../../state/data';
@@ -93,9 +94,11 @@ export function Home() {
               </div>
               <SinceReviewSection idx={idx} dir={dir} />
               <FreshnessFooter />
-              <p className="faint small home-link">
-                Optional future work is kept out of the way on its own page. <Link to="/future">See future work</Link>
-              </p>
+              {hasOptionalFuture(idx) && (
+                <p className="faint small home-link">
+                  Optional future work is kept out of the way on its own page. <Link to="/future">See future work</Link>
+                </p>
+              )}
             </>
           );
         }}

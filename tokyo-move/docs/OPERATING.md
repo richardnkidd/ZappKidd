@@ -134,7 +134,11 @@ visible under "Source & history" on each item), and every correction leaves a re
   }
   ```
 
-  Operations: `set`, `add`, `remove`, `replace_text`, `strip_clause`, `create` (a new record) and `setting`.
+  Operations: `set`, `add`, `remove`, `replace_text`, `strip_clause`, `create` (a new record), `setting`, and
+  `exclude` (`{ "op": "exclude", "record": "milestone:W19", "reason": "Outside the move." }`, or
+  `"record": "task_link:<task id>"`) for an item that is not part of the move. Excluded items are not imported, links
+  to them are removed, and the import report lists them. Put scope exclusions in a file that sorts last
+  (e.g. `99-scope.json`).
 - Each (correction, record) pair is applied **once** (tracked, so re-imports do not repeat receipts), while the edit
   itself is re-applied to the freshly parsed plan every time so the stored result always agrees with source + corrections.
   An operation that no longer fits (the record or text is gone) is logged as `correction_not_applicable`, not forced.

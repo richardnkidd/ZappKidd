@@ -105,9 +105,16 @@ export and import idempotency are uniform. Record ids are deterministic (`milest
 4. Apply reviewed-model corrections once per (correction, record), each with a receipt in `import_changes`:
    generic, ID-based corrections ship in `src/import/builtin-corrections.ts`; household-specific corrections (from the
    independent plan reviews) are loaded from `private/corrections/*.json` in file-name order. Operations are
-   `set` / `add` / `remove` / `replace_text` / `create` / `setting`; a correction that finds nothing to change is recorded
+   `set` / `add` / `remove` / `replace_text` / `strip_clause` / `create` / `setting` / `exclude`; a correction that finds nothing to change is recorded
    as *not applicable* rather than failing. Rules are never merged automatically — duplicates are marked `superseded`
    with an explicit `superseded_by`, and records follow the chain to the active rule.
+   **Scope:** Kadode holds only the move. The test for every item is *"would this exist, with this deadline, if the
+   household were not moving?"* Items that fail it are left out with `exclude` (a record id, or `task_link:<id>` for a
+   task-list link) and a reason. After all corrections, every link to an excluded item (dependency lists, maps keyed by
+   it, single reference fields, list entries such as gates that name it, task links attached to it, settings) is
+   removed with a receipt, and the reconciliation report lists each excluded item under "Outside the move". Excluded
+   items are absent from the app, not hidden; the source package and the task list keep them. When a non-move chore
+   affects a move item, the move item carries one plain prerequisite line instead.
 5. Validate counts and references (every dependency, workstream and evidence reference must resolve).
 
 ## 7. Dates and deadlines

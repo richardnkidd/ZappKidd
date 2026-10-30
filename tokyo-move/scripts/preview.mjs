@@ -1,13 +1,15 @@
 // `npm run preview` — one command for the local preview on this computer.
-//   Installs dependencies if needed, imports the plan from ./private/source-package the first time, builds the web app
-//   if the build is missing or older than the code, starts Kadode at http://127.0.0.1:8787 and opens the browser.
+//   Installs dependencies if needed, imports the plan from ./private/source-package the first time (and again whenever
+//   the private bundle or the importer changes), builds the web app if the build is missing or older than the code,
+//   starts Kadode at http://127.0.0.1:8787 and opens the browser.
 //   Flags: --demo (fictional demo household), --reimport (import again; the same files change nothing),
 //          --source <dir> (import from another folder), --no-open (don't open a browser).
 // Plain Node with no dependencies, so it can run before `npm ci`. Real data stays loopback-only: this script never
 // sets KADODE_LAN, KADODE_DB or HOST, and removes them if they are set.
 process.umask(0o077);
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -56,6 +58,20 @@ function newestUnder(path) {
   }
   return newest;
 }
+/** One hash over every file under the given paths (names and contents), to notice a new bundle or importer. */
+function hashInputs(paths) {
+  const h = createHash('sha256');
+  const add = (path) => {
+    if (!existsSync(path)) return;
+    if (statSync(path).isDirectory()) {
+      for (const name of readdirSync(path).sort()) if (!name.startsWith('.')) add(join(path, name));
+    } else {
+      h.update(path.slice(root.length)).update('\0').update(readFileSync(path)).update('\0');
+    }
+  };
+  for (const path of paths) add(path);
+  return h.digest('hex');
+}
 function portIsFree(n) {
   return new Promise((done) => {
     const s = createServer();
@@ -93,7 +109,10 @@ if (!demo) {
       'Just looking around? npm run preview -- --demo shows a fictional household.',
     ]);
   }
-  if (!existsSync(dbFile) || flag('reimport')) {
+  const stamp = p('private', 'data', '.import-inputs.sha256');
+  const inputs = hashInputs([sourceDir, p('private', 'corrections'), p('private', 'household-overrides.json'), p('src', 'import')]);
+  const changed = existsSync(dbFile) && (!existsSync(stamp) || readFileSync(stamp, 'utf8').trim() !== inputs);
+  if (!existsSync(dbFile) || changed || flag('reimport')) {
     if (!existsSync(sourceDir)) {
       fail([
         `No source package at ${sourceDir}.`,
@@ -101,8 +120,9 @@ if (!demo) {
         '  npm run preview -- --source "/path/to/the Revision 2 package"',
       ]);
     }
-    say(existsSync(dbFile) ? 'Importing again (the same files change nothing)…' : 'Importing your plan (first run only)…');
+    say(!existsSync(dbFile) ? 'Importing your plan (first run only)…' : changed ? 'Your private bundle or the importer changed: updating your plan (your own edits are kept)…' : 'Importing again (the same files change nothing)…');
     run(bin('tsx'), ['scripts/import.ts', '--source', sourceDir]);
+    writeFileSync(stamp, `${inputs}\n`, { mode: 0o600 });
   }
 }
 

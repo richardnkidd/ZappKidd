@@ -1,14 +1,15 @@
 import { Link } from 'react-router';
 import { Card, PageTitle } from '../components/Layout';
 import { Icon } from '../components/Icon';
-import { MORE_NAV } from '../layout/nav';
+import { useMoreNav } from '../layout/nav';
 
 export function More() {
+  const moreNav = useMoreNav();
   return (
     <div className="page">
       <PageTitle kicker="Everything else">More</PageTitle>
       <ul className="more-list">
-        {MORE_NAV.map((item) => (
+        {moreNav.map((item) => (
           <li key={item.to}>
             <Link to={item.to} className="more-item">
               <span className="more-item__icon">

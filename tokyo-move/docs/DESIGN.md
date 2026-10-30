@@ -182,6 +182,7 @@ Merged from four independent reviews. The rules that came out of it:
   "Keep editing / Discard and leave". Drafts live in `sessionStorage` for the tab only and come back after a reload.
 - **Money** says "No amounts yet" until one amount is known, collapses sections, gives each unknown line one row with
   "Add amount", and shows the exchange rate as one line. **Documents** are compact rows with Details.
+- **Readiness pages stay short**: holding-things-up and still-to-do show three then "Show all N"; "Does this apply?" is compact rows five at a time; steps after arrival, dates (open only when one is within 90 days) and done are closed disclosures with counts.
 - **Large text**: header chip and tab labels step aside by container query in `rem`, so they respond to text size, not only width.
 - **Print**: each traveler's arrival pack must stay within two pages on A4 and Letter; sensitivity comes from the record's
   `sensitivity` field, documents from `carry_on_arrival`, practical checks from `review_note`.

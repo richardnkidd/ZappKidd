@@ -1078,7 +1078,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: var(--s-1);
-  padding: var(--s-3) var(--s-4);
+  padding: var(--s-2) var(--s-3);
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
@@ -1307,4 +1307,89 @@ code {
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
+}
+
+
+/* Readiness: long lists stay short. Reasons are cut to two lines; the full text is on the record page. */
+.gate__why {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: none;
+}
+.cond-rows {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.cond-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  border-top: 1px solid var(--line);
+}
+.cond-row:first-child {
+  border-top: 0;
+}
+.cond-row__what {
+  min-width: 0;
+}
+.cond-row__title {
+  display: block;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cond-row__why {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: none;
+}
+.applies--compact {
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.applies--compact .applies__btn {
+  min-height: 36px;
+}
+@media (min-width: 640px) {
+  .cond-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .cond-row__what {
+    flex: 1 1 auto;
+  }
+  .applies--compact {
+    flex: none;
+  }
+}
+
+/* Travel dates: leaving and arriving side by side on a phone. */
+.ready-dates ul {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+}
+.ready-dates .lane__row {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  border: 0;
+  padding: 0;
+}
+
+.ready-page.stack--loose {
+  gap: var(--s-5);
+}
+.cond-row {
+  padding: var(--s-2) var(--s-3);
 }

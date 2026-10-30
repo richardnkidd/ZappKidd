@@ -125,3 +125,6 @@ export function compareOverlap(args: {
 export function monthsBetween(a: string, b: string): number {
   return Math.round(diffDays(a, b) / 30.44);
 }
+
+/** An example date offered when no arrival date exists anywhere yet. It only fills the comparison and is never saved. */
+export const EXAMPLE_ARRIVAL = { date: '2027-07-01', label: 'July 1, 2027' } as const;

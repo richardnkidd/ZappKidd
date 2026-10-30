@@ -17,6 +17,7 @@ import {
   ARRIVAL_CHOICES,
   compareOverlap,
   defaultDeparture,
+  EXAMPLE_ARRIVAL,
   firstAdultArrival,
   monthsBetween,
   petArrivalFor,
@@ -237,8 +238,10 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const firstAdult = known?.date ?? (isCivilDate(hypo) ? hypo : null);
   const firstAdultName = known ? dir.nameOf(known.personId) : 'the first adult';
   const base = petNow ?? firstAdult;
-  const needsHypo = !petNow && !known && choice !== 'date';
-  const choices = ARRIVAL_CHOICES.filter((c) => c.value !== 'with_first' || known);
+  // No arrival date anywhere: the comparison needs one to start from. With the pet's own date, an adult's is only an extra.
+  const noAnchors = !petNow && !known;
+  const showHypo = !known && choice !== 'date';
+  const choices = ARRIVAL_CHOICES.filter((c) => c.value !== 'with_first' || firstAdult);
 
   const arrival = petArrivalFor(choice, firstAdult, pickedDate, base);
   const departure = arrival ? (isCivilDate(depOverride) ? depOverride : defaultDeparture(arrival)) : null;
@@ -324,10 +327,26 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
               <TextInput type="date" value={pickedDate} onChange={(e) => setPickedDate(e.target.value)} />
             </Field>
           )}
-          {needsHypo && (
-            <Field label="If the first adult arrived on… (optional)" hint={`Neither ${pet.display_name}’s nor the adults’ arrival dates are set yet. A date here is only for the comparison and is never saved.`}>
-              <TextInput type="date" value={hypo} onChange={(e) => setHypo(e.target.value)} />
-            </Field>
+          {showHypo && (
+            <div className="stack stack--tight">
+              <Field
+                label={noAnchors ? 'Needed for the comparison — no dates are set yet' : 'If the first adult arrived on… (optional)'}
+                hint={
+                  noAnchors
+                    ? `Neither ${pet.display_name}’s nor the adults’ arrival dates are set. A date here is only for the comparison and is never saved.`
+                    : 'Only needed to compare with the first adult’s arrival. It is never saved.'
+                }
+              >
+                <TextInput type="date" value={hypo} onChange={(e) => setHypo(e.target.value)} />
+              </Field>
+              {noAnchors && (
+                <div>
+                  <Button variant="secondary" small onClick={() => setHypo(EXAMPLE_ARRIVAL.date)}>
+                    Try {EXAMPLE_ARRIVAL.label} — start of your target month (example only, never saved)
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
           <dl className="facts facts--tight">
             <div className="fact">
@@ -355,7 +374,7 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
       {!arrival ? (
         <Card>
           <EmptyState icon="calendar" title="Pick when, and the comparison appears here.">
-            {needsHypo ? 'First add a date for the first adult’s arrival, just for this comparison.' : ''}
+            {noAnchors ? 'First add a date for the first adult’s arrival, just for this comparison.' : ''}
           </EmptyState>
         </Card>
       ) : (

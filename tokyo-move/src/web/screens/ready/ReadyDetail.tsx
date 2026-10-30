@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import type { ComputedDeadline, GateStatus, TravelerReadiness } from '@shared/engine-contracts';
 import { travelerDeadlines } from '@shared/deadlines';
+import { diffDays } from '@shared/dates';
 import { ANCHOR_CONFIDENCE_LABEL } from '@shared/labels';
 import type { AnchorData } from '@shared/types';
 import { DateText, StatusBadge } from '../../components/Badges';
@@ -24,51 +25,95 @@ function GateList({
   empty,
   showReason,
   idx,
-  answerFor,
-  onAnswered,
+  first,
 }: {
   gates: GateStatus[];
   empty: string;
   showReason?: 'blocker' | 'condition';
   idx: Indexes;
-  /** When set, each gate gets a "Does this apply to <name>?" answer. */
-  answerFor?: { personId: string; name: string };
-  onAnswered?: (g: GateStatus) => void;
+  /** Show this many at first, then "Show all N". */
+  first?: number;
 }) {
   const plain = usePlain();
-  if (gates.length === 0) return <p className="muted">{empty}</p>;
+  const [all, setAll] = useState(false);
+  if (gates.length === 0) return empty ? <p className="muted">{empty}</p> : null;
+  const shown = first && !all ? gates.slice(0, first) : gates;
   return (
-    <ul className="gate-list">
-      {gates.map((g) => {
-        const rec = idx.byId.get(g.record_id);
-        const waiting = (g.blocked_by ?? []).map((k) => idx.byKey.get(k)).filter((r): r is NonNullable<typeof r> => !!r);
-        return (
-          <li key={g.record_id} className="gate">
-            <RecordLink id={g.record_id} className="gate__title">
-              {g.title}
-            </RecordLink>
-            {showReason === 'blocker' && g.blocker && !(waiting.length > 0 && /^waiting on/i.test(g.blocker.trim())) && <p className="small muted">{plain(g.blocker)}</p>}
-            {showReason === 'blocker' && waiting.length > 0 && (
-              <p className="small muted">
-                Waiting on:{' '}
-                {waiting.map((r, i) => (
-                  <span key={r.id}>
-                    {i > 0 && ', '}
-                    <RecordLink id={r.id}>{r.title}</RecordLink>
-                  </span>
-                ))}
-              </p>
-            )}
-            {showReason === 'condition' && g.condition && <p className="small muted">{plain(g.condition)}</p>}
-            <div className="item__meta">
-              <OwnerChip owner={g.owner} compact />
-              <StatusBadge status={g.status} small />
-            </div>
-            {answerFor && rec && <AppliesToControl record={rec} personId={answerFor.personId} name={answerFor.name} onSaved={() => onAnswered?.(g)} />}
-          </li>
-        );
-      })}
-    </ul>
+    <>
+      <ul className="gate-list">
+        {shown.map((g) => {
+          const waiting = (g.blocked_by ?? []).map((k) => idx.byKey.get(k)).filter((r): r is NonNullable<typeof r> => !!r);
+          return (
+            <li key={g.record_id} className="gate">
+              <RecordLink id={g.record_id} className="gate__title">
+                {g.title}
+              </RecordLink>
+              {showReason === 'blocker' && g.blocker && !(waiting.length > 0 && /^waiting on/i.test(g.blocker.trim())) && <p className="small muted gate__why">{plain(g.blocker)}</p>}
+              {showReason === 'blocker' && waiting.length > 0 && (
+                <p className="small muted gate__why">
+                  Waiting on:{' '}
+                  {waiting.map((r, i) => (
+                    <span key={r.id}>
+                      {i > 0 && ', '}
+                      <RecordLink id={r.id}>{r.title}</RecordLink>
+                    </span>
+                  ))}
+                </p>
+              )}
+              {showReason === 'condition' && g.condition && <p className="small muted gate__why">{plain(g.condition)}</p>}
+              <div className="item__meta">
+                <OwnerChip owner={g.owner} compact />
+                <StatusBadge status={g.status} small />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {first && gates.length > first && (
+        <div>
+          <Button variant="quiet" small aria-expanded={all} onClick={() => setAll((v) => !v)}>
+            {all ? 'Show fewer' : `Show all ${gates.length}`}
+          </Button>
+        </div>
+      )}
+    </>
+  );
+}
+
+const MORE_STEP = 5;
+
+/** The "does this apply?" questions as compact rows: the step on one line, Yes / No / Not sure beside it, five at a time. */
+function ConditionalRows({ gates, idx, personId, name, onAnswered }: { gates: GateStatus[]; idx: Indexes; personId: string; name: string; onAnswered: (g: GateStatus) => void }) {
+  const plain = usePlain();
+  const [count, setCount] = useState(MORE_STEP);
+  const shown = gates.slice(0, count);
+  const left = gates.length - shown.length;
+  return (
+    <>
+      <ul className="cond-rows">
+        {shown.map((g) => {
+          const rec = idx.byId.get(g.record_id);
+          return (
+            <li key={g.record_id} className="cond-row">
+              <div className="cond-row__what">
+                <RecordLink id={g.record_id} className="cond-row__title">
+                  {g.title}
+                </RecordLink>
+                {g.condition && <p className="small muted cond-row__why">{plain(g.condition)}</p>}
+              </div>
+              {rec && <AppliesToControl compact record={rec} personId={personId} name={name} onSaved={() => onAnswered(g)} />}
+            </li>
+          );
+        })}
+      </ul>
+      {left > 0 && (
+        <div>
+          <Button variant="quiet" small onClick={() => setCount((c) => c + MORE_STEP)}>
+            Show {Math.min(MORE_STEP, left)} more{left > MORE_STEP ? ` (${left} left)` : ''}
+          </Button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -77,10 +122,10 @@ function stateExplanation(r: TravelerReadiness, counts: { done: number; total: n
   switch (r.state) {
     case 'blocked':
       return 'Something below is stuck, so this can’t be released yet. Clearing it comes first.';
+    // The headline already counts what is left for these two.
     case 'not_started':
-      return counts.total > 0 ? `None of the ${counts.total} required steps has been started.` : null;
     case 'preparing':
-      return counts.total > 0 ? `${counts.done} of ${counts.total} required steps are done.` : null;
+      return null;
     case 'ready_to_release':
       return 'Every required step before leaving is done. Someone still has to release it on purpose.';
     case 'released':
@@ -142,13 +187,16 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
   }
   const ok = notOptional(idx);
   const blockers = r.blockers.filter(ok);
-  const open = r.open.filter(ok);
+  const next = r.next_action && ok(r.next_action) ? r.next_action : null;
+  // The next step has its own section; it is not listed a second time under Still to do.
+  const open = r.open.filter(ok).filter((g) => g.record_id !== next?.record_id);
   const met = r.met.filter(ok);
   const conditional = r.conditional_unknown.filter(ok);
   const after = r.after_arrival.filter(ok);
-  const next = r.next_action && ok(r.next_action) ? r.next_action : null;
   const notNeeded = (r.not_needed ?? []).filter((n) => !(idx.byId.get(n.record_id) && dataOfOptional(idx.byId.get(n.record_id))));
   const dates = travelerDeadlines(personId, deadlineContext);
+  // Open on arrival only when a date before leaving is near (within 90 days) or already past.
+  const soonDates = dates.before_departure.some((d) => d.deadline.date && d.state !== 'met' && diffDays(today, d.deadline.date) <= 90);
   const requiredTotal = blockers.length + open.length + met.length;
   const explanation = stateExplanation(r, { done: met.length, total: requiredTotal });
   // The answered step moves to another list; tell the person where it went and keep their place.
@@ -168,7 +216,7 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
     ) : null;
 
   return (
-    <div className="stack stack--loose">
+    <div className="stack stack--loose ready-page">
       <Card tone={r.state === 'blocked' ? 'blocked' : 'default'}>
         <div className="ready__head">
           <span className="ready__who">
@@ -179,7 +227,6 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
         </div>
         <p className="ready__headline">{plain(r.headline)}</p>
         {explanation && <p className="muted">{explanation}</p>}
-        <p className="small muted">Optional future work is never counted here. Only the steps this traveler needs for the move are.</p>
       </Card>
 
       <p ref={noticeRef} tabIndex={-1} role="status" className={notice ? 'notice' : 'visually-hidden'}>
@@ -188,7 +235,7 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
 
       {(r.departure || r.arrival) && (
         <Section title="Travel dates" headingLevel={2}>
-          <Card>
+          <Card className="ready-dates">
             <ul>
               {anchor(r.departure, 'Leaving')}
               {anchor(r.arrival, 'Arriving in Tokyo')}
@@ -198,7 +245,7 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
       )}
 
       <Section title="Holding things up" count={blockers.length || undefined}>
-        <GateList gates={blockers} empty="Nothing is stuck right now." showReason="blocker" idx={idx} />
+        <GateList gates={blockers} empty="Nothing is stuck right now." showReason="blocker" idx={idx} first={3} />
       </Section>
 
       <Section title="What unlocks this">
@@ -209,15 +256,15 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
         )}
       </Section>
 
-      <Section title="Still to do" count={open.length || undefined}>
-        <GateList gates={open} empty="Nothing else is waiting to be started." idx={idx} />
-      </Section>
-
       {conditional.length > 0 && (
-        <Section title="Not sure yet if it applies" count={conditional.length} intro="These only matter in certain situations. Nothing is wrong; they just need an answer.">
-          <GateList gates={conditional} empty="" showReason="condition" idx={idx} answerFor={{ personId, name: person.display_name }} onAnswered={answered} />
+        <Section title="Not sure yet if it applies" count={conditional.length}>
+          <ConditionalRows gates={conditional} idx={idx} personId={personId} name={person.display_name} onAnswered={answered} />
         </Section>
       )}
+
+      <Section title="Still to do" count={open.length || undefined}>
+        <GateList gates={open} empty="Nothing else is waiting to be started." idx={idx} first={3} />
+      </Section>
 
       {notNeeded.length > 0 && (
         <Disclosure title={`Not needed for ${person.display_name}`} meta={`${notNeeded.length}`}>
@@ -238,21 +285,25 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
         </Disclosure>
       )}
 
-      <Section title="Dates before leaving" count={dates.before_departure.length || undefined} intro="Dates that come from rules, with what each one means. Nothing here is guessed.">
-        <DateList items={dates.before_departure} idx={idx} today={today} empty="No rule-based dates before leaving." />
-      </Section>
+      {/* The long lists start closed, with their counts; dates open on their own only when one is close. */}
+      <div className="stack stack--tight">
+        <Disclosure title="Dates before leaving" meta={`${dates.before_departure.length}`} defaultOpen={soonDates}>
+          <p className="small muted">Dates that come from rules, with what each one means. Nothing here is guessed.</p>
+          <DateList items={dates.before_departure} idx={idx} today={today} empty="No rule-based dates before leaving." />
+        </Disclosure>
+        <Disclosure title="Steps after arrival" meta={`${after.length}`}>
+          <p className="small muted">These come once the traveler has landed.</p>
+          <GateList gates={after} empty="Nothing is listed for after arrival." idx={idx} />
+        </Disclosure>
+        <Disclosure title="Dates after arriving" meta={`${dates.after_arrival.length}`}>
+          <DateList items={dates.after_arrival} idx={idx} today={today} empty="No rule-based dates after arriving." />
+        </Disclosure>
+        <Disclosure title="Done" meta={`${met.length}`}>
+          <GateList gates={met} empty="Nothing is finished yet." idx={idx} />
+        </Disclosure>
+      </div>
 
-      <Section title="Done" count={met.length || undefined}>
-        <GateList gates={met} empty="Nothing is finished yet." idx={idx} />
-      </Section>
-
-      <Section title="Steps after arrival" count={after.length || undefined} intro="These come once the traveler has landed.">
-        <GateList gates={after} empty="Nothing is listed for after arrival." idx={idx} />
-      </Section>
-
-      <Section title="Dates after arriving" count={dates.after_arrival.length || undefined}>
-        <DateList items={dates.after_arrival} idx={idx} today={today} empty="No rule-based dates after arriving." />
-      </Section>
+      <p className="small muted">Optional future work is never counted here. Only the steps this traveler needs for the move are.</p>
 
       <p>
         <Link to="/" className="more-link">

@@ -524,8 +524,7 @@ function Backups() {
         >
           {step === 'users' && (
             <p className="preline">
-              To go ahead, the backup’s own list of logins would replace today’s, as well as the plan. That changes who can sign in. If you only want the plan back, cancel and
-              ask whoever looks after this copy to bring the plan across without the logins.
+              To go ahead, the backup’s own list of logins would replace today’s, as well as the plan. That changes who can sign in, and everyone is signed out afterwards. If you don’t want that, cancel: nothing has been changed.
             </p>
           )}
           <Field label={`Type ${needed} to confirm`} error={restoreError}>

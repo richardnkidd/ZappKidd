@@ -63,7 +63,7 @@ export function Plan() {
       <PageTitle kicker="Everything that has to happen">Plan</PageTitle>
       <SegmentedControl label="Plan view" value={view} options={VIEW_OPTIONS} onChange={setView} className="plan-views" />
       <DataGate skeleton={<Card><Skeleton lines={5} /></Card>}>
-        {({ idx, dir }) => {
+        {({ snapshot, idx, dir }) => {
           const ctx: FilterContext = { meId: dir.me?.id ?? null, otherIds: dir.others.map((o) => o.id) };
           const all = buildPlanItems(idx, deadlines.ok ? deadlinesByRecord : undefined, today);
           const shown = filterPlanItems(all, filters, ctx);
@@ -100,7 +100,7 @@ export function Plan() {
               ) : view === 'board' ? (
                 <BoardView items={shown} today={today} expanded={expandedBoard} setExpanded={setExpandedBoard} />
               ) : (
-                <TimelineView items={shown} idx={idx} dir={dir} today={today} />
+                <TimelineView items={shown} idx={idx} dir={dir} today={today} settings={snapshot.settings} />
               )}
             </>
           );

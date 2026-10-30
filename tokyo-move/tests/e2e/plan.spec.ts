@@ -26,9 +26,11 @@ async function chooseView(page: Page, name: 'By area' | 'List' | 'Board' | 'Time
   await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
 }
 
+/** Every plan item on screen: by its link, or (the timeline chart, whose rows open a details panel) by its row. */
 async function milestoneIds(page: Page): Promise<string[]> {
-  const ids = await page.locator('main a[href^="/r/milestone"]').evaluateAll((as) => as.map((a) => decodeURIComponent((a.getAttribute('href') ?? '').slice(3))));
-  return [...new Set(ids)].sort();
+  const linked = await page.locator('main a[href^="/r/milestone"]').evaluateAll((as) => as.map((a) => decodeURIComponent((a.getAttribute('href') ?? '').slice(3))));
+  const rows = await page.locator('main [data-gantt-item][data-item-id]').evaluateAll((els) => els.map((el) => el.getAttribute('data-item-id') ?? ''));
+  return [...new Set([...linked, ...rows])].sort();
 }
 
 test.describe('Plan: views and filters', () => {

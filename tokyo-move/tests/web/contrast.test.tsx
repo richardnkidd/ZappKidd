@@ -55,6 +55,8 @@ const PAIRS: Pair[] = [
   { fg: 'matcha', bg: ['paper', 'surface', 'surface-2', 'matcha-soft'], min: TEXT, use: 'done / ready text' },
   { fg: 'kaki', bg: ['paper', 'surface', 'surface-2', 'kaki-soft'], min: TEXT, use: 'blocked / legal text' },
   { fg: 'kin', bg: ['paper', 'surface', 'surface-2', 'kin-soft'], min: TEXT, use: 'due soon text' },
+  // Status glyphs drawn on a solid timeline bar (blocked, finished): non-text, so 3:1.
+  { fg: 'on-ai', bg: ['kaki', 'ink-3'], min: UI, use: 'icon on a solid blocked or finished timeline bar' },
   // Non-text: input borders, focus ring, icons that carry meaning.
   { fg: 'line-strong', bg: ['paper', 'surface', 'surface-2'], min: UI, use: 'input and control boundaries' },
   { fg: 'ai', bg: ['paper', 'surface', 'surface-2', 'ai-soft'], min: UI, use: 'focus ring' },

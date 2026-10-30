@@ -1,8 +1,7 @@
 import { Fragment, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { Link } from 'react-router';
-import { dependencyChain } from '@shared/readiness';
-import { PHASE_LABEL, PHASE_ORDER, WORK_STATUS_LABEL, ANCHOR_CONFIDENCE_LABEL } from '@shared/labels';
-import type { PhaseKey, WorkStatus } from '@shared/types';
+import { PHASE_LABEL, ANCHOR_CONFIDENCE_LABEL } from '@shared/labels';
+import type { AnchorData, HouseholdSettings, WorkStatus } from '@shared/types';
 import { AnchorDialog } from '../../components/AnchorDialog';
 import { DateText, DeadlineBadge, OptionalTag, StatusBadge } from '../../components/Badges';
 import { Button, Field, SegmentedControl, Select } from '../../components/Controls';
@@ -13,10 +12,10 @@ import { Card, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, plural } from '../../lib/format';
-import { groupByPhase, groupByStatus, groupPlan, sortPlanItems, type PlanItemData, type SortKey } from '../../lib/plan';
-import { attempt } from '../../lib/safe';
+import { departureAnchors, travelSummary } from '../../lib/gantt';
+import { groupByStatus, groupPlan, sortPlanItems, type PlanItemData, type SortKey } from '../../lib/plan';
 import { dataOf, isOpenWork, type Directory, type Indexes } from '../../lib/records';
-import type { AnchorData } from '@shared/types';
+import { GanttChart } from './Gantt';
 
 /* ------------------------------------------------------------------ shared */
 
@@ -250,39 +249,14 @@ export function BoardView({
 
 /* ------------------------------------------------------------------ timeline */
 
-function Chain({ itemKey, idx }: { itemKey: string; idx: Indexes }) {
-  const chain = useMemo(() => attempt(() => dependencyChain(itemKey, idx.all)), [itemKey, idx]);
-  const links = chain.ok
-    ? chain.value.filter((c) => !c.met).sort((a, b) => a.depth - b.depth)
-    : (idx.milestoneByKey.get(itemKey)?.data?.dependencies ?? [])
-        .map((k) => ({ key: k, title: idx.byKey.get(k)?.title ?? k, status: idx.byKey.get(k)?.status ?? '', met: false, depth: 1 }))
-        .filter((c) => c.status !== 'completed');
-  if (links.length === 0) return null;
-  return (
-    <div className="chain">
-      <span className="chain__label">Waits on</span>
-      <ol className="chain__list">
-        {links.map((c, i) => {
-          const rec = idx.byKey.get(c.key);
-          return (
-            <li key={c.key}>
-              {i > 0 && <Icon name="arrow-right" size={14} className="chain__arrow" />}
-              {rec ? <RecordLink id={rec.id}>{c.title}</RecordLink> : c.title}
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
+type AnchorRecord = Indexes['anchors'][number];
 
+/** Each traveler's own dates, with the editor. Moving one person's date never moves another's. */
 function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
-  const [editing, setEditing] = useState<(typeof idx.anchors)[number] | null>(null);
-  const anchors = idx.anchors.map((a) => dataOf<AnchorData>(a)).filter((a) => a.code);
+  const [editing, setEditing] = useState<AnchorRecord | null>(null);
   const forPerson = (id: string) => idx.anchors.filter((a) => dataOf<AnchorData>(a).traveler === id);
   const helpers = idx.anchors.filter((a) => dataOf<AnchorData>(a).traveler === 'household' || dataOf<AnchorData>(a).coordination_only);
-  if (anchors.length === 0) return null;
-  const row = (a: (typeof idx.anchors)[number]) => {
+  const row = (a: AnchorRecord) => {
     const d = dataOf<AnchorData>(a);
     return (
       <li key={a.id} className="lane__row">
@@ -298,15 +272,16 @@ function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
     );
   };
   return (
-    <Section title="Travel dates" headingLevel={2} intro="Each traveler has their own dates. Moving one person's date never moves another's.">
+    <>
+      <p className="small muted">Each traveler has their own dates. Moving one person's date never moves another's.</p>
       <div className="lanes">
         {dir.people.map((p) => {
           const rows = forPerson(p.id).filter((a) => !dataOf<AnchorData>(a).coordination_only);
           return (
             <Card as="section" key={p.id} className="lane" aria-label={`${p.display_name}'s dates`}>
-              <h3 className="lane__title">
+              <h4 className="lane__title">
                 <PersonBadge person={p} size={26} /> {p.display_name}
-              </h3>
+              </h4>
               {rows.length > 0 ? <ul>{rows.map(row)}</ul> : <p className="faint">No dates recorded yet.</p>}
             </Card>
           );
@@ -319,132 +294,57 @@ function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
           <ul>{helpers.map(row)}</ul>
         </Disclosure>
       )}
-    </Section>
+    </>
   );
 }
 
-export function TimelineView({ items, idx, dir, today }: { items: PlanItemData[]; idx: Indexes; dir: Directory; today: string }) {
-  const [mode, setMode] = useState<'windows' | 'table'>('windows');
-  const byPhase = useMemo(() => groupByPhase(sortPlanItems(items, 'date', (o) => o ?? '')), [items]);
-  const phases: (PhaseKey | 'none')[] = [...PHASE_ORDER, 'none'];
+/** "Travel dates", closed by default, with a one-line summary of what is and is not set. */
+function TravelDates({ idx, dir, settings }: { idx: Indexes; dir: Directory; settings: TimelineSettings }) {
+  const target = settings?.planning_target ?? null;
+  const summary = useMemo(
+    () => travelSummary(departureAnchors(idx.anchors.map((a) => dataOf<AnchorData>(a)), dir.people), dir.people, target),
+    [idx, dir, target],
+  );
+  if (idx.anchors.every((a) => !dataOf<AnchorData>(a).code)) return null;
+  return (
+    <Disclosure title="Travel dates" meta={summary} className="travel-dates">
+      <TravelLanes idx={idx} dir={dir} />
+    </Disclosure>
+  );
+}
 
+type TimelineSettings = Pick<HouseholdSettings, 'plan_baseline' | 'planning_target'> | null | undefined;
+
+export function TimelineView({ items, idx, dir, today, settings }: { items: PlanItemData[]; idx: Indexes; dir: Directory; today: string; settings?: TimelineSettings }) {
+  const [view, setView] = useState<'chart' | 'table'>('chart');
   const dated = useMemo(
     () => sortPlanItems(items.filter((i) => i.date && i.dateKind !== 'review_date'), 'date', (o) => o ?? ''),
     [items],
   );
   const reviewOnly = items.filter((i) => i.dateKind === 'review_date');
+  const undated = items.filter((i) => !i.date);
 
   return (
     <div className="stack stack--loose">
-      <TravelLanes idx={idx} dir={dir} />
+      <TravelDates idx={idx} dir={dir} settings={settings} />
       <Section
-        title="Phases"
+        title="When things happen"
         headingLevel={2}
-        intro="Work in the order it needs to happen. Chains show what is waiting on what — there is no single critical path to chase."
+        intro={view === 'chart' ? 'Bars show when work happens. Only a solid bar ends at a real date.' : 'Everything that has a date, in date order. The chart shows the rest by their phase.'}
         action={
           <SegmentedControl
             label="Timeline layout"
-            value={mode}
-            onChange={setMode}
+            value={view}
+            onChange={setView}
             options={[
-              { value: 'windows', label: 'Windows' },
-              { value: 'table', label: 'Dated table' },
+              { value: 'chart', label: 'Chart' },
+              { value: 'table', label: 'Table' },
             ]}
           />
         }
       >
-        {mode === 'windows' ? (
-          <ol className="phases">
-            {phases.map((p) => {
-              const list = byPhase.get(p) ?? [];
-              if (list.length === 0) return null;
-              const real = list.filter((i) => i.dateKind !== 'review_date' && i.date);
-              const undated = list.filter((i) => !i.date);
-              const reviews = list.filter((i) => i.dateKind === 'review_date');
-              const reviewsByDate = new Map<string, PlanItemData[]>();
-              for (const r of reviews) reviewsByDate.set(r.date!, [...(reviewsByDate.get(r.date!) ?? []), r]);
-              return (
-                <li key={p} className="phase">
-                  <h3 className="phase__title">
-                    {p === 'none' ? 'Not placed in a phase yet' : PHASE_LABEL[p]}
-                    <span className="count">{list.length}</span>
-                  </h3>
-                  <ul className="phase__list">
-                    {[...real, ...undated].map((it) => (
-                      <li key={it.m.id} className="phase__item">
-                        <div className="phase__row">
-                          <RecordLink id={it.m.id} className="phase__name">
-                            {it.m.title}
-                          </RecordLink>
-                          {it.m.data?.optional_future_work && <OptionalTag />}
-                        </div>
-                        <div className="item__meta">
-                          <OwnerChip owner={it.m.owner} proposed={it.m.owner_proposed} compact />
-                          <StatusBadge status={it.m.status} small />
-                          {it.date ? (
-                            <span className="item__when">
-                              <DateText date={it.date} today={today} state={it.dateState ?? undefined} kind={it.dateKind} />
-                              {it.dateKind && <DeadlineBadge kind={it.dateKind} />}
-                            </span>
-                          ) : (
-                            <DateText date={null} />
-                          )}
-                        </div>
-                        <Chain itemKey={it.m.key} idx={idx} />
-                      </li>
-                    ))}
-                    {[...reviewsByDate.entries()].map(([date, group]) =>
-                      group.length >= 2 ? (
-                        <li key={`rv-${date}`} className="phase__item phase__item--review">
-                          <details className="review-summary">
-                            <summary>
-                              <Icon name="chevron-right" size={16} className="review-summary__chev" />
-                              <span>
-                                <strong>Proposed review checkpoint</strong>
-                                <span className="faint">
-                                  {' '}
-                                  · {plural(group.length, 'item')} · {civil(date, 'short')} · not yet scheduled
-                                </span>
-                              </span>
-                            </summary>
-                            <p className="small muted">A moment to look at these again together. It is not a deadline.</p>
-                            <ul className="review-summary__list">
-                              {group.map((g) => (
-                                <li key={g.m.id}>
-                                  <RecordLink id={g.m.id}>{g.m.title}</RecordLink>
-                                  <span className="faint small"> · {WORK_STATUS_LABEL[g.m.status as WorkStatus] ?? g.m.status}</span>
-                                  <Chain itemKey={g.m.key} idx={idx} />
-                                </li>
-                              ))}
-                            </ul>
-                          </details>
-                        </li>
-                      ) : (
-                        group.map((it) => (
-                          <li key={it.m.id} className="phase__item">
-                            <div className="phase__row">
-                              <RecordLink id={it.m.id} className="phase__name">
-                                {it.m.title}
-                              </RecordLink>
-                            </div>
-                            <div className="item__meta">
-                              <OwnerChip owner={it.m.owner} compact />
-                              <StatusBadge status={it.m.status} small />
-                              <span className="item__when">
-                                <DateText date={it.date} today={today} />
-                                <DeadlineBadge kind="review_date" />
-                              </span>
-                            </div>
-                            <Chain itemKey={it.m.key} idx={idx} />
-                          </li>
-                        ))
-                      ),
-                    )}
-                  </ul>
-                </li>
-              );
-            })}
-          </ol>
+        {view === 'chart' ? (
+          <GanttChart items={items} idx={idx} dir={dir} today={today} baselineOn={settings?.plan_baseline?.baseline_on ?? null} target={settings?.planning_target ?? null} />
         ) : (
           <div className="table-wrap">
             <table className="table">
@@ -481,9 +381,14 @@ export function TimelineView({ items, idx, dir, today }: { items: PlanItemData[]
                 )}
               </tbody>
             </table>
-            {reviewOnly.length > 0 && (
+            {(reviewOnly.length > 0 || undated.length > 0) && (
               <p className="small muted table-foot">
-                {plural(reviewOnly.length, 'more item')} only {reviewOnly.length === 1 ? 'has' : 'have'} a proposed review checkpoint, which is not a deadline.{' '}
+                {undated.length > 0 && <>{plural(undated.length, 'more item')} {undated.length === 1 ? 'has' : 'have'} no date yet; the chart shows where their phase puts them. </>}
+                {reviewOnly.length > 0 && (
+                  <>
+                    {plural(reviewOnly.length, 'item')} only {reviewOnly.length === 1 ? 'has' : 'have'} a proposed review checkpoint, which is not a deadline.{' '}
+                  </>
+                )}
                 <Link to="/plan?view=list">See them in the list</Link>
               </p>
             )}

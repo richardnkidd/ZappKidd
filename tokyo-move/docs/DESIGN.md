@@ -190,3 +190,44 @@ Merged from four independent reviews. The rules that came out of it:
 **Settings keys read defensively (additions).** `settings.decision_effects: { decision_key, record_key }[]` (a built-in pair is used
 when absent); record fields `applies_to`, `sensitivity`, `carry_on_arrival`, `recorded_decision`, `settled_part`; question fields
 `origin`, `audience`, `facts_needed`; contact `phone` / `email` (the pack lists a contact only when one is saved).
+
+### Plan timeline (Gantt)
+
+`Plan → Timeline` is a chart (CSS grid and absolutely positioned buttons, no chart library) with a **Chart | Table** switch;
+the dated table is the accessible alternative. The model is `lib/gantt.ts` (pure, unit-tested); `screens/plan/Gantt.tsx` draws it
+and `styles/gantt.css` styles it with existing tokens only.
+
+- **Honest bars.** A bar ending at a real computed date is *firm* (solid, with a diamond). A bar placed only by its phase window
+  is *timing from its phase* (pale, hatched, dashed edge). A bar placed by `settings.planning_target` because a departure date
+  is not set is *placed by the target* (dotted edge and fill, grey). A check-in (`review_date`) is a hollow circle, never a
+  deadline. With no phase and no date, or a departure-relative phase and neither a departure date nor a target, the item sits in
+  "Not placed yet" with words and no bar. Every bar's accessible name says which of these it is; colour is never the only signal
+  (pattern, glyph for blocked/done/in progress, and text).
+- **Phase windows** live in one table (`PHASE_RULES`): Now = plan baseline (or today) to 30 Nov 2026; Nov–Dec 2026; Jan–Mar 2027;
+  then relative to the item's departure D: D−90…D−61, D−60…D−1, D…D+90, D+90…D+3 years. D is the item's one traveler's own
+  departure anchor, otherwise the household anchor, otherwise the planning target (flagged), otherwise none.
+- **`planning_target`** (`{ date, label, note? }`, household overrides key `planning_target`, read-only setting like `plan_baseline`)
+  is used only to place that undated relative work. It is never shown as a deadline and never moves one. Unset travel dates fall
+  back to it with a dashed departure marker reading "<name>: not set — <label> target".
+- **Axis.** "To day 90" runs from the start of the month of the earlier of today and the plan baseline to the latest departure
+  (or target) plus 90 days, in month columns; "Three years" runs to departure plus three years in quarter columns. The narrowest
+  column is 72px (56px on phones). The chart scrolls inside its own `role="region"` box (first paint puts today near the left
+  edge); the page itself never scrolls sideways. At 900px and wider the box also scrolls vertically (`max-height: min(78vh, 960px)`):
+  the axis, phase strip and key-dates rows stick to the top and the label column to the left, so group headers never repeat month
+  labels. Below 900px there is no inner vertical scroll (it would trap a thumb); each traveler group repeats a small, lighter month
+  axis instead (every few rows when grouped by area).
+- **Rows and groups.** Grouped **by traveler** by default (each person in directory order, then "Shared" for several people or the
+  household); "By area" is the other choice. The grouping and the range are remembered per browser (`timeline-group`,
+  `timeline-range` through the prefs helpers). Rows in a group read as a staircase: bar start, then end, then title. A group header
+  shows its counts in the label column and one thin neutral bar from the group's earliest start to its latest end.
+- **Shared check-ins.** When three or more items in the chart (after the plan's filters) share one proposed review date, the date
+  is drawn once, as a quiet dotted marker and guide line in Key dates ("Check-in · Nov 11, 2026 · 60 items · not scheduled"). It is a
+  button that lists those items, each linking to its page. Their rows lose the circle and its leader, group spans and ordering
+  ignore that date, and each bar's accessible name still says "household check-in on <date>, not a deadline". A row whose only date
+  was that check-in, with no bar of its own, goes to "Not placed yet". A check-in on fewer items stays a hollow circle on its row,
+  with a dotted leader only when it falls outside the bar.
+- **Interaction.** Each bar is a button. Enter or a click opens a small details popover (a bottom sheet on phones) with owner,
+  status, date and kind, "Waits on" and "Open item"; the unmet prerequisites of the selected item are outlined and joined to it by
+  thin lines (selected item only). Escape closes, and focus returns to the bar; Tab out of the details does the same.
+- **Travel dates** sit in a closed disclosure above the chart with a one-line summary; the date editor is unchanged.
+

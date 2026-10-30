@@ -30,6 +30,15 @@ async function openScreen(page: Page, path: string, heading: string | RegExp) {
   await page.waitForLoadState('networkidle');
 }
 
+/** The money sections ("One-time move", ...) are folded up; open one and return it. */
+async function openMoneyGroup(page: Page, name: string) {
+  const group = page.getByRole('group').filter({ has: page.getByRole('heading', { name }) });
+  const open = await group.evaluate((el) => (el as HTMLDetailsElement).open);
+  if (!open) await group.getByRole('heading', { name }).click();
+  await expect(group.getByRole('list').first()).toBeVisible();
+  return group;
+}
+
 const noBrokenValues = (text: string) => {
   expect(text).not.toMatch(/\bNaN\b|\bundefined\b|\bnull\b|Infinity|\[object /);
 };
@@ -43,18 +52,23 @@ test.describe('Money', () => {
     const main = page.getByRole('main');
 
     // Honest about what is not known (the demo has a yen amount but no exchange rate, and unverified income).
-    await expect(main).toContainText('Not known yet');
     await expect(main).toContainText(/Can.t conclude yet/);
     await expect(main).toContainText(/not the full need/);
     await expect(main).toContainText(/Not shown until everything is known/);
-    await expect(main).toContainText(/Needs the JPY-per-USD exchange rate/);
+    await expect(page.getByRole('region', { name: 'Exchange rate' })).toContainText('No exchange rate yet');
+    // The sections are folded up; opening one shows the line that waits for the rate, and a line with no amount.
+    const oneTime = await openMoneyGroup(page, 'One-time move');
+    await expect(oneTime).toContainText(/Needs the JPY-per-USD exchange rate/);
+    await expect(oneTime).toContainText('Not known yet');
+    await expect(oneTime.getByRole('button', { name: /^Add amount: / }).first()).toBeVisible();
+    await expect(page.getByRole('group').filter({ has: page.getByRole('heading', { name: 'Tokyo monthly' }) })).toContainText('No amounts yet');
     noBrokenValues(await main.innerText());
 
     // Scenarios: one is chosen at a time; the explanation changes with it.
     const group = page.getByRole('group', { name: 'Scenario' });
     const status = page.getByRole('status').filter({ hasText: /nothing extra assumed|more months|weaker|stress/i });
     await expect(group.getByRole('button', { name: 'Planning' })).toHaveAttribute('aria-pressed', 'true');
-    for (const name of ['Condo delay', 'Combined stress', 'Planning']) {
+    for (const name of ['Condo delay', 'Delay + weaker yen', 'Planning']) {
       await group.getByRole('button', { name }).click();
       await expect(group.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
     }
@@ -81,11 +95,10 @@ test.describe('Money', () => {
     await signIn(page, 'avery');
     await openScreen(page, '/money', 'Money');
     const rate = page.getByRole('region', { name: 'Exchange rate' });
-    const money = page.getByRole('region', { name: 'Where the money goes' });
-    await expect(rate).toContainText('Not known yet');
+    await expect(rate).toContainText('No exchange rate yet');
 
     const setRate = async (value: string, source: string) => {
-      await rate.getByRole('button', { name: 'Edit' }).click();
+      await rate.getByRole('button', { name: /^(Add rate|Edit)$/ }).click();
       const dialog = page.getByRole('dialog', { name: 'Exchange rate' });
       await dialog.getByRole('textbox', { name: 'Yen per US dollar' }).fill(value);
       await dialog.getByRole('textbox', { name: 'Where did the rate come from?' }).fill(source);
@@ -96,17 +109,21 @@ test.describe('Money', () => {
 
     try {
       await setRate('150', 'Demo rate typed by the test');
-      await expect(rate).toContainText('150');
+      await expect(rate).toContainText('¥150 per $1');
       await expect(rate).toContainText('Demo rate typed by the test');
-      // The yen deposit (960,000 yen) is now 6,400 dollars and no longer asks for a rate.
-      await expect(money.getByText('$6,400').first()).toBeVisible();
-      await expect(money).not.toContainText('Needs the JPY-per-USD exchange rate');
+      await expect(rate.getByRole('button', { name: 'Edit' })).toBeVisible();
+      // The yen deposit (960,000 yen) is now about 6,400 dollars and no longer asks for a rate.
+      const oneTime = await openMoneyGroup(page, 'One-time move');
+      await expect(oneTime.getByText('$6,400').first()).toBeVisible();
+      await expect(oneTime).not.toContainText('Needs the JPY-per-USD exchange rate');
       noBrokenValues(await page.getByRole('main').innerText());
     } finally {
       await setRate('', '');
     }
-    await expect(rate).toContainText('Not known yet');
-    await expect(money).toContainText('Needs the JPY-per-USD exchange rate');
+    await expect(rate).toContainText('No exchange rate yet');
+    await expect(rate.getByRole('button', { name: 'Add rate' })).toBeVisible();
+    const again = await openMoneyGroup(page, 'One-time move');
+    await expect(again).toContainText('Needs the JPY-per-USD exchange rate');
   });
 });
 
@@ -120,10 +137,13 @@ test.describe('Documents', () => {
     await expect(page.locator('input[type="file"]')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /upload|attach|add file/i })).toHaveCount(0);
 
-    // Each document shows where it is in its life, and who holds it.
+    // Each document is one compact row (status, who holds it, when it is needed); "Details" holds the rest.
     const first = page.getByRole('article').first();
+    await expect(first).toContainText(/Held by/);
+    await expect(first).toContainText(/Needed by/);
+    await expect(first.getByRole('button', { name: /^Update status: / })).toBeVisible();
+    await first.getByRole('heading', { name: 'Details' }).click();
     await expect(first.getByRole('list', { name: 'Where this document is' })).toContainText(/Requested/);
-    await expect(first).toContainText(/Who holds it/);
     await expect(first).toContainText(/Restricted link/);
 
     // Filtering by person narrows the list and the counts add up.
@@ -136,6 +156,19 @@ test.describe('Documents', () => {
     expect(mochi).toBeLessThan(everyone);
     await filter.getByRole('button', { name: /^Everyone/ }).click();
     await expect(page.getByRole('article')).toHaveCount(everyone);
+
+    // "Which documents": what needs action now, or has not been started; the chip counts match the list.
+    const which = page.getByRole('group', { name: 'Which documents' });
+    const notStarted = which.getByRole('button', { name: /^Not started/ });
+    const expected = Number(((await notStarted.innerText()).match(/(\d+)\s*$/) ?? [])[1]);
+    await notStarted.click();
+    await expect(notStarted).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('article')).toHaveCount(expected);
+    for (const a of await page.getByRole('article').all()) await expect(a).toContainText('Not started');
+    await which.getByRole('button', { name: /^Needs action now/ }).click();
+    expect(await page.getByRole('article').count()).toBeGreaterThan(0);
+    await which.getByRole('button', { name: /^All/ }).click();
+    await expect(page.getByRole('article')).toHaveCount(everyone);
   });
 
   test('updating a document records dates, and only accepts a safe https link', async ({ page, signIn, api }, testInfo) => {
@@ -143,7 +176,7 @@ test.describe('Documents', () => {
     await signIn(page, 'avery');
     await openScreen(page, '/documents', 'Documents');
     const card = page.getByRole('article', { name: title });
-    await card.getByRole('button', { name: 'Update status' }).click();
+    await card.getByRole('button', { name: `Update status: ${title}` }).click();
     const dialog = page.getByRole('dialog', { name: 'Update this document' });
 
     // A link that is not https is refused with a plain message; nothing is saved.
@@ -161,6 +194,7 @@ test.describe('Documents', () => {
     await dialog.getByRole('button', { name: 'Save' }).click();
     await expect(dialog).toHaveCount(0);
     try {
+      await card.getByRole('heading', { name: 'Details' }).click();
       await expect(card.getByRole('list', { name: 'Where this document is' })).toContainText('Oct 27, 2026');
       const after = await avery.record(before.id);
       expect(JSON.stringify(after.data)).toContain(marker);
@@ -331,8 +365,9 @@ test.describe('Future work', () => {
     // Future work stays off Home's plan sections (the change log may mention an edit, so it is not counted).
     await page.goto('/');
     await loaded(page);
-    for (const section of [/^Now/, /^Needs a decision/, /^Blocked/, /^Coming up/, /^Who.s ready/]) {
-      await expect(page.getByRole('region', { name: section })).not.toContainText(title);
+    for (const section of [/^This week/, /^Needs a decision/, /^Blocked/, /^Coming up/, /^Who.s ready/]) {
+      const region = page.getByRole('region', { name: section }).or(page.getByRole('navigation', { name: section }));
+      if ((await region.count()) > 0) await expect(region).not.toContainText(title);
     }
   });
 });
@@ -383,7 +418,7 @@ test.describe('Settings', () => {
     await signIn(page, 'avery');
     await openScreen(page, '/settings', 'Settings');
     await page.getByRole('combobox', { name: 'Show times in' }).selectOption({ label: 'Tokyo (JST)' });
-    await expect(page.getByRole('button', { name: /JST time/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Tokyo time/ })).toBeVisible();
     await page.getByRole('combobox', { name: 'Show times in' }).selectOption({ label: 'Honolulu (HST)' });
 
     const html = page.locator('html');
@@ -448,6 +483,8 @@ test.describe('Couple review', () => {
     for (const step of ['What changed', 'This week and owners', 'Decisions', 'A few questions', 'Wrap-up']) {
       await expect(main.getByRole('listitem').filter({ hasText: step }).first()).toBeVisible();
     }
+    // What the last review said (or that none has been finished yet) is kept on this page.
+    await expect(page.getByRole('region', { name: 'Last review' })).toBeVisible();
     await page.getByRole('button', { name: /^(Start a review together|Continue the review)$/ }).click();
 
     const avery = await api('avery');
@@ -458,6 +495,11 @@ test.describe('Couple review', () => {
     for (let i = 0; i < titles.length; i += 1) {
       await expect(page.getByRole('region', { name: new RegExp(`^Step ${i + 1} of 5`) })).toBeVisible();
       await expect(page.getByRole('heading', { level: 3, name: titles[i]! }).first()).toBeVisible();
+      // The step list says where you are for everyone, not by colour: done, current or not started.
+      for (let j = 0; j < titles.length; j += 1) {
+        const state = j < i ? 'done' : j === i ? 'current' : 'not started';
+        await expect(page.getByRole('navigation', { name: 'Review steps' }).getByRole('listitem', { name: `Step ${j + 1} of 5, ${titles[j]}, ${state}`, exact: true })).toBeVisible();
+      }
       if (i === 2) {
         // At most three decisions, as everywhere else.
         expect(await page.getByRole('region', { name: /^Step 3 of 5/ }).getByRole('listitem').filter({ has: page.getByRole('heading', { level: 3 }) }).count()).toBeLessThanOrEqual(3);
@@ -488,6 +530,16 @@ test.describe('Couple review', () => {
     expect(planAfter).toBe(plan);
     await page.goto('/');
     await expect(page.getByRole('region', { name: /^Since your last review/ })).toBeVisible();
+
+    // The review page now shows it as the last review, and its summary is titled by the day.
+    await page.goto('/review');
+    await loaded(page);
+    const last = page.getByRole('region', { name: 'Last review' });
+    await expect(last).toContainText(/with Avery and Jun/);
+    await expect(last).toContainText(/Next review planned for/);
+    await last.getByRole('link', { name: 'Read the whole summary' }).click();
+    // (a side panel on wide screens, a page on phones: either way the heading names the day)
+    await expect(page.getByRole('heading', { name: /^Couple review · [A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}$/ })).toBeVisible();
   });
 });
 
@@ -544,25 +596,34 @@ test.describe('Printable arrival pack', () => {
       await expect(page.getByRole('checkbox', { name })).toBeChecked();
       await expect(page.getByRole('article', { name: `Arrival pack for ${name}` })).toBeVisible();
     }
-    // Sensitive sections are off by default and nothing about them appears.
-    const health = page.getByRole('checkbox', { name: /Include health and medicine/ });
-    const money = page.getByRole('checkbox', { name: /Include money and accounts/ });
-    await expect(health).not.toBeChecked();
-    await expect(money).not.toBeChecked();
+    // Sensitive sections are off by default and nothing about them appears. (The pack only offers a tick-box for a
+    // section when it would actually list something sensitive; the demo has nothing marked sensitive.)
+    const sensitive = page.getByRole('group', { name: /Sensitive sections/ });
+    await expect(sensitive).toBeVisible();
     const pack = page.getByRole('article', { name: 'Arrival pack for Avery' });
     await expect(pack.getByRole('heading', { name: /health|medicine/i })).toHaveCount(0);
     await expect(pack.getByRole('heading', { name: /money|accounts|banking/i })).toHaveCount(0);
+    const boxes = sensitive.getByRole('checkbox');
+    const nBoxes = await boxes.count();
+    if (nBoxes === 0) {
+      await expect(sensitive).toContainText(/Nothing the pack would list is marked sensitive/);
+    } else {
+      for (const box of await boxes.all()) await expect(box).not.toBeChecked();
+    }
 
     // Unticking a traveler removes their page.
     await page.getByRole('checkbox', { name: 'Mochi' }).uncheck();
     await expect(page.getByRole('article', { name: 'Arrival pack for Mochi' })).toHaveCount(0);
     await page.getByRole('checkbox', { name: 'Mochi' }).check();
 
-    // Ticking a sensitive section adds it, and unticking removes it again.
-    await health.check();
-    await expect(pack.getByRole('heading', { name: /health|medicine/i })).toBeVisible();
-    await health.uncheck();
-    await expect(pack.getByRole('heading', { name: /health|medicine/i })).toHaveCount(0);
+    // Ticking a sensitive section (when there is one) adds it, and unticking removes it again.
+    if (nBoxes > 0) {
+      const headingsBefore = await pack.getByRole('heading').count();
+      await boxes.first().check();
+      await expect.poll(async () => pack.getByRole('heading').count()).toBeGreaterThan(headingsBefore);
+      await boxes.first().uncheck();
+      await expect.poll(async () => pack.getByRole('heading').count()).toBe(headingsBefore);
+    }
 
     // Documents show status and who holds them, never document numbers; links are written out as text.
     await expect(pack).toContainText(/Held by/);

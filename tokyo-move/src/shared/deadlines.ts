@@ -544,6 +544,9 @@ export function collectDeadlines(ctx: DeadlineContext): ComputedDeadline[] {
   // Task due dates from the task store (or its snapshot).
   for (const link of ctx.task_links ?? []) {
     if (!link.due || !isCivilDate(link.due)) continue;
+    // A proposal that no authorized writer has added to the task list yet is not a commitment: it has no date in
+    // anyone's task list, so it never appears among deadlines (and can never be "overdue").
+    if (link.sync_state === 'pending_capture' || !link.canonical_id) continue;
     let st = stateFor(link.due, ctx.today, soon);
     if (link.status === 'done') st = { state: 'met', days_until: st.days_until };
     else if (link.status === 'cancelled') st = { state: 'not_applicable', days_until: st.days_until };

@@ -4,11 +4,12 @@ import { expect, loaded, test } from './support/fixtures';
 /** Home answers six questions: what matters now, who owns it, what is blocked, what decision is needed, what is next, and is each traveler ready. */
 
 const sections = (page: Page) => ({
-  now: page.getByRole('region', { name: /^Now/ }),
+  now: page.getByRole('region', { name: /^This week/ }),
   decisions: page.getByRole('region', { name: /^Needs a decision/ }),
   blocked: page.getByRole('region', { name: /^Blocked/ }),
   coming: page.getByRole('region', { name: /^Coming up/ }),
-  ready: page.getByRole('region', { name: /^Who.s ready/ }),
+  // Wide screens: a section with a card per traveler. Phones: a compact "Who's ready" list of links under the greeting.
+  ready: page.getByRole('region', { name: /^Who.s ready/ }).or(page.getByRole('navigation', { name: /^Who.s ready/ })),
   recent: page.getByRole('region', { name: /^(Recent changes|Since your last review)/ }),
 });
 
@@ -17,6 +18,10 @@ async function openHome(page: Page, signIn: (p: Page, who: 'avery' | 'jun', path
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Avery');
   await loaded(page);
   await expect(sections(page).now).toBeVisible();
+  // First visit starts from "Needs me" on phones and "Everything" on wide screens; the checks below start from everything.
+  const everything = page.getByRole('group', { name: 'Show items for' }).getByRole('button', { name: 'Everything', exact: true });
+  await everything.click();
+  await expect(everything).toHaveAttribute('aria-pressed', 'true');
 }
 
 /** Record ids (milestone:W03 ...) linked from a section, ignoring items that come from the task list. */
@@ -61,20 +66,29 @@ test.describe('Home', () => {
     // A decision says who still has to agree.
     await expect(decisionItems.first()).toContainText(/Awaiting|Approved by|Not yet approved/);
 
-    // 3. What is blocked, and why.
-    const blockedItems = s.blocked.getByRole('listitem');
-    expect(await blockedItems.count()).toBeGreaterThan(0);
-    for (const item of await blockedItems.all()) {
-      const text = (await item.innerText()).replace(/\s+/g, ' ');
-      expect(text, 'a blocked item always says why or what it waits for').toMatch(/(why|waiting for)\s+\S{3,}/i);
-    }
-    // The reason shown matches the reason stored with the record (not an empty placeholder).
-    const blockedIds = await recordIds(s.blocked);
-    expect(blockedIds.length).toBeGreaterThan(0);
-    for (const id of blockedIds) {
-      const rec = (snap.records as any[]).find((r) => r.id === id);
-      expect(['blocked', 'waiting_external']).toContain(rec.status);
-      expect(String(rec.data.status_reason ?? '').length, `${id} has a written reason`).toBeGreaterThan(5);
+    // 3. What is blocked, and why. Wide screens list the blocked items with their reasons; phones show one honest line
+    // ("Blocked: 3") with a link to the board, and the reason lives on each item (checked at the end).
+    const wide = (page.viewportSize()?.width ?? 0) >= 1024;
+    const blockedRecords = (snap.records as any[]).filter((r) => r.type === 'milestone' && (r.status === 'blocked' || r.status === 'waiting_external'));
+    expect(blockedRecords.length).toBeGreaterThan(0);
+    if (wide) {
+      const blockedItems = s.blocked.getByRole('listitem');
+      expect(await blockedItems.count()).toBeGreaterThan(0);
+      for (const item of await blockedItems.all()) {
+        const text = (await item.innerText()).replace(/\s+/g, ' ');
+        expect(text, 'a blocked item always says why or what it waits for').toMatch(/(why|waiting for)\s+\S{3,}/i);
+      }
+      // The reason shown matches the reason stored with the record (not an empty placeholder).
+      const blockedIds = await recordIds(s.blocked);
+      expect(blockedIds.length).toBeGreaterThan(0);
+      for (const id of blockedIds) {
+        const rec = (snap.records as any[]).find((r) => r.id === id);
+        expect(['blocked', 'waiting_external']).toContain(rec.status);
+        expect(String(rec.data.status_reason ?? '').length, `${id} has a written reason`).toBeGreaterThan(5);
+      }
+    } else {
+      await expect(s.blocked).toContainText(new RegExp(`Blocked:\\s*${blockedRecords.length}(?!\\d)`));
+      await expect(s.blocked.getByRole('link', { name: /See what.s blocked/ })).toHaveAttribute('href', /\/plan\?view=board/);
     }
 
     // 4. What is next / coming up: dated rows with a real <time>, nothing invented.
@@ -98,6 +112,15 @@ test.describe('Home', () => {
     expect(text, 'no "%" anywhere on Home').not.toContain('%');
     expect(text).not.toMatch(/\b\d+\s*percent\b/i);
     expect(text, 'no internal IDs such as W06 or DOC12 on Home').not.toMatch(/\b(W\d{2}|DOC\d{2}|D\d{2}|R\d{2}|Q\d{3})\b/);
+
+    // However it is summarised on Home, every blocked item says why on its own page, in the words stored with it.
+    for (const rec of blockedRecords.filter((r) => r.status === 'blocked')) {
+      await page.goto(`/r/${encodeURIComponent(rec.id)}`);
+      await expect(page.getByRole('heading', { level: 1, name: rec.title })).toBeVisible();
+      await expect(page.getByText(/Why it.s blocked/)).toBeVisible();
+      expect(String(rec.data.status_reason ?? '').length).toBeGreaterThan(5);
+      await expect(page.getByRole('main')).toContainText(String(rec.data.status_reason).slice(0, 14));
+    }
   });
 
   test('the owner filters change what is listed', async ({ page, signIn, api }) => {
@@ -109,8 +132,8 @@ test.describe('Home', () => {
 
     const group = page.getByRole('group', { name: 'Show items for' });
     await expect(group).toBeVisible();
-    const chip = (name: string | RegExp) => group.getByRole('button', { name });
-    for (const label of ['Everything', 'Mine', 'Together', 'Unassigned', 'Waiting on someone else']) {
+    const chip = (name: string | RegExp) => group.getByRole('button', { name, exact: typeof name === 'string' });
+    for (const label of ['Everything', 'Needs me', 'Only mine', 'Together', 'Unassigned', 'Waiting on someone else']) {
       await expect(chip(label)).toBeVisible();
     }
     await expect(chip(/^Jun.s$/)).toBeVisible(); // the other adult, by name
@@ -119,10 +142,13 @@ test.describe('Home', () => {
     const listed = async () => {
       // Now + Blocked + Decisions together; decisions link to /decide#decision-D02, so read those separately.
       const ids = [...(await recordIds(s.now)), ...(await recordIds(s.blocked))];
-      return { ids, text: ((await s.now.innerText()) + (await s.blocked.innerText()) + (await s.decisions.innerText())).replace(/\s+/g, ' ') };
+      const textOf = async (l: Locator) => ((await l.count()) > 0 ? await l.innerText() : '');
+      return { ids, text: ((await textOf(s.now)) + (await textOf(s.blocked)) + (await textOf(s.decisions))).replace(/\s+/g, ' ') };
     };
     const filters: { chip: string | RegExp; allows: (id: string) => boolean; empty: RegExp }[] = [
-      { chip: 'Mine', allows: (id) => ownerOf(id) === 'avery', empty: /Nothing (here|is blocked|waiting|is waiting)|No open decisions/ },
+      // "Needs me" is wider than "Only mine": mine, shared with me, or (for decisions) waiting for my approval.
+      { chip: 'Needs me', allows: (id) => ['avery', 'together'].includes(ownerOf(id)), empty: /Nothing (here|is blocked)|No open decisions/ },
+      { chip: 'Only mine', allows: (id) => ownerOf(id) === 'avery', empty: /Nothing (here|is blocked|waiting|is waiting)|No open decisions/ },
       { chip: /^Jun.s$/, allows: (id) => ownerOf(id) === 'jun', empty: /Nothing (here|is blocked)|No open decisions/ },
       { chip: 'Together', allows: (id) => ownerOf(id) === 'together', empty: /Nothing (here|is blocked)|No open decisions/ },
       { chip: 'Unassigned', allows: (id) => ['unassigned', null].includes(byId.get(id)?.owner ?? null), empty: /Nothing (here|is blocked)|No open decisions/ },
@@ -142,7 +168,7 @@ test.describe('Home', () => {
       seen.set(String(f.chip), now.ids);
     }
     // The filters really do different things: the two adults' lists share nothing, and not every view equals "Everything".
-    const mine = seen.get('Mine')!;
+    const mine = seen.get('Only mine')!;
     const jun = seen.get(String(/^Jun.s$/))!;
     expect(mine.filter((id) => jun.includes(id))).toEqual([]);
     expect(mine.length + jun.length + (seen.get('Together')?.length ?? 0)).toBeGreaterThan(0);
@@ -156,6 +182,15 @@ test.describe('Home', () => {
     // Back to everything restores the first list.
     await chip('Everything').click();
     expect((await listed()).ids).toEqual(everything.ids);
+  });
+
+  test('the first visit starts from "Needs me" on a phone and from everything on a wide screen', async ({ page, signIn }) => {
+    await signIn(page, 'avery', '/');
+    await loaded(page);
+    const wide = (page.viewportSize()?.width ?? 0) >= 1024;
+    const group = page.getByRole('group', { name: 'Show items for' });
+    await expect(group.getByRole('button', { name: wide ? 'Everything' : 'Needs me', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(group.getByRole('button', { pressed: true })).toHaveCount(1);
   });
 
   test('remembers the chosen filter for this person on this device', async ({ page, signIn }) => {

@@ -46,3 +46,21 @@ describe('historical dates are never overdue', () => {
     expect(d?.state).toBe('historical');
   });
 });
+
+describe('pending task proposals are not deadlines', () => {
+  it('a proposal waiting to be added never produces a deadline, even with a past date', () => {
+    const out = collectDeadlines({
+      records: [], people: [], today: '2026-10-29',
+      task_links: [link({ adapter: 'snapshot', canonical_id: null, sync_state: 'pending_capture', due: '2026-10-20', due_basis: 'explicit' })],
+    });
+    expect(out).toHaveLength(0);
+  });
+
+  it('a failed capture (no id in the task list) is also not a deadline', () => {
+    const out = collectDeadlines({
+      records: [], people: [], today: '2026-10-29',
+      task_links: [link({ adapter: 'fixture', canonical_id: null, sync_state: 'error', due: '2026-11-12', due_basis: 'default_14_days' })],
+    });
+    expect(out).toHaveLength(0);
+  });
+});

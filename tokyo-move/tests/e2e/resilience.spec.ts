@@ -90,6 +90,74 @@ test.describe('When things go wrong', () => {
     await expect(page.getByRole('region', { name: 'Next action' })).toContainText(String(before.data.next_action));
   });
 
+  test('leaving a page with unsaved typing asks first: "Keep editing" stays, "Discard and leave" goes', async ({ page, signIn, api }, testInfo) => {
+    const id = TARGET[testInfo.project.name]!;
+    const avery = await api('avery');
+    const before = await avery.record(id);
+    const words = `A half-written thought [${testInfo.project.name}]`;
+    const nav = page.getByRole('navigation', { name: 'Main' });
+    const guard = page.getByRole('dialog', { name: 'You have changes that aren’t saved' });
+    const box = page.getByRole('textbox', { name: 'Next action' });
+
+    // Arrive by clicking through the app (not by typing the address), so Back is a move inside the app.
+    await signIn(page, 'avery', '/plan?view=list');
+    await loaded(page);
+    await page.getByRole('main').getByRole('link', { name: before.title as string, exact: true }).first().click();
+    await expect(page.getByRole('button', { name: 'Edit next action' })).toBeVisible();
+    await page.getByRole('button', { name: 'Edit next action' }).click();
+    await box.fill(words);
+    await expect(page.getByText('Unsaved changes').first()).toBeVisible();
+
+    // A link elsewhere is stopped and the person is asked; nothing is lost by saying "Keep editing".
+    await nav.getByRole('link', { name: 'Plan', exact: true }).click();
+    await expect(guard).toBeVisible();
+    await expect(guard).toContainText('If you leave this page now, what you typed is lost');
+    await expect(page).toHaveURL(/\/r\//);
+    await guard.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(guard).toHaveCount(0);
+    await expect(box).toHaveValue(words);
+    await expect(page).toHaveURL(/\/r\//);
+
+    // Escape means the same as "Keep editing".
+    await nav.getByRole('link', { name: 'Plan', exact: true }).click();
+    await expect(guard).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(guard).toHaveCount(0);
+    await expect(box).toHaveValue(words);
+
+    // The browser's own Back button is stopped the same way.
+    await page.goBack();
+    await expect(guard).toBeVisible();
+    await guard.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(box).toHaveValue(words);
+
+    // Closing the tab or reloading gets the browser's own warning too.
+    await box.press('End');
+    await box.pressSequentially('!');
+    const asked = page.waitForEvent('dialog');
+    await page.close({ runBeforeUnload: true });
+    const prompt = await asked;
+    expect(prompt.type(), 'the browser asks before closing a page with unsaved typing').toBe('beforeunload');
+    await prompt.dismiss();
+    expect(page.isClosed()).toBe(false);
+    await box.fill(words);
+
+    // "Discard and leave" goes, and what was typed is not saved.
+    await nav.getByRole('link', { name: 'Plan', exact: true }).click();
+    await expect(guard).toBeVisible();
+    await guard.getByRole('button', { name: 'Discard and leave' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Plan' })).toBeVisible();
+    expect((await avery.record(id)).data.next_action).toBe(before.data.next_action);
+
+    // Nothing to lose, nothing to ask: after saving (or with no typing) links just work.
+    await openRecord(page, id);
+    await page.getByRole('button', { name: 'Edit next action' }).click();
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await nav.getByRole('link', { name: 'Decide', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Decide' })).toBeVisible();
+    await expect(guard).toHaveCount(0);
+  });
+
   test('when the session ends the person is taken back to sign-in, not shown errors', async ({ page, context, signIn }) => {
     await signIn(page, 'avery', '/plan');
     await loaded(page);

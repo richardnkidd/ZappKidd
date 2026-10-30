@@ -132,7 +132,7 @@ test.describe('Navigation', () => {
     await signIn(page, 'avery', '/');
     await loaded(page);
     // Wide screens show a card with "See everything for Jun"; phones show a compact tappable row. Both go to the same page.
-    const link = page.getByRole('region', { name: /^Who.s ready/ }).locator('a[href="/ready/jun"]').first();
+    const link = page.getByRole('main').locator('a[href="/ready/jun"]').first();
     await link.click();
     await expect(page).toHaveURL(/\/ready\/jun/);
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Jun');

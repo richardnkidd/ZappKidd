@@ -773,6 +773,11 @@ legend {
 /* ---------- Tables ---------- */
 .table-wrap {
   overflow-x: auto;
+  /* stay inside the page column even when the table is wider (200% text): the table scrolls, the page doesn't */
+  max-width: 100%;
+  min-width: 0;
+  /* containing block for absolutely positioned screen-reader text inside cells, so it can't widen the page */
+  position: relative;
   border: 1px solid var(--line);
   border-radius: var(--r-card);
   background: var(--surface);

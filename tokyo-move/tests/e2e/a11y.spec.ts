@@ -260,7 +260,9 @@ test.describe('Accessibility smoke', () => {
 
     await page.goto('/decide');
     await settle(page);
-    await page.getByRole('article').first().getByRole('button', { name: /^Approve as|Change my approval/ }).click();
+    const first = page.getByRole('article').first();
+    await first.getByRole('button', { name: 'Review options and decide' }).click(); // the approve buttons appear once the options do
+    await first.getByRole('button', { name: /^Approve as|Change my approval/ }).click();
     const approve = page.getByRole('dialog', { name: /^Approve as/ });
     await expect(approve).toBeVisible();
     await check(page, 'approve dialog', { scope: '[role="dialog"]' });

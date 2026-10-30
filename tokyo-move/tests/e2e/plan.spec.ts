@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Page, TestInfo } from '@playwright/test';
 import { baseUrlFor } from './support/env';
 import { addDays, expect, loaded, openRecord, test, todayInZone, unique, weekdayLabel, type Api } from './support/fixtures';
 
@@ -19,7 +19,7 @@ async function openFilters(page: Page) {
   if ((await toggle.isVisible()) && (await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
 }
 
-async function chooseView(page: Page, name: 'By workstream' | 'List' | 'Board' | 'Timeline') {
+async function chooseView(page: Page, name: 'By area' | 'List' | 'Board' | 'Timeline') {
   const group = page.getByRole('group', { name: 'Plan view' });
   await group.getByRole('button', { name }).click();
   await expect(group.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
@@ -48,7 +48,7 @@ test.describe('Plan: views and filters', () => {
     await expect(page.getByRole('status').filter({ hasText: /^Showing \d+ of \d+$/ })).toHaveText(`Showing ${expected.length} of ${expected.length + 1}`);
 
     const found: Record<string, string[]> = {};
-    for (const view of ['By workstream', 'List', 'Board', 'Timeline'] as const) {
+    for (const view of ['By area', 'List', 'Board', 'Timeline'] as const) {
       await chooseView(page, view);
       if (view === 'Board') {
         // Long columns show the first few cards; "Show N more" reveals the rest.
@@ -299,6 +299,83 @@ test.describe('Propose an action', () => {
 test.describe('Propose an action on a read-only task list', () => {
   test.use({ baseURL: baseUrlFor('snapshot') });
 
+  async function makeProposals(avery: Api, testInfo: TestInfo) {
+    const zone: string = (await avery.snapshot()).me.household.home_timezone;
+    const today = todayInZone(zone);
+    const proposals = [
+      { label: 'soon', title: unique('Call the mover about dates', testInfo), due: addDays(today, 3) },
+      { label: 'past', title: unique('Photocopy the lease', testInfo), due: addDays(today, -9) },
+      { label: 'default', title: unique('Ask the vet for a copy of the records', testInfo), due: addDays(today, 14) },
+    ];
+    for (const p of proposals) {
+      const made = await avery.post('/api/tasks', { title: p.title, record_id: PROPOSE_TARGET, owner: 'avery', due: p.due, due_mode: 'explicit' });
+      expect(made.task.sync_state).toBe('pending_capture');
+    }
+    return proposals;
+  }
+  const LATE = /overdue|past its date|date has passed|\blate\b|not done/i;
+  const IN_LIST = /\bin your task list\b|from your task list/i;
+
+  test('a pending proposal says "Waiting to be added" wherever it is listed, never "in your task list" and never overdue', async ({ page, signIn, api }, testInfo) => {
+    const avery = await api('avery', 'snapshot');
+    const proposals = await makeProposals(avery, testInfo);
+
+    // 1. The Home list of waiting proposals: every one is labelled, and the date of a past one is told as history.
+    await signIn(page, 'avery', '/');
+    await loaded(page);
+    await page.getByRole('group', { name: 'Show items for' }).getByRole('button', { name: 'Everything', exact: true }).click();
+    const waiting = page.getByRole('region', { name: /^Waiting to be added to your task list/ });
+    await expect(waiting).toBeVisible();
+    for (const p of proposals) {
+      const row = waiting.getByRole('listitem').filter({ hasText: p.title });
+      await expect(row, p.label).toBeVisible();
+      await expect(row).toContainText('Waiting to be added');
+      await expect(row).not.toContainText(IN_LIST);
+      await expect(row).not.toContainText(LATE);
+      if (p.label === 'past') await expect(row).toContainText(/date was/i);
+    }
+
+    // 2. They are not plan work: not under "This week", the decisions or the blocked items.
+    for (const section of [/^This week/, /^Needs a decision/, /^Blocked/]) {
+      const region = page.getByRole('region', { name: section });
+      if ((await region.count()) === 0) continue;
+      for (const p of proposals) await expect(region, `${p.label} is not listed under ${String(section)}`).not.toContainText(p.title);
+    }
+
+    // 3. On the item itself: "Waiting to be added", with the date told honestly, and no claim it is on the task list.
+    await openRecord(page, PROPOSE_TARGET);
+    const tasks = page.getByRole('region', { name: /^Tasks on your task list/ });
+    for (const p of proposals) {
+      const row = tasks.getByRole('listitem').filter({ hasText: p.title });
+      await expect(row, p.label).toBeVisible();
+      await expect(row).toContainText('Waiting to be added');
+      await expect(row).toContainText(/not added yet/);
+      await expect(row).not.toContainText(IN_LIST);
+      await expect(row).not.toContainText(LATE);
+      if (p.label === 'past') await expect(row).toContainText(/date was/i);
+    }
+    await expect(tasks.getByRole('heading', { name: /Proposed for your task list/ })).toBeVisible();
+
+    // 4. Not in the plan views or on the traveler page as dated work either.
+    for (const path of ['/plan?view=list', '/plan?view=timeline', '/ready/avery']) {
+      await page.goto(path);
+      await loaded(page);
+      for (const p of proposals) await expect(page.getByRole('main'), `${p.label} on ${path}`).not.toContainText(p.title);
+    }
+  });
+
+  test('a pending proposal never turns up in "Coming up" as a committed date, and is never "past its date"', async ({ page, signIn, api }, testInfo) => {
+    const avery = await api('avery', 'snapshot');
+    const proposals = await makeProposals(avery, testInfo);
+    await signIn(page, 'avery', '/');
+    await loaded(page);
+    await page.getByRole('group', { name: 'Show items for' }).getByRole('button', { name: 'Everything', exact: true }).click();
+    const coming = page.getByRole('region', { name: /^Coming up/ });
+    await expect(coming).toBeVisible();
+    for (const p of proposals) {
+      await expect(coming, `"${p.title}" (${p.label}) is only a proposal; it has no date of its own to count down to`).not.toContainText(p.title);
+    }
+  });
   test('stays "Waiting to be added to your task list" and nothing pretends it was created', async ({ page, signIn, api }, testInfo) => {
     const title = unique('Check the crate size', testInfo);
     await signIn(page, 'avery', `/r/${enc(PROPOSE_TARGET)}`);
@@ -311,9 +388,11 @@ test.describe('Propose an action on a read-only task list', () => {
 
     const row = page.getByRole('region', { name: /^Tasks on your task list/ }).getByRole('listitem').filter({ hasText: title });
     await expect(row).toBeVisible();
-    await expect(row.getByText('Waiting to be added to your task list').first()).toBeVisible();
+    await expect(row.getByText('Waiting to be added').first()).toBeVisible();
+    await expect(row).toContainText(/Proposed for your task list · not added yet/);
+    await expect(row).toContainText(/Kadode can.t add this to your task list/);
     await expect(row).not.toContainText('Up to date');
-    await expect(row).toContainText(/Nothing has been created there yet/);
+    await expect(row).not.toContainText(/\bin your task list\b/i);
 
     const avery = await api('avery', 'snapshot');
     const created = ((await avery.get('/api/tasks')).task_links as any[]).find((t) => t.title === title);

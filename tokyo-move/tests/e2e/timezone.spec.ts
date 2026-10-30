@@ -7,9 +7,9 @@ import { expect, loaded, newContext, openAccount, test } from './support/fixture
  */
 
 const ZONES = [
-  { option: 'Tokyo (JST)', short: 'JST' },
-  { option: 'New York (EST/EDT)', short: 'EST|EDT' },
-  { option: 'Honolulu (HST)', short: 'HST' },
+  { option: 'Tokyo (JST)', place: 'Tokyo' },
+  { option: 'New York (EST/EDT)', place: 'New York' },
+  { option: 'Honolulu (HST)', place: 'Hawaii' },
 ] as const;
 
 /**
@@ -82,7 +82,7 @@ test.describe('Time zones', () => {
 
       for (const zone of ZONES) {
         await chooseZone(page, zone.option);
-        await expect(page.getByRole('button', { name: new RegExp(`(${zone.short}) time`) })).toBeVisible();
+        await expect(page.getByRole('button', { name: new RegExp(`${zone.place} time`) })).toBeVisible();
         const now = await dateOnlyTimes(page);
         expectSameDates(now, baseline, windowed, `${path} dates in ${zone.option}`);
       }
@@ -94,7 +94,7 @@ test.describe('Time zones', () => {
     await loaded(page);
     await chooseZone(page, 'Honolulu (HST)');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Avery');
-    await expect(page.getByText(/· Honolulu time/)).toBeVisible();
+    await expect(page.getByText(/· Hawaii time/)).toBeVisible();
     const hst = await instants(page);
     expect(hst.length).toBeGreaterThan(0);
     for (const t of hst) expect(t).toMatch(/HST/);
@@ -118,7 +118,7 @@ test.describe('Time zones', () => {
     await chooseZone(page, 'Tokyo (JST)');
     await page.reload();
     await loaded(page);
-    await expect(page.getByRole('button', { name: /JST time/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Tokyo time/ })).toBeVisible();
     expect(await dateOnlyTimes(page)).toEqual(baseline);
   });
 
@@ -131,17 +131,22 @@ test.describe('Time zones', () => {
         const res = await context.request.post('/api/auth/dev-login', { data: { person_id: 'avery' }, headers: { Origin: new URL(baseURL!).origin } });
         expect(res.status()).toBe(200);
         const page = await context.newPage();
-        await page.goto('/plan?view=list');
-        await expect(page.getByRole('heading', { level: 1, name: 'Plan' })).toBeVisible();
-        await loaded(page);
-        await expect(page.getByRole('table').or(page.getByRole('list')).first()).toBeVisible();
-        results[tz ?? 'default'] = await dateOnlyTimes(page);
+        // Several screens, so there are plenty of dates to compare (most plan items carry no date of their own).
+        const merged: Record<string, string> = {};
+        for (const path of ['/plan?view=list', '/plan?view=timeline', '/ready/mochi', '/ready/avery', '/r/milestone%3AW06']) {
+          await page.goto(path);
+          await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+          await loaded(page);
+          await page.waitForLoadState('networkidle');
+          for (const [dt, text] of Object.entries(await dateOnlyTimes(page))) merged[`${path} ${dt}`] = text;
+        }
+        results[tz ?? 'default'] = merged;
       } finally {
         await context.close();
       }
     }
     const keys = Object.keys(results);
-    expect(Object.keys(results['default']!).length).toBeGreaterThan(5);
+    expect(Object.keys(results['default']!).length).toBeGreaterThan(8);
     for (const k of keys) expectSameDates(results[k]!, results['default']!, false, `dates with the computer set to ${k}`);
   });
 });

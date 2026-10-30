@@ -142,14 +142,19 @@ export interface DevIdentity {
 export interface RecordDetail {
   record: BaseRecord;
   audit: AuditEntry[];
-  notes: BaseRecord[];
-  import_changes: ImportChange[];
+  linked_notes: BaseRecord[];
+  /** Server-evaluated state of a decision's approvals (only for decisions). */
+  decision?: { awaiting: string[]; awaiting_text: string | null; disagreement: boolean };
+  /** Per-record import receipts. Optional: when the server omits it the screen looks them up from the import runs. */
+  import_changes?: ImportChange[];
 }
 
 export interface TasksResponse {
   task_links: TaskLink[];
   adapter?: { name: string; can_write: boolean; as_of: string | null; note: string } | null;
 }
+
+export type ProposeOutcome = 'synced' | 'pending_capture' | 'pending_update' | 'error' | 'conflict';
 
 export type DueMode = 'default' | 'explicit' | 'blank';
 
@@ -187,8 +192,9 @@ export const api = {
     return {
       record: unwrapRecord(body),
       audit: body.audit ?? [],
-      notes: body.notes ?? [],
-      import_changes: body.import_changes ?? [],
+      linked_notes: body.linked_notes ?? [],
+      decision: body.decision,
+      import_changes: body.import_changes,
     };
   },
   createRecord: async (body: {
@@ -201,14 +207,29 @@ export const api = {
   patchRecord: async (id: string, body: { baseVersion: number; changes: Record<string, unknown>; reason?: string | null }) =>
     unwrapRecord(await send<unknown>('PATCH', `/api/records/${q(id)}`, body)),
   setStatus: async (id: string, body: StatusChangeBody) =>
-    unwrapRecord(await send<unknown>('POST', `/api/records/${q(id)}/status`, body)),
+    // The server rejects explicit nulls here, so only send what has a value.
+    unwrapRecord(
+      await send<unknown>('POST', `/api/records/${q(id)}/status`, {
+        baseVersion: body.baseVersion,
+        status: body.status,
+        ...(body.reason ? { reason: body.reason } : {}),
+        ...(body.evidence ? { evidence: { summary: body.evidence.summary, ...(body.evidence.link ? { link: body.evidence.link } : {}) } } : {}),
+        ...(body.traveler ? { traveler: body.traveler } : {}),
+      }),
+    ),
 
   approveDecision: async (id: string, body: { baseVersion: number; option_id: string; note?: string | null }) =>
     unwrapRecord(await send<unknown>('POST', `/api/decisions/${q(id)}/approve`, body)),
-  rejectDecision: async (id: string, body: { baseVersion: number; reason: string }) =>
+  rejectDecision: async (id: string, body: { baseVersion: number; rationale: string }) =>
     unwrapRecord(await send<unknown>('POST', `/api/decisions/${q(id)}/reject`, body)),
-  deferDecision: async (id: string, body: { baseVersion: number; reason: string }) =>
-    unwrapRecord(await send<unknown>('POST', `/api/decisions/${q(id)}/defer`, body)),
+  deferDecision: async (id: string, body: { baseVersion: number; rationale: string; revisit_on?: string | null }) =>
+    unwrapRecord(
+      await send<unknown>('POST', `/api/decisions/${q(id)}/defer`, {
+        baseVersion: body.baseVersion,
+        rationale: body.rationale,
+        ...(body.revisit_on ? { revisit_on: body.revisit_on } : {}),
+      }),
+    ),
 
   audit: async (params: { record_id?: string; since?: string | null } = {}, signal?: AbortSignal): Promise<AuditEntry[]> => {
     const qs = new URLSearchParams();
@@ -220,7 +241,7 @@ export const api = {
     );
     return Array.isArray(body) ? body : (body.entries ?? body.audit ?? []);
   },
-  undoAudit: (auditId: string) => send<unknown>('POST', `/api/audit/${q(auditId)}/undo`),
+  undoAudit: (auditId: string, reason?: string) => send<unknown>('POST', `/api/audit/${q(auditId)}/undo`, reason ? { reason } : {}),
 
   tasks: () => get<TasksResponse>('/api/tasks'),
   proposeTask: (body: {
@@ -229,7 +250,15 @@ export const api = {
     owner?: string | null;
     due?: string | null;
     due_mode: DueMode;
-  }) => send<{ task_link?: TaskLink } & Partial<TaskLink>>('POST', '/api/tasks', body),
+  }) =>
+    // `due` is only accepted with due_mode "explicit"; for "default" the server computes the date itself.
+    send<{ task: TaskLink; outcome: ProposeOutcome }>('POST', '/api/tasks', {
+      title: body.title,
+      due_mode: body.due_mode,
+      ...(body.record_id ? { record_id: body.record_id } : {}),
+      ...(body.owner ? { owner: body.owner } : {}),
+      ...(body.due_mode === 'explicit' && body.due ? { due: body.due } : {}),
+    }),
   retryTask: (id: string) => send<unknown>('POST', `/api/tasks/${q(id)}/retry`),
   syncTasks: () => send<unknown>('POST', '/api/tasks/sync'),
 
@@ -237,6 +266,8 @@ export const api = {
     const body = await get<ImportRun[] | { runs?: ImportRun[] }>('/api/import/runs');
     return Array.isArray(body) ? body : (body.runs ?? []);
   },
+  importChanges: (runId: string, limit = 1000, offset = 0) =>
+    get<{ run: ImportRun; changes: ImportChange[]; total: number }>(`/api/import/runs/${q(runId)}/changes?limit=${limit}&offset=${offset}`),
 };
 
 /** Human message for any thrown error, safe to show. */

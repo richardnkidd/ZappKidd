@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { Client, DEMO_HOUSEHOLD_ID, OTHER_HOUSEHOLD_ID, countRows, loginAs, makeHarness, recordRow, type Harness } from './helpers';
+import { Client, DEMO_HOUSEHOLD_ID, OTHER_HOUSEHOLD_ID, countRows, givePassword, loginAs, makeHarness, recordRow, type Harness } from './helpers';
 
 const open: Harness[] = [];
 async function harness(opts: Parameters<typeof makeHarness>[0] = {}) {
@@ -104,10 +104,7 @@ describe('visibility and households', () => {
   it('another household gets 404 for ids it does not own, and an empty view of the first household', async () => {
     const h = await harness({ secondHousehold: true });
     const avery = await loginAs(h, 'avery');
-    const zed = await new Client(h.app).passwordLogin('zed').then(() => null);
-    void zed;
-    // zed has no password; give one and sign in.
-    const { givePassword } = await import('./helpers');
+    // zed has no password yet; give one and sign in.
     await givePassword(h.db, 'zed');
     const z = new Client(h.app);
     expect((await z.passwordLogin('zed')).status).toBe(200);

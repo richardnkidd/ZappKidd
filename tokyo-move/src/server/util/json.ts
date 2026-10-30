@@ -57,3 +57,13 @@ export function parseJson<T>(text: string | null | undefined, fallback: T): T {
     return fallback;
   }
 }
+
+/** JSON if it parses, otherwise the raw text (used for receipt columns that may hold plain strings). */
+export function parseLoose(text: string | null | undefined): unknown {
+  if (text === null || text === undefined) return null;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}

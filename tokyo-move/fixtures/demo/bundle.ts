@@ -667,6 +667,8 @@ function future(key: string, title: string, rank: number | null, interest: Futur
   const data: FutureOptionData = {
     rank, path: title, why_fit: 'A fit hypothesis for later (fictional).', offer_hypothesis: 'One bounded piece of work.', first_test: 'A small private test.', success_evidence: 'A useful result for one user.',
     limits: 'Asynchronous only.', unknowns: 'Demand and permission.', source_ids: [], outside_critical_path: true, interest,
+    kind: key.startsWith('FW-') ? 'option' : key.startsWith('FN') ? 'note' : 'phase',
+    ...(key.startsWith('FN') ? { body: 'Nothing in the future-work options funds the move or sets a deadline (fictional).' } : {}),
   };
   return rec('future_option', key, title, 'planned', data, { sheet: 'Future Work', raw: { Option: key, Path: title } });
 }

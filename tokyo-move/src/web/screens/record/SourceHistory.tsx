@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { AuditEntry, ImportChange } from '@shared/types';
-import { api, describeError, type RecordDetail } from '../../api/client';
+import { api, describeError, type RecordDetail } from '../../net/client';
 import { Button } from '../../components/Controls';
 import { Disclosure } from '../../components/Disclosure';
 import { ErrorBanner } from '../../components/Feedback';
@@ -43,7 +43,23 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
     setState((s) => (s.kind === 'ready' ? s : { kind: 'loading' }));
     api
       .record(record.id, ctl.signal)
-      .then((detail) => setState({ kind: 'ready', detail }))
+      .then(async (detail) => {
+        // Older servers do not include per-record import receipts; look them up from the latest import runs.
+        if (detail.import_changes === undefined) {
+          try {
+            const runs = (await api.importRuns()).slice(0, 3);
+            const found: ImportChange[] = [];
+            for (const run of runs) {
+              const page = await api.importChanges(run.id, 1000, 0);
+              found.push(...page.changes.filter((c) => c.record_id === record.id));
+            }
+            detail = { ...detail, import_changes: found };
+          } catch {
+            detail = { ...detail, import_changes: [] };
+          }
+        }
+        if (!ctl.signal.aborted) setState({ kind: 'ready', detail });
+      })
       .catch((e) => {
         if (e instanceof DOMException && e.name === 'AbortError') return;
         setState({ kind: 'error', message: describeError(e) });
@@ -74,7 +90,7 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
     }
   };
 
-  const undoable = (e: AuditEntry) => !e.undone_by && !['undo', 'import_create', 'import_update', 'correction', 'restore', 'create'].includes(e.action);
+  const undoable = (e: AuditEntry) => !e.undone_by && ['update', 'status_change', 'approve', 'reject', 'defer', 'anchor_change'].includes(e.action);
 
   return (
     <Disclosure title="Source & history" meta="Where this came from" onToggle={(o) => o && setOpened(true)}>
@@ -145,11 +161,11 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
           </section>
         )}
 
-        {detail && detail.import_changes.length > 0 && (
+        {detail && (detail.import_changes?.length ?? 0) > 0 && (
           <section>
             <h4>Import receipts</h4>
             <ul className="receipts">
-              {detail.import_changes.map((c) => (
+              {(detail.import_changes ?? []).map((c) => (
                 <li key={c.id}>
                   <strong>{CHANGE_LABEL[c.change] ?? c.change}</strong>
                   {c.field && <span className="muted"> · {c.field}</span>}

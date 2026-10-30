@@ -372,14 +372,14 @@
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s-2);
+  gap: 6px;
 }
 .fchip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: 44px;
-  padding: 0 var(--s-4);
+  padding: 0 var(--s-3);
   border-radius: var(--r-pill);
   border: 1.5px solid var(--line-strong);
   background: var(--surface);

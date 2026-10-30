@@ -245,12 +245,14 @@ export interface MilestoneData {
   traveler_progress?: Record<string, TravelerProgress>;
   /**
    * Dependency key → the travelers for whom that dependency blocks this record. Absent key = blocks everyone
-   * the record applies to. Example: { W03: ['richard'] } on a shared permissions row means the second adult's
+   * the record applies to. Example: { W03: ['adult_b'] } on a shared permissions row means the second adult's
    * route only gates the second adult's part.
    */
   dependency_scope?: Record<string, string[]>;
   /** Plain-language note when a review set this record's scope/phase/gates (shown in Source & history). */
   review_note?: string | null;
+  /** Source 'Due-date basis' text (why the date/window is what it is), preserved for display. */
+  due_basis?: string | null;
 }
 
 export interface TravelerProgress {
@@ -486,6 +488,15 @@ export interface FutureOptionData {
   /** Always true — future work is outside the move's critical path. */
   outside_critical_path: true;
   interest: 'not_now' | 'curious' | 'exploring' | 'paused' | null;
+  /** 'option' (FW-A..C, default), 'phase' (FW01..) or 'note' (FN01..). Phases/notes reuse the fields above loosely. */
+  kind?: 'option' | 'phase' | 'note';
+  /** Phase/note extras. */
+  window?: string | null;
+  completion_evidence?: string | null;
+  milestone_links?: string[];
+  review_date?: string | null;
+  origin?: string | null;
+  body?: string | null;
 }
 
 /* ---------- Evidence / contacts ---------- */
@@ -508,6 +519,8 @@ export interface ContactData {
   relevance: string;
   status_boundary: string;
   relationship: ContactRelationship; // a saved name never implies a booking
+  /** Why this relationship value was chosen (only an explicit recorded interaction or existing relationship upgrades it). */
+  relationship_basis?: string | null;
   source_ids: string[];
   linked_records: string[];
 }

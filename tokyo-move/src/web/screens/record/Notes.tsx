@@ -35,7 +35,7 @@ export function Notes({ record, idx, dir }: { record: AnyRecord; idx: Indexes; d
       () =>
         actions.createRecord({
           type: 'note',
-          title: truncate(text, 60),
+          title: truncate(text.replace(/\s+/g, ' '), 60),
           data: { body: text, linked_record_id: record.id },
           visibility,
         }),

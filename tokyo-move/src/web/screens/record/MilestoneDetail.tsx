@@ -18,7 +18,7 @@ import { Icon } from '../../components/Icon';
 import { Fact, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge, useDir } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
-import { civil, instant, safeHref } from '../../lib/format';
+import { civil, instant, plain, safeHref } from '../../lib/format';
 import { deadlineVerification } from '../../lib/home';
 import { dataOf, type Directory, type Indexes, type Milestone } from '../../lib/records';
 import { attempt } from '../../lib/safe';
@@ -290,7 +290,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
         {d.status_reason && (record.status === 'blocked' || record.status === 'eliminated' || record.status === 'not_applicable' || record.status === 'waiting_external') && (
           <p className="reason preline">
             <strong>{record.status === 'blocked' ? 'Why it’s blocked: ' : record.status === 'waiting_external' ? 'Waiting for: ' : 'Why: '}</strong>
-            {d.status_reason}
+            {plain(d.status_reason)}
           </p>
         )}
         {d.conditional && (

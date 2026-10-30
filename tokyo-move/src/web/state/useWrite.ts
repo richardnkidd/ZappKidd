@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ConflictError, describeError } from '../api/client';
+import { ConflictError, describeError } from '../net/client';
 import { useSnapshot } from './snapshot';
 
 /**

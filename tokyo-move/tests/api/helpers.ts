@@ -132,7 +132,7 @@ export class Client {
     } catch {
       parsed = null;
     }
-    return { status: res.statusCode, body: parsed, headers: res.headers, raw: res.body, cookies: res.cookies as Reply['cookies'] };
+    return { status: res.statusCode, body: parsed, headers: res.headers as Reply['headers'], raw: res.body, cookies: res.cookies as Reply['cookies'] };
   }
 
   get = <T = any>(url: string) => this.request<T>('GET', url);

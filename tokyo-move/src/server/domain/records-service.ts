@@ -1,12 +1,13 @@
 /** Create, edit and change the status of records. All writes run inside one transaction with their audit entry. */
 import type { Deps, AuthContext } from '../context';
-import type { AuditEntry, BaseRecord, CompletionEvidence, DecisionData, Person, RecordType, TaskLink, Visibility } from '../../shared/types';
+import type { AuditEntry, BaseRecord, CompletionEvidence, DecisionData, ImportChange, Person, RecordType, TaskLink, Visibility } from '../../shared/types';
 import { HttpError, conflictError, forbidden, notFound, validationError } from '../http/errors';
 import { parseWith, type ValidationIssue } from '../http/validate';
 import { listPeople } from '../auth/users';
 import { listAudit } from './audit';
 import { awaitingText, evaluateDecision } from './decisions';
 import { taskLinkFromRow } from './task-links-repo';
+import { importChangesForRecord } from './import-service';
 import {
   getRecordRow,
   insertRecord,
@@ -403,9 +404,9 @@ export function changeStatus(deps: Deps, ctx: AuthContext, id: string, rawBody: 
         throw validation('Unknown status', [issue('status', `Expected one of ${WORK_STATUSES.join(', ')}`)]);
       }
     } else if (row.type === 'decision') {
-      if (body.status !== 'open' && body.status !== 'superseded') {
+      if (body.status !== 'superseded') {
         throw validation('Decision status is set by approving, rejecting or deferring', [
-          issue('status', 'Use /api/decisions/:id/approve, /reject or /defer'),
+          issue('status', 'Use /api/decisions/:id/approve, /reject or /defer (only "superseded" is set here)'),
         ]);
       }
     } else if (row.type === 'review_session' || row.type === 'anchor') {
@@ -485,6 +486,8 @@ export interface RecordDetail {
   audit: AuditEntry[];
   linked_notes: ApiRecord[];
   task_links: TaskLink[];
+  /** Import receipts for this record, newest first. */
+  import_changes: ImportChange[];
   decision?: { awaiting: string[]; awaiting_text: string | null; disagreement: boolean };
 }
 
@@ -507,6 +510,7 @@ export function getRecordDetail(deps: Deps, ctx: AuthContext, id: string): Recor
     audit: listAudit(deps.db, ctx, { recordId: row.id, limit: 200 }),
     linked_notes: notes.map((n) => rowToRecord(n, false)),
     task_links: links.map(taskLinkFromRow),
+    import_changes: importChangesForRecord(deps, ctx.householdId, row.id),
   };
   if (row.type === 'decision') {
     const people = listPeople(deps.db, ctx.householdId);

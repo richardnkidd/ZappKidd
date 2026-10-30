@@ -126,7 +126,13 @@ export async function restoreBackup(
     const candidate = join(work, 'candidate.db');
     copyFileSync(backupPath, candidate);
     let migrated = false;
-    const conn = new Database(candidate);
+    let conn: Database.Database;
+    try {
+      conn = new Database(candidate);
+      conn.pragma('integrity_check');
+    } catch {
+      throw validationError('The backup could not be read as a database', [{ path: 'backup', message: 'Not a readable SQLite file' }]);
+    }
     try {
       const check = conn.pragma('integrity_check') as { integrity_check: string }[];
       if (check.length !== 1 || check[0]?.integrity_check !== 'ok') {

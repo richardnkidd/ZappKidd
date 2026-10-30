@@ -269,7 +269,7 @@ export function ProposeActionDialog({ open, onClose, record, defaultTitle = '' }
           <label className="choice">
             <input type="radio" name="due" checked={dueChoice === 'default'} onChange={() => setDueChoice('default')} />
             <span className="choice__text">
-              <span>In 14 days — {civil(defaultDue, 'weekday')}</span>
+              <span>In about 14 days — {civil(defaultDue, 'weekday')}</span>
               <span className="choice__hint">A gentle default so it doesn’t get lost.</span>
             </span>
           </label>

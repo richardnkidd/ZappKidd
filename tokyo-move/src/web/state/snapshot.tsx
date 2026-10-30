@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { BaseRecord, Snapshot, TaskLink } from '@shared/types';
-import { api, ConflictError, describeError, type DueMode, type StatusChangeBody } from '../api/client';
+import { api, ConflictError, describeError, type DueMode, type StatusChangeBody } from '../net/client';
 import { buildDirectory, buildIndexes, type Directory, type Indexes } from '../lib/records';
 import { useMe } from './auth';
 
@@ -28,8 +28,8 @@ export interface Actions {
   setStatus(id: string, body: StatusChangeBody): Promise<BaseRecord>;
   createRecord(body: Parameters<typeof api.createRecord>[0]): Promise<BaseRecord>;
   approveDecision(id: string, baseVersion: number, optionId: string, note?: string | null): Promise<BaseRecord>;
-  rejectDecision(id: string, baseVersion: number, reason: string): Promise<BaseRecord>;
-  deferDecision(id: string, baseVersion: number, reason: string): Promise<BaseRecord>;
+  rejectDecision(id: string, baseVersion: number, rationale: string): Promise<BaseRecord>;
+  deferDecision(id: string, baseVersion: number, rationale: string, revisitOn?: string | null): Promise<BaseRecord>;
   proposeTask(body: { title: string; record_id?: string | null; owner?: string | null; due?: string | null; due_mode: DueMode }): Promise<void>;
   retryTask(id: string): Promise<void>;
   undoAudit(auditId: string): Promise<void>;
@@ -159,8 +159,9 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
       createRecord: (body) => track(api.createRecord(body)).then(written),
       approveDecision: (id, baseVersion, option_id, note) =>
         track(api.approveDecision(id, { baseVersion, option_id, note: note ?? null })).then(written),
-      rejectDecision: (id, baseVersion, reason) => track(api.rejectDecision(id, { baseVersion, reason })).then(written),
-      deferDecision: (id, baseVersion, reason) => track(api.deferDecision(id, { baseVersion, reason })).then(written),
+      rejectDecision: (id, baseVersion, rationale) => track(api.rejectDecision(id, { baseVersion, rationale })).then(written),
+      deferDecision: (id, baseVersion, rationale, revisitOn) =>
+        track(api.deferDecision(id, { baseVersion, rationale, revisit_on: revisitOn ?? null })).then(written),
       proposeTask: async (body) => {
         await track(api.proposeTask(body));
         await refresh();

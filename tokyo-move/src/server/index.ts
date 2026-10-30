@@ -34,6 +34,9 @@ async function main(): Promise<void> {
     console.log(`Seeded the fictional demo household (${result.status}).`);
     households.push(...(db.prepare('SELECT id FROM households ORDER BY id').all() as { id: string }[]));
   }
+  if (households.length === 0) {
+    console.warn(`No household in ${cfg.dbPath} yet. Import a plan first (npm run import) or run in local-demo mode.`);
+  }
   if (devIdentitiesActive(cfg)) {
     for (const h of households) ensureDevIdentities(db, h.id);
   }

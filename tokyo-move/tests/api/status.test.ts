@@ -90,7 +90,7 @@ describe('status rules (server-enforced)', () => {
     const h = await harness();
     const c = await loginAs(h, 'avery');
     const d = (await c.get('/api/records/decision:D02')).body.record;
-    for (const st of ['approved', 'proposed', 'rejected', 'deferred']) {
+    for (const st of ['approved', 'proposed', 'rejected', 'deferred', 'open']) {
       expect((await status(c, d.id, d.version, { status: st, reason: 'x' })).status, st).toBe(422);
     }
     expect((await status(c, d.id, d.version, { status: 'superseded', reason: 'Replaced' })).status).toBe(200);

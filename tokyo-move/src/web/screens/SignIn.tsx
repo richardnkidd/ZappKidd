@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, describeError, type DevIdentity } from '../api/client';
+import { api, describeError, type DevIdentity } from '../net/client';
 import { Button, Field, TextInput } from '../components/Controls';
 import { ErrorBanner } from '../components/Feedback';
 import { Icon } from '../components/Icon';

@@ -6,7 +6,6 @@
  *   npm run user:password -- --disable-dev-identities
  * Piped input is also accepted:  printf '%s' "$PW" | npm run user:password -- --username <name>
  */
-import { createInterface } from 'node:readline';
 import { openDb } from '../src/server/db/db';
 import { MIN_PASSWORD_LENGTH } from '../src/server/auth/password';
 import { createUser, disableAllDevIdentities, findUserByUsername, setUserPassword } from '../src/server/auth/users';
@@ -17,14 +16,13 @@ const { flags } = parseArgs(process.argv.slice(2));
 function readSecret(prompt: string): Promise<string> {
   const stdin = process.stdin;
   if (!stdin.isTTY) {
-    return new Promise((resolve) => {
-      const rl = createInterface({ input: stdin });
-      rl.once('line', (line) => {
-        rl.close();
-        resolve(line);
-      });
-      rl.once('close', () => resolve(''));
-    });
+    // Piped input: read to the end and use the first line (works regardless of how fast the pipe closes).
+    return (async () => {
+      let data = '';
+      stdin.setEncoding('utf8');
+      for await (const chunk of stdin) data += chunk as string;
+      return data.split(/\r?\n/)[0] ?? '';
+    })();
   }
   return new Promise((resolve) => {
     process.stderr.write(prompt);

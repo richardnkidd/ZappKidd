@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { ComputedDeadline } from '@shared/engine-contracts';
 import { READINESS_STATE_LABEL } from '@shared/labels';
 import type { AuditEntry, HouseholdSettings } from '@shared/types';
-import { api, describeError } from '../../api/client';
+import { api, describeError } from '../../net/client';
 import { DateText, DeadlineBadge, VerificationNote } from '../../components/Badges';
 import { Button } from '../../components/Controls';
 import { Disclosure } from '../../components/Disclosure';
@@ -14,7 +14,7 @@ import { Card, EmptyState, Section, Skeleton } from '../../components/Layout';
 import { OwnerChip, PersonBadge } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { describeAuditList } from '../../lib/audit';
-import { civil, instant, plural, relative } from '../../lib/format';
+import { civil, instant, plain, plural } from '../../lib/format';
 import {
   deadlineOwner,
   deadlineVerification,
@@ -173,7 +173,7 @@ export function BlockedSection({ idx, filter, ctx }: CommonProps) {
             >
               <p className="item__action preline">
                 <span className="item__label">{b.kind === 'blocked' ? 'Why' : 'Waiting for'}</span>{' '}
-                {b.reason ??
+                {(b.reason ? plain(b.reason) : null) ??
                   (b.waitingOn.length > 0
                     ? `Waiting for ${b.waitingOn.map((w) => w.title).join(' and ')}`
                     : 'No reason written down yet — open it to add one')}
@@ -355,7 +355,7 @@ export function ReadySection({ idx, dir }: { idx: Indexes; dir: Directory }) {
                       <span>{READINESS_STATE_LABEL[r.state] ?? r.state}</span>
                     </span>
                   </header>
-                  <p className="ready__headline">{r.headline}</p>
+                  <p className="ready__headline">{plain(r.headline)}</p>
                   {blockers.length > 0 && (
                     <div className="ready__block">
                       <h4>Holding things up</h4>
@@ -363,7 +363,7 @@ export function ReadySection({ idx, dir }: { idx: Indexes; dir: Directory }) {
                         {blockers.map((g) => (
                           <li key={g.record_id}>
                             <RecordLink id={g.record_id}>{g.title}</RecordLink>
-                            {g.blocker && <span className="muted"> — {g.blocker}</span>}
+                            {g.blocker && <span className="muted"> — {plain(g.blocker)}</span>}
                           </li>
                         ))}
                       </ul>

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { MeResponse } from '@shared/types';
-import { api, NetworkError, onUnauthenticated } from '../api/client';
+import { api, NetworkError, onUnauthenticated } from '../net/client';
 
 type AuthStatus = 'loading' | 'signed_in' | 'signed_out' | 'error';
 

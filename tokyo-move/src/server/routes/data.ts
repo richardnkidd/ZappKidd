@@ -50,7 +50,7 @@ export function registerDataRoutes(app: FastifyInstance, deps: Deps): void {
     return exportJson(deps, ctx);
   });
 
-  /** Backups copy the whole database file. Admin actions are refused when the file holds more than one household. */
+  /** A restore replaces the whole database file, so it is refused when the file holds more than one household. */
   function requireSingleHousehold(): void {
     const n = (deps.db.prepare('SELECT COUNT(*) AS n FROM households').get() as { n: number }).n;
     if (n > 1) {
@@ -61,7 +61,6 @@ export function registerDataRoutes(app: FastifyInstance, deps: Deps): void {
   app.post('/api/admin/backup', async (request, reply) => {
     requireAuth(request);
     parseWith(emptyBody, request.body);
-    requireSingleHousehold();
     const backup = await createBackup(deps.db, deps.config.dataDir, deps.now());
     reply.code(201);
     return { backup };

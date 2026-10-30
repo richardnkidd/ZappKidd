@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Snapshot } from '@shared/types';
 import type { Directory, Indexes } from '../lib/records';
-import { describeError } from '../api/client';
+import { describeError } from '../net/client';
 import { useSnapshot } from '../state/snapshot';
 import { ErrorBanner } from './Feedback';
 import { SkeletonCards } from './Layout';

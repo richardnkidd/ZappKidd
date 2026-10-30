@@ -82,3 +82,15 @@ export function humanizeKey(key: string): string {
   const s = key.replace(/_/g, ' ').trim();
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/**
+ * Display-only cleanup of imported text: removes parenthesised internal reference codes such as " (W02)" or
+ * " (W02 and W06)" so normal screens carry no IDs. The original text stays untouched in Source & history.
+ */
+export function plain(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    .replace(/\s*\(\s*[A-Z]{1,4}\d{1,3}(?:\s*(?:,|and|&|\/|;)\s*[A-Z]{1,4}\d{1,3})*\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}

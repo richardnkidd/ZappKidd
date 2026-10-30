@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { DeadlineState } from '@shared/engine-contracts';
 import type { DeadlineKind, OwnerRef } from '@shared/types';
+import { plain } from '../lib/format';
 import { DateText, DeadlineBadge, OptionalTag, StatusBadge } from './Badges';
 import { OwnerChip } from './People';
 import { RecordLink } from './RecordLink';
@@ -37,7 +38,7 @@ export function ItemCard(p: ItemCardProps) {
         )}
         {p.nextAction && (
           <p className="item__action preline">
-            <span className="item__label">Next</span> {p.nextAction}
+            <span className="item__label">Next</span> {plain(p.nextAction)}
           </p>
         )}
         {p.children}

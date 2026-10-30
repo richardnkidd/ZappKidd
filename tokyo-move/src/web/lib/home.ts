@@ -134,7 +134,8 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
   for (const c of idx.commitments as Commitment[]) {
     if (!isOpenWork(c.status) || !c.data?.recorded_date) continue;
     if (!matchesOwnerFilter(filter, c.owner, c.status, ctx)) continue;
-    if (diffDays(today, c.data.recorded_date) > horizon) continue;
+    const away = diffDays(today, c.data.recorded_date);
+    if (away > horizon || away < -3) continue; // an old date is not 'now' and proves nothing about whether it was done
     ranked.push({
       id: c.id,
       recordId: c.id,

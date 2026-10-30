@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { DECISION_STATE_LABEL } from '@shared/labels';
 import { DateText, DeadlineBadge } from '../../components/Badges';
-import { Button, Field, TextArea } from '../../components/Controls';
+import { isCivilDate } from '@shared/dates';
+import { Button, Field, TextArea, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { Dialog } from '../../components/Dialog';
 import { Disclosure } from '../../components/Disclosure';
@@ -104,11 +105,13 @@ function ReasonDialog({ decision, mode, onClose }: { decision: Decision; mode: '
   const { actions } = useSnapshot();
   const w = useWrite();
   const [reason, setReason] = useState('');
+  const [revisit, setRevisit] = useState('');
   const [startVersion, setStartVersion] = useState(decision.version);
   const [tried, setTried] = useState(false);
   useEffect(() => {
     if (mode) {
       setReason('');
+      setRevisit('');
       setStartVersion(decision.version);
       setTried(false);
       w.clear();
@@ -120,7 +123,10 @@ function ReasonDialog({ decision, mode, onClose }: { decision: Decision; mode: '
     setTried(true);
     if (!reason.trim()) return;
     const ok = await w.run(
-      (v) => (mode === 'reject' ? actions.rejectDecision(decision.id, v, reason.trim()) : actions.deferDecision(decision.id, v, reason.trim())),
+      (v) =>
+        mode === 'reject'
+          ? actions.rejectDecision(decision.id, v, reason.trim())
+          : actions.deferDecision(decision.id, v, reason.trim(), isCivilDate(revisit) ? revisit : null),
       startVersion,
     );
     if (ok) onClose();
@@ -150,6 +156,11 @@ function ReasonDialog({ decision, mode, onClose }: { decision: Decision; mode: '
       >
         <TextArea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} />
       </Field>
+      {mode === 'defer' && (
+        <Field label="Look at it again on (optional)" hint="A date to come back to this.">
+          <TextInput type="date" value={revisit} onChange={(e) => setRevisit(e.target.value)} />
+        </Field>
+      )}
       {w.error && <p className="field__error" role="alert">{w.error}</p>}
       {w.conflict && (
         <ConflictBanner conflict={w.conflict} busy={w.busy} onKeepTheirs={() => { w.keepTheirs(); onClose(); }} onUseMine={async () => { if (await w.useMine()) onClose(); }} />

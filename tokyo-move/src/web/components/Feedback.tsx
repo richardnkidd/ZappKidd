@@ -3,7 +3,7 @@ import { instant } from '../lib/format';
 import { useDir } from './People';
 import { usePrefs } from '../state/prefs';
 import { useSnapshot } from '../state/snapshot';
-import { ConflictError } from '../api/client';
+import { ConflictError } from '../net/client';
 import { conflictDiffs } from '../lib/changes';
 import { Button } from './Controls';
 import { Icon } from './Icon';

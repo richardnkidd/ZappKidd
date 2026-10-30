@@ -590,7 +590,7 @@
 }
 
 @page {
-  margin: 14mm;
+  margin: 12mm;
 }
 @media print {
   .arrival-pack .page-head {
@@ -638,8 +638,8 @@
     display: none;
   }
   .pack {
-    font-size: 10pt;
-    gap: 3mm;
+    font-size: 9.5pt;
+    gap: 2.5mm;
   }
   .pack__name {
     font-size: 15pt;

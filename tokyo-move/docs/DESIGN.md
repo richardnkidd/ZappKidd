@@ -56,7 +56,7 @@ Spacing: 4px base (4, 8, 12, 16, 24, 32, 48). Radius 12–14px cards, 999px chip
 ## People
 
 Each person has a monogram badge (initial in a circle for adults; a simple paw glyph for the dog) **plus the name in
-text**. Ownership chips read "<name>", "Together", "Unassigned", "Proposed: <name>" (proposed owners are
+text**. Ownership chips read "<name>", "Together", "Unassigned", "<name>? (not agreed yet)" (proposed owners are
 visibly provisional until accepted).
 
 ## States (every screen must handle)
@@ -109,8 +109,8 @@ from, track Saving / Saved / Unsaved / Conflict / Error, and on a 409 show both 
 (`collectDeadlines`, `householdReadiness`, `dependencyChain`, `downstreamOf`) are wrapped in `attempt()`: a thrown error
 renders an inline error for that section only.
 
-**Honesty rules in the UI.** Review checkpoints that share a date collapse into one expandable "Proposed review
-checkpoint · N items · not yet scheduled" row and never appear as deadlines. Any rule not `verified_official` shows a
+**Honesty rules in the UI.** Check-ins (planning checkpoints) that share a date collapse into one expandable "Check-in on <date>
+(N items, not booked)" row and never appear as deadlines. Any rule not `verified_official` shows a
 plain verification note beside its date. `related` links are labelled "Related (nothing waits on these)". Imported text is
 passed through `plain()`/`plainRefs()` before display so internal codes such as "(W02)" read as plain words; the original
 is untouched in Source & history. Old commitment dates never appear in "Now" and never imply non-completion.
@@ -128,7 +128,7 @@ own box on phones. Blocked shows three then "See all N"; Coming up shows four we
 **Dates, honestly.**
 - A legal date on a weekend (or a listed public holiday) keeps its weekday and adds "Falls on a weekend — aim for <prior business day>".
 - State `historical` (an old date in a read-only task-list copy, or a commitment flagged `historical`) is neutral grey text
-  "Old date — not evidence either way". It never appears in Now or Blocked; it is listed once under "Old dates to check".
+  "Date has passed · check whether it’s done". It never appears in Now or Blocked; it is listed once under "Old dates to check".
 - A milestone shows only its own deadline or review date. Linked task dates appear as "In your task list: <date> (copy as of <date>)";
   a commitment that links to a milestone shows as "Recorded date" on that milestone and nowhere else. Done tasks never appear.
 - "Needs a decision" order: dated needed-by within 30 days, then `settings.first_review.decision_keys` in order, then the rest.
@@ -144,8 +144,8 @@ Settings (display zone, household default, appearance, scenarios). Every record 
 
 **Creative.** `/review` guided couple review (5 steps, optional gentle timer, saves a plain-text summary that names and links
 every record it mentions and never marks work done); `/what-if` compares moving the pet's arrival using `previewAnchorChange`
-and `computeBudget` without saving anything; `/arrival-pack` prints one page per traveler (A4 or Letter, black on white, links as
-text, contacts by role only, health and money sections off unless ticked).
+and `computeBudget` without saving anything; `/arrival-pack` prints a short pack per traveler (two pages at most, A4 or Letter, black on white, links as
+text; sensitive sections off unless ticked).
 
 **Theme.** `data-theme="light|dark"` on `<html>` forces a theme; absent means follow the device. The forced-dark block is checked
 against the system dark block in `tests/web/contrast.test.tsx`.
@@ -153,3 +153,39 @@ against the system dark block in `tests/web/contrast.test.tsx`.
 **Settings keys read defensively (not in the shared type yet).** `settings.first_review.decision_keys: string[]`;
 `settings.staging_analysis` (text, lists or labelled groups; `pet_specific` shown separately); `data.direct_check { on, url, result, quote, note }`
 and any `data.review_check_*` on rules and evidence.
+
+
+### Final fix round (web)
+
+Merged from four independent reviews. The rules that came out of it:
+
+- **One primary date per card** (`lib/when.ts`): legal, then contract, then our own target, then a task-list date, then a
+  check-in; other dates live on the record page. A check-in for work in a later phase is not shown on cards at all.
+  Wording follows what the date means (`bound`): "Due by", "Not before", a window, "On", "Repeats", with the engine's
+  `business_day_advice` for weekends (never an earlier day for a "not before"). Years appear whenever they differ from today's
+  or the date is more than about six months away.
+- **A proposed task is not "in your task list".** It reads "Proposed for your task list · not added yet" with an amber
+  "Waiting to be added" chip, has its own Home row, and is never overdue.
+- **Home on a phone**: This week (three items), a three-chip readiness strip, one sentence for Blocked. "Mine" includes joint
+  work; "Needs me" is the Monday glance. Focus never lands under the sticky header or tab bar (measured bar heights feed
+  `scroll-padding`).
+- **Decide**: "Up next" (three), "Later (N)" collapsed, "Decided" its own tab. Approve is offered only on an expanded card,
+  after the options; a person who is not a required approver gets "Add a note" instead. A single imported suggestion says so
+  and offers "Add an alternative". The last approval keeps the card for five seconds as "Decided together ✓" (`role=status`).
+- **Conditional steps** ask "Does this apply to <name>?" (Yes / No / Not sure, `aria-pressed`) and save per person.
+- **Questions for your advisers** (Decide → Questions): grouped by audience, "facts to bring" always visible, printable and
+  copyable as text. They are never offered as "a few to think about now".
+- **Evidence and rules in plain words**: one line per check ("<reviewer> checked <date>: Read directly / Official index only /
+  Site refused / Page gone"), last-checked from the newest check, no raw JSON, no snake_case codes.
+- **Nothing leaks**: record keys become titled links, unknown ones vanish (`lib/prose.ts`); web addresses become short links.
+- **Unsaved text**: a data router (`createBrowserRouter`) makes `useBlocker` possible; leaving a page with unsaved text asks
+  "Keep editing / Discard and leave". Drafts live in `sessionStorage` for the tab only and come back after a reload.
+- **Money** says "No amounts yet" until one amount is known, collapses sections, gives each unknown line one row with
+  "Add amount", and shows the exchange rate as one line. **Documents** are compact rows with Details.
+- **Large text**: header chip and tab labels step aside by container query in `rem`, so they respond to text size, not only width.
+- **Print**: each traveler's arrival pack must stay within two pages on A4 and Letter; sensitivity comes from the record's
+  `sensitivity` field, documents from `carry_on_arrival`, practical checks from `review_note`.
+
+**Settings keys read defensively (additions).** `settings.decision_effects: { decision_key, record_key }[]` (a built-in pair is used
+when absent); record fields `applies_to`, `sensitivity`, `carry_on_arrival`, `recorded_decision`, `settled_part`; question fields
+`origin`, `audience`, `facts_needed`; contact `phone` / `email` (the pack lists a contact only when one is saved).

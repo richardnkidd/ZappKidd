@@ -1,6 +1,6 @@
-import { Fragment } from 'react';
 import { proseTokens } from '../lib/prose';
 import { useOptionalSnapshot } from '../state/snapshot';
+import { LinkedText } from './LinkedText';
 import { RecordLink } from './RecordLink';
 
 /**
@@ -15,7 +15,7 @@ export function Prose({ text, className }: { text: string | null | undefined; cl
     <span className={className}>
       {tokens.map((t, i) =>
         t.kind === 'text' ? (
-          <Fragment key={i}>{t.text}</Fragment>
+          <LinkedText key={i} text={t.text} />
         ) : (
           <RecordLink key={i} id={t.id}>
             {t.title}

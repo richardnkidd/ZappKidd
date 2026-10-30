@@ -25,7 +25,8 @@ const trimEnd = (t: string) => t.replace(/[.\s]+$/, '');
 function ApplyEffect({ d, idx, dir }: { d: Decision; idx: Indexes; dir: Directory }) {
   const { actions } = useSnapshot();
   const w = useWrite();
-  const eff = decisionEffect(d, idx, dir);
+  const { snapshot } = useSnapshot();
+  const eff = decisionEffect(d, idx, dir, snapshot?.settings);
   if (!eff) return null;
   const apply = () => w.run((v) => actions.patchRecord(eff.record.id, v, { data: { applies_to: { [eff.personId]: eff.answer } } }), eff.record.version);
   return (
@@ -141,7 +142,7 @@ export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle 
               </p>
             )}
             <div className="item__meta">
-              <OwnerChip owner={d.owner} proposed={d.owner_proposed} compact />
+              <OwnerChip owner={d.owner} proposed={d.owner_proposed && open} compact />
               {needed?.date ? (
                 <span className="item__when">
                   <span className="faint small">Needed by</span>

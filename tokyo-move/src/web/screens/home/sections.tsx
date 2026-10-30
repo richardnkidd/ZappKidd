@@ -77,6 +77,7 @@ export function NowSection({ idx, filter, ctx }: CommonProps) {
               owner={it.owner}
               ownerProposed={it.ownerProposed}
               nextAction={it.nextAction}
+              clampAction={2}
               when={it.when}
               today={today}
               note={it.note}

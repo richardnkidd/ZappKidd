@@ -32,11 +32,11 @@ export function ReadyStrip({ dir }: { dir: Directory }) {
                 className={`ready-chip ready-chip--${tone}`}
                 aria-label={`${name}: ${READINESS_STATE_LABEL[r.state]}. Open readiness`}
               >
-                <PersonBadge person={dir.personById(r.person_id)} size={26} />
-                <span className="ready-chip__text">
+                <span className="ready-chip__top">
+                  <PersonBadge person={dir.personById(r.person_id)} size={26} />
                   <span className="ready-chip__name">{name}</span>
-                  <span className="ready-chip__state">{READINESS_SHORT_LABEL[r.state] ?? r.state}</span>
                 </span>
+                <span className="ready-chip__state">{READINESS_SHORT_LABEL[r.state] ?? r.state}</span>
               </Link>
             </li>
           );

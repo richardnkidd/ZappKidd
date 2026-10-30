@@ -102,3 +102,24 @@ export function proseText(raw: string | null | undefined, idx: Indexes | null | 
 }
 
 export const looksLikeKey = (s: string): boolean => KEY_TOKEN.test(s);
+
+const ELLIPSIS = /(…|\.\.\.)\s*$/;
+const loose = (t: string) => t.trim().replace(ELLIPSIS, '').replace(/[.\s]+$/, '').toLowerCase();
+
+/**
+ * A record's title and its action text often say the same thing: the title may be the action cut short ("…"), or the
+ * action may begin with the title. Show the words once: a cut-short title becomes the full text, a complete title is
+ * followed only by what the action adds, and unrelated text is kept as it is.
+ */
+export function splitTitleAction(title: string, action: string | null | undefined): { title: string; detail: string | null } {
+  const a = (action ?? '').trim();
+  if (!a) return { title, detail: null };
+  const t = loose(title);
+  const al = a.toLowerCase();
+  if (t && al.startsWith(t)) {
+    if (ELLIPSIS.test(title.trim())) return { title: a, detail: null };
+    const rest = a.slice(t.length).replace(/^[\s.;,:–—-]+/, '').trim();
+    return { title, detail: rest || null };
+  }
+  return { title, detail: loose(a) === t ? null : a };
+}

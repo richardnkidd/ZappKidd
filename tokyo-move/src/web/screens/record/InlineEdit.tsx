@@ -117,7 +117,7 @@ export function InlineEdit({ label, value, display, input, options, onSave, vers
           <Button variant="quiet" onClick={cancel}>
             Discard
           </Button>
-          {dirty && <span className="faint small inline-edit__flag">Unsaved changes</span>}
+          {dirty && <span className="faint small inline-edit__flag">{restored !== null && draft === restored ? 'Restored your unsaved text' : 'Unsaved changes'}</span>}
         </div>
       )}
     </div>

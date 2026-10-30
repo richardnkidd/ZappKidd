@@ -24,6 +24,7 @@ export function DeadlineRow({
   dir,
   showWho = false,
   linkRecord = true,
+  headingLevel = 4,
 }: {
   d: ComputedDeadline;
   idx: Indexes;
@@ -31,6 +32,8 @@ export function DeadlineRow({
   dir?: Directory;
   showWho?: boolean;
   linkRecord?: boolean;
+  /** Level of the "How it’s counted" heading: one below the heading of the section the row sits in. */
+  headingLevel?: 3 | 4;
 }) {
   const plain = usePlain();
   const verification = deadlineVerification(d, idx);
@@ -62,7 +65,7 @@ export function DeadlineRow({
         <VerificationNote verification={verification} kind={d.kind} />
         {rd?.applies_when && d.applies !== 'yes' && <p className="small muted rule-condition">{plain(rd.applies_when)}</p>}
         {rd?.inclusive_note && (
-          <Disclosure title="How it’s counted" level={4} className="disclosure--flat">
+          <Disclosure title="How it’s counted" level={headingLevel} className="disclosure--flat">
             <p className="small muted preline">{plain(rd.inclusive_note)}</p>
           </Disclosure>
         )}

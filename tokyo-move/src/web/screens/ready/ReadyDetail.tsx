@@ -47,7 +47,7 @@ function GateList({
             <RecordLink id={g.record_id} className="gate__title">
               {g.title}
             </RecordLink>
-            {showReason === 'blocker' && g.blocker && <p className="small muted">{plain(g.blocker)}</p>}
+            {showReason === 'blocker' && g.blocker && !(waiting.length > 0 && /^waiting on/i.test(g.blocker.trim())) && <p className="small muted">{plain(g.blocker)}</p>}
             {showReason === 'blocker' && waiting.length > 0 && (
               <p className="small muted">
                 Waiting on:{' '}
@@ -80,7 +80,7 @@ function stateExplanation(r: TravelerReadiness, counts: { done: number; total: n
     case 'not_started':
       return counts.total > 0 ? `None of the ${counts.total} required steps has been started.` : null;
     case 'preparing':
-      return counts.total > 0 ? `${counts.done} of ${counts.total} required steps are done; the rest are under way or still to start.` : null;
+      return counts.total > 0 ? `${counts.done} of ${counts.total} required steps are done.` : null;
     case 'ready_to_release':
       return 'Every required step before leaving is done. Someone still has to release it on purpose.';
     case 'released':
@@ -104,7 +104,7 @@ function DateList({ items, idx, today, empty }: { items: ComputedDeadline[]; idx
     <>
       <ul className="stack stack--tight">
         {shown.map((d) => (
-          <DeadlineRow key={d.rule_id ? `${d.rule_id}-${d.traveler}` : `${d.record_id}-${d.label}`} d={d} idx={idx} today={today} />
+          <DeadlineRow key={d.rule_id ? `${d.rule_id}-${d.traveler}` : `${d.record_id}-${d.label}`} d={d} idx={idx} today={today} headingLevel={3} />
         ))}
       </ul>
       {items.length > SHOWN_DATES && (

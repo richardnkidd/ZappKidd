@@ -50,20 +50,6 @@ function labelFromKey(key: string, dir: Directory): string {
   return out.join(' ') || humanizeKey(key);
 }
 
-/** The household's plain labels for the staging notes' own groups. Anything else is derived from its key. */
-const GROUP_TITLE: Record<string, string> = {
-  pathway_checklist_verified: 'Checked against official pages',
-  only_vet_or_authority_can_determine: 'Only a vet or the authority can decide',
-  summer_heat_breed_crate: 'Summer heat, breed and crate rules',
-  hawaii_return_implications: 'If the pet goes back through Hawaii',
-  cross_cutting: 'True in every case',
-  deadlines: 'Deadlines',
-  physical_presence: 'Who has to be where',
-  overlap_costs_drivers: 'What drives the overlap cost',
-  blockers: 'What could hold everything up',
-  summary: 'In short',
-};
-
 function StepItem({ o }: { o: Record<string, unknown> }) {
   const status = typeof o.status === 'string' ? o.status : null;
   const label = status ? (VERIFICATION_LABEL[status as keyof typeof VERIFICATION_LABEL] ?? humanizeKey(status)) : null;
@@ -90,7 +76,7 @@ function StepItem({ o }: { o: Record<string, unknown> }) {
 /** Lists of text, of {step, status, note, source} checks, or of {if, then} branches. Text only; addresses become links. */
 function Listing({ items }: { items: unknown[] }) {
   return (
-    <ul className="plain-list">
+    <ul className="plain-list plain-list--spaced">
       {items.map((v, i) => {
         const o = v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
         if (o && typeof o.step === 'string') return <StepItem key={i} o={o} />;
@@ -135,7 +121,7 @@ function Conditions({ value, dir, depth = 0 }: { value: unknown; dir: Directory;
       <div className="stack stack--tight">
         {entries.map(([k, v]) => (
           <div key={k}>
-            <h4 className="subhead">{GROUP_TITLE[k] ?? labelFromKey(k, dir)}</h4>
+            <h4 className="subhead">{labelFromKey(k, dir)}</h4>
             <Conditions value={v} dir={dir} depth={depth + 1} />
           </div>
         ))}
@@ -146,9 +132,18 @@ function Conditions({ value, dir, depth = 0 }: { value: unknown; dir: Directory;
 }
 
 /** The pet's own conditions, open; the wider staging notes for the adults, folded away. */
-function StagingNotes({ staging, petName, dir }: { staging: Record<string, unknown>; petName: string; dir: Directory }) {
-  const { pet_specific: petSpecific, ...rest } = staging as { pet_specific?: unknown } & Record<string, unknown>;
-  const petGroups = petSpecific && typeof petSpecific === 'object' && !Array.isArray(petSpecific) ? Object.entries(petSpecific as Record<string, unknown>).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0)) : [];
+function StagingNotes({ staging, pet, dir }: { staging: Record<string, unknown>; pet: { id: string; display_name: string }; dir: Directory }) {
+  // The pet's own notes are the group named for pets in general, or for this pet (by id or name); found at runtime.
+  const isPetKey = (k: string) => {
+    const low = k.toLowerCase();
+    return low === 'pet_specific' || low.includes(pet.id.toLowerCase()) || low.includes(pet.display_name.toLowerCase());
+  };
+  const petEntries = Object.entries(staging).filter(([k]) => isPetKey(k));
+  const rest = Object.fromEntries(Object.entries(staging).filter(([k]) => !isPetKey(k)));
+  const petGroups = petEntries.flatMap(([, v]) =>
+    v && typeof v === 'object' && !Array.isArray(v) ? Object.entries(v as Record<string, unknown>).filter(([, x]) => x !== null && x !== '' && !(Array.isArray(x) && x.length === 0)) : [],
+  );
+  const petName = pet.display_name;
   const restEntries = Object.entries(rest).filter(([, v]) => v !== null && v !== '' && !(Array.isArray(v) && v.length === 0));
   return (
     <div className="stack">
@@ -156,7 +151,7 @@ function StagingNotes({ staging, petName, dir }: { staging: Record<string, unkno
         <Card className="stack">
           <h3 className="money-h3">Specific to {petName}</h3>
           {petGroups.map(([k, v]) => (
-            <Disclosure key={k} title={GROUP_TITLE[k] ?? labelFromKey(k, dir)} meta={Array.isArray(v) ? `${v.length}` : undefined} level={4} defaultOpen className="disclosure--flat">
+            <Disclosure key={k} title={labelFromKey(k, dir)} meta={Array.isArray(v) ? `${v.length}` : undefined} level={4} defaultOpen className="disclosure--flat">
               <Conditions value={v} dir={dir} depth={1} />
             </Disclosure>
           ))}
@@ -167,7 +162,7 @@ function StagingNotes({ staging, petName, dir }: { staging: Record<string, unkno
           <div className="stack">
             {restEntries.map(([k, v]) => (
               <div key={k}>
-                <h4 className="subhead">{GROUP_TITLE[k] ?? labelFromKey(k, dir)}</h4>
+                <h4 className="subhead">{labelFromKey(k, dir)}</h4>
                 <Conditions value={v} dir={dir} depth={1} />
               </div>
             ))}
@@ -440,7 +435,7 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
             {!staging || typeof staging !== 'object' || Object.keys(staging).length === 0 ? (
               <p className="muted">No staging notes have been added yet.</p>
             ) : (
-              <StagingNotes staging={staging} petName={pet.display_name} dir={dir} />
+              <StagingNotes staging={staging} pet={pet} dir={dir} />
             )}
           </Section>
 

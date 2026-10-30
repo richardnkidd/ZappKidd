@@ -9,6 +9,7 @@ import type { ComputedDeadline } from '@shared/engine-contracts';
 import { ARRIVAL_WINDOW_LABEL, DEADLINE_KIND_LABEL, VERIFICATION_LABEL } from '@shared/labels';
 import type { ArrivalData, ContactData, DeadlineRuleData, DocumentData, Sensitivity as DataSensitivity } from '@shared/types';
 import { civil, safeHref } from './format';
+import { splitTitleAction } from './prose';
 import { dataOf, type AnyRecord, type Directory, type Indexes } from './records';
 
 export type Sensitivity = NonNullable<DataSensitivity>;
@@ -43,6 +44,12 @@ export interface Pack {
   sections: PackSection[];
   sensitive: Record<Sensitivity, PackItem[]>;
 }
+
+/** "Practical checks from the X review: …" -> the checks themselves (the section already says "Check"). */
+const checkText = (t: string | null | undefined): string | null => {
+  const x = (t ?? '').replace(/^\s*practical checks(?:\s+from\s+[^:]{1,60})?\s*:\s*/i, '').trim();
+  return x || null;
+};
 
 const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? '').trim().replace(/[.\s]+$/, '').toLowerCase() === (b ?? '').trim().replace(/[.\s]+$/, '').toLowerCase();
 
@@ -87,9 +94,9 @@ export function buildPack(idx: Indexes, dir: Directory, deadlines: ComputedDeadl
       .filter((r) => (dataOf<ArrivalData>(r).window_key ?? 'ongoing') === key)
       .map((r) => {
         const d = dataOf<ArrivalData>(r);
-        const detail = d.action && !same(d.action, r.title) ? d.action : null;
-        const trigger = d.trigger && !same(d.trigger, r.title) && !same(d.trigger, d.action) ? [`When: ${d.trigger}`] : [];
-        return route({ id: r.id, title: r.title, detail, check: d.review_note?.trim() || null, meta: trigger }, r);
+        const split = splitTitleAction(r.title, d.action);
+        const trigger = d.trigger && !same(d.trigger, split.title) && !same(d.trigger, d.action) ? [`When: ${d.trigger}`] : [];
+        return route({ id: r.id, title: split.title, detail: split.detail, check: checkText(d.review_note), meta: trigger }, r);
       })
       .filter(keep);
 

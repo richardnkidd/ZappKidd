@@ -245,6 +245,8 @@ function buildCreateData(
         status_boundary: v('status_boundary', 'Saved name only. Nothing booked or contacted.'),
         relationship,
         relationship_basis: basis,
+        phone: v('phone', null),
+        email: v('email', null),
         source_ids: v('source_ids', []),
         linked_records: v('linked_records', []),
       };

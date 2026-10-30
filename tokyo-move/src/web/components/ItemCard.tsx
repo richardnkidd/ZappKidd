@@ -12,6 +12,8 @@ export interface ItemCardProps {
   owner: OwnerRef | null;
   ownerProposed?: boolean;
   nextAction?: string | null;
+  /** Cut the next-action text to this many lines (the full text is on the record page). */
+  clampAction?: number;
   status?: string | null;
   showStatus?: boolean;
   /** The one date this card shows. Other dates live on the record's own page. */
@@ -57,7 +59,7 @@ export function ItemCard(p: ItemCardProps) {
           <span className="item__title">{p.title}</span>
         )}
         {p.nextAction && (
-          <p className="item__action preline">
+          <p className={`item__action preline${p.clampAction ? ' item__action--clamp' : ''}`} style={p.clampAction ? ({ '--clamp-lines': p.clampAction } as React.CSSProperties) : undefined}>
             <span className="item__label">Next</span> {plain(p.nextAction)}
           </p>
         )}

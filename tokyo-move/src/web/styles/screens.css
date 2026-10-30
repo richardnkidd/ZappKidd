@@ -76,6 +76,12 @@ a.item__title:focus-visible::after {
   overflow: hidden;
   font-size: var(--fs-1);
 }
+.item__action--clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: var(--clamp-lines, 2);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .item__label {
   font-size: var(--fs-0);
   font-weight: 650;
@@ -692,6 +698,9 @@ a.coming__title {
   list-style: disc;
   padding-left: var(--s-5);
 }
+.plain-list--spaced {
+  gap: var(--s-3);
+}
 .task-list {
   display: flex;
   flex-direction: column;
@@ -1098,8 +1107,9 @@ code {
 }
 .ready-chip {
   display: flex;
-  align-items: center;
-  gap: var(--s-2);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   min-height: 52px;
   padding: var(--s-2);
   background: var(--surface);
@@ -1118,28 +1128,30 @@ code {
 .ready-chip--ai {
   border-color: var(--ai);
 }
-.ready-chip__text {
+.ready-chip__top {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
   min-width: 0;
-  line-height: 1.2;
+  max-width: 100%;
 }
 .ready-chip__name {
   font-weight: 650;
   font-size: var(--fs-1);
+  line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The state is never cut short: it sits on its own line, a little smaller, and wraps if it must. */
 .ready-chip__state {
-  font-size: var(--fs-0);
+  font-size: 0.75rem;
+  line-height: 1.2;
   color: var(--ink-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 @media (max-width: 359.98px) {
-  .ready-chip .pbadge {
+  .ready-chip__top .pbadge {
     display: none;
   }
 }

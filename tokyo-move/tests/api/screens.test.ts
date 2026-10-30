@@ -2,6 +2,7 @@
  * Fields edited by the Money, Documents, Contacts, Future work, Settings and Data screens.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import { Writable } from 'node:stream';
 import { Client, DEMO_HOUSEHOLD_ID, countRows, givePassword, loginAs, makeHarness, recordRow, type Harness } from './helpers';
 
 const open: Harness[] = [];
@@ -617,5 +618,76 @@ describe('read-only importer settings: first_review and staging_analysis', () =>
     expect(bad).not.toHaveProperty('staging_analysis');
     ins.run(DEMO_HOUSEHOLD_ID, 'first_review', JSON.stringify({ decision_keys: ['D02', 5, null] }));
     expect((await c.get('/api/snapshot')).body.settings.first_review).toEqual({ decision_keys: ['D02'] });
+  });
+});
+
+describe('contact phone and email', () => {
+  it('PATCH accepts valid values, null clears, and the change is audited', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    const contact = (await c.get('/api/records?type=contact')).body.records[0];
+    const ok = await patch(c, contact.id, contact.version, { phone: '+81 (0)3-1234-5678', email: 'office@example.org' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.record.data).toMatchObject({ phone: '+81 (0)3-1234-5678', email: 'office@example.org' });
+    expect(ok.body.record.locally_edited).toEqual(expect.arrayContaining(['data.phone', 'data.email']));
+    const entry = (await c.get(`/api/audit?record_id=${encodeURIComponent(contact.id)}`)).body.entries[0];
+    expect(entry).toMatchObject({ action: 'update', actor: 'avery' });
+    expect(entry.after.data).toMatchObject({ phone: '+81 (0)3-1234-5678', email: 'office@example.org' });
+    expect(entry.before.data.phone ?? null).toBeNull();
+    const cleared = await patch(c, contact.id, ok.body.record.version, { phone: null, email: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.record.data).toMatchObject({ phone: null, email: null });
+  });
+
+  it('PATCH and POST reject anything that is not a phone number or an email address (nothing written)', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    const contact = (await c.get('/api/records?type=contact')).body.records[0];
+    const audits = countRows(h.db, 'audit_log');
+    const badPhones: unknown[] = ['call me', '555-CALL', '03-1234-5678 ext 4', '+81;3', '', '()', '+ - ()', '1'.repeat(41), 5, ['1'], '12\n34'];
+    for (const phone of badPhones) expect((await patch(c, contact.id, contact.version, { phone })).status, JSON.stringify(phone)).toBe(422);
+    const badEmails: unknown[] = ['not an email', 'a@b', '@example.org', 'a b@example.org', 'a@@example.org', `${'x'.repeat(250)}@example.org`, '', 7, 'a@example.org\r\nBcc: x@example.org'];
+    for (const email of badEmails) expect((await patch(c, contact.id, contact.version, { email })).status, JSON.stringify(email)).toBe(422);
+    expect(recordRow(h.db, contact.id).version).toBe(contact.version);
+    expect(countRows(h.db, 'audit_log')).toBe(audits);
+    const rows = countRows(h.db, 'records');
+    expect((await c.post('/api/records', { type: 'contact', title: 'Bad', data: { name: 'Bad', phone: 'abc' } })).status).toBe(422);
+    expect((await c.post('/api/records', { type: 'contact', title: 'Bad', data: { name: 'Bad', email: 'nope' } })).status).toBe(422);
+    expect(countRows(h.db, 'records')).toBe(rows);
+    // The longest allowed values pass.
+    const longEmail = `${'a'.repeat(64)}@${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(57)}.org`;
+    expect(longEmail.length).toBeLessThanOrEqual(254);
+    expect((await patch(c, contact.id, contact.version, { phone: '1'.repeat(40), email: longEmail })).status).toBe(200);
+  });
+
+  it('POST creates a contact with phone and email, defaulting both to null', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'jun');
+    const made = await c.post('/api/records', { type: 'contact', title: 'Example Movers', data: { name: 'Example Movers', phone: '03 5555 0100', email: 'hello@example.org' } });
+    expect(made.status).toBe(201);
+    expect(made.body.record.data).toMatchObject({ phone: '03 5555 0100', email: 'hello@example.org' });
+    const bare = await c.post('/api/records', { type: 'contact', title: 'Nobody yet', data: { name: 'Nobody yet' } });
+    expect(bare.body.record.data).toMatchObject({ phone: null, email: null });
+    const risk = (await c.get('/api/records?type=risk')).body.records[0];
+    expect((await patch(c, risk.id, risk.version, { phone: '123' })).status).toBe(422); // contacts only
+  });
+
+  it('phone numbers and emails never reach the logs', async () => {
+    const chunks: string[] = [];
+    const stream = new Writable({
+      write(chunk, _enc, cb) {
+        chunks.push(String(chunk));
+        cb();
+      },
+    });
+    const h = await harness({ logger: { level: 'trace', stream } });
+    const c = await loginAs(h, 'avery');
+    const contact = (await c.get('/api/records?type=contact')).body.records[0];
+    await patch(c, contact.id, contact.version, { phone: '+81 3 9999 0000', email: 'private.person@example.org' });
+    await patch(c, contact.id, contact.version, { phone: 'not-a-phone', email: 'bad' }); // stale and invalid: error paths log too
+    await c.post('/api/records', { type: 'contact', title: 'Logged?', data: { name: 'Logged?', phone: '+81 3 8888 0000', email: 'other.person@example.org' } });
+    const log = chunks.join('');
+    expect(log.length).toBeGreaterThan(100);
+    for (const secret of ['9999 0000', 'private.person', '8888 0000', 'other.person', 'not-a-phone']) expect(log, secret).not.toContain(secret);
   });
 });

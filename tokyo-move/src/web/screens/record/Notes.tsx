@@ -15,6 +15,7 @@ export function Notes({ record, idx, dir, level = 2 }: { record: AnyRecord; idx:
   const w = useWrite();
   const draftKey = `note:${record.id}`;
   const [body, setBody] = useState(() => loadDraft(draftKey) ?? '');
+  const [restored, setRestored] = useState(() => body.trim().length > 0);
   const [visibility, setVisibility] = useState<'household' | 'private'>('household');
 
   const notes = useMemo(
@@ -25,7 +26,10 @@ export function Notes({ record, idx, dir, level = 2 }: { record: AnyRecord; idx:
     [idx, record.id],
   );
 
-  const onChange = (v: string) => setBody(v);
+  const onChange = (v: string) => {
+    setBody(v);
+    setRestored(false);
+  };
 
   // The unsaved flag and the tab-only draft follow the text; both go when the form is left or the note is added.
   useEffect(() => {
@@ -52,7 +56,10 @@ export function Notes({ record, idx, dir, level = 2 }: { record: AnyRecord; idx:
         }),
       0,
     );
-    if (ok) setBody('');
+    if (ok) {
+      setBody('');
+      setRestored(false);
+    }
   };
 
   return (
@@ -78,6 +85,11 @@ export function Notes({ record, idx, dir, level = 2 }: { record: AnyRecord; idx:
         <p className="muted">No notes yet.</p>
       )}
       <div className="note-form">
+        {restored && (
+          <p className="small muted" role="status">
+            Restored your unsaved text.
+          </p>
+        )}
         <Field label="Add a note" error={w.error}>
           <TextArea value={body} onChange={(e) => onChange(e.target.value)} rows={3} />
         </Field>

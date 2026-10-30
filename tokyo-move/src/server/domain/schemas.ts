@@ -83,6 +83,19 @@ const costPhaseSchema = z.strictObject({
 
 const linkedList = z.array(line(200)).max(100);
 
+/** Contact phone: digits, spaces and + ( ) - . only, at least one digit. Contact email: a valid address. Both nullable (null clears). */
+export const phoneSchema = z
+  .string()
+  .max(40)
+  .regex(/^[0-9 +().-]+$/, 'Use digits, spaces and + ( ) - . only')
+  .refine((v) => /\d/.test(v), 'A phone number needs at least one digit')
+  .nullable();
+export const emailSchema = z
+  .string()
+  .max(254)
+  .refine((v) => z.email().safeParse(v).success, 'Enter a valid email address')
+  .nullable();
+
 /** personId -> whether an item applies to that person. Merged per key on PATCH; person ids are checked against the household. */
 export const appliesToSchema = z.record(z.string().min(1).max(100), z.enum(['yes', 'no', 'unknown']));
 export const sensitivitySchema = z.enum(['medical', 'financial', 'identity']).nullable();
@@ -266,6 +279,8 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     status_boundary: text(1000),
     relationship: z.enum(['potential', 'contacted', 'engaged', 'former']),
     relationship_basis: text(1000).nullable(),
+    phone: phoneSchema,
+    email: emailSchema,
     linked_records: linkedList,
   },
   existing_commitment: {
@@ -401,6 +416,8 @@ export const createDataSchemas = {
     status_boundary: text(1000).optional(),
     relationship: z.enum(['potential', 'contacted', 'engaged', 'former']).optional(),
     relationship_basis: text(1000).nullable().optional(),
+    phone: phoneSchema.optional(),
+    email: emailSchema.optional(),
     source_ids: z.array(line(100)).max(50).optional(),
     linked_records: linkedList.optional(),
   }),

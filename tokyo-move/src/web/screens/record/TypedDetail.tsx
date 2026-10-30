@@ -8,6 +8,7 @@ import { Button } from '../../components/Controls';
 import { LinkedKeys } from '../../components/LinkedKeys';
 import { Card } from '../../components/Layout';
 import { usePlain } from '../../components/People';
+import { Prose } from '../../components/Prose';
 import { RecordLink } from '../../components/RecordLink';
 import { ruleCountSentence } from '../../lib/dateWords';
 import { civil, instant, safeHref } from '../../lib/format';
@@ -73,7 +74,12 @@ function RuleDetail({ record, idx }: { record: AnyRecord; idx: Indexes }) {
             <dt>How it’s counted</dt>
             <dd>
               {counted}
-              {d.inclusive_note && <span className="preline muted"> {plain(d.inclusive_note)}</span>}
+              {d.inclusive_note && (
+                <span className="preline muted">
+                  {' '}
+                  <Prose text={d.inclusive_note} />
+                </span>
+              )}
             </dd>
           </div>
         )}
@@ -120,7 +126,9 @@ function RuleDetail({ record, idx }: { record: AnyRecord; idx: Indexes }) {
         {d.notes && (
           <div className="fact fact--wide">
             <dt>Notes</dt>
-            <dd className="preline">{plain(d.notes)}</dd>
+            <dd className="preline">
+              <Prose text={d.notes} />
+            </dd>
           </div>
         )}
         {source && (

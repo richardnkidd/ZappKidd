@@ -17,6 +17,7 @@ import { DeadlineRow, ruleOf } from '../../components/DeadlineRow';
 import { Disclosure } from '../../components/Disclosure';
 import { RecordLink } from '../../components/RecordLink';
 import { deadlineVerification } from '../../lib/home';
+import { splitTitleAction } from '../../lib/prose';
 import { dataOf, type AnyRecord, type Directory, type Indexes } from '../../lib/records';
 import { useData } from '../../state/data';
 import { loadPref, savePref } from '../../state/prefs';
@@ -56,14 +57,15 @@ function ArrivalItem({ item, personId, today }: { item: ReturnType<typeof arriva
   const plain = usePlain();
   const [open, setOpen] = useState(false);
   const d = item.data;
-  const action = d.action && norm(d.action) !== norm(item.record.title) ? plain(d.action) : null;
+  const split = splitTitleAction(item.record.title, d.action ? plain(d.action) : null);
+  const action = split.detail;
   const trigger = d.trigger && norm(d.trigger) !== norm(item.record.title) && norm(d.trigger) !== norm(d.action ?? '') ? d.trigger : null;
   const reason = item.reason && item.status !== 'planned' && norm(item.reason) !== norm(d.action ?? '') ? item.reason : null;
   return (
     <li className="item item--flat">
       <div className="item__main">
         <RecordLink id={item.record.id} className="item__title">
-          {item.record.title}
+          {split.title}
         </RecordLink>
         {action && <ClampText className="item__action preline">{action}</ClampText>}
         {trigger && (
@@ -122,7 +124,7 @@ function AfterArrivalDeadlines({ person, idx, dir }: { person: string; idx: Inde
   return (
     <ul className="item-list">
       {rows.map((d) => (
-        <DeadlineRow key={d.id} d={d} idx={idx} today={today} dir={dir} />
+        <DeadlineRow key={d.id} d={d} idx={idx} today={today} dir={dir} headingLevel={3} />
       ))}
     </ul>
   );

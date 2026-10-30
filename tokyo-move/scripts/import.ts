@@ -1,5 +1,6 @@
 /**
- * npm run import -- --source <dir> [--db <path>] [--corrections <dir>] [--report <file.md>] [--force]
+ * npm run import -- --source <dir> [--db <path>] [--corrections <dir>] [--overrides <file>] [--report <file.md>] [--force]
+ *   Private overlays default to ./private/corrections and ./private/household-overrides.json (then next to the source).
  *
  * Reads the source package (workbook + sidecars), applies generic and private reviewed-model corrections, upserts the
  * result into the database idempotently, and prints counts, status and receipts. Exits non-zero when the plan's IDs
@@ -25,7 +26,14 @@ function arg(name: string): string | undefined {
 
 const source = resolve(arg('source') ?? process.env.TOKYO_SOURCE_DIR ?? join(process.cwd(), 'private', 'source-package'));
 const dbPath = arg('db') ?? defaultDbPath();
-const correctionsDir = resolve(arg('corrections') ?? join(source, '..', 'corrections'));
+// Private overlays live in this project's gitignored private/ folder; a folder next to the source package is the
+// fallback (that is where they sit when the package itself was copied into private/).
+const projectPrivate = join(process.cwd(), 'private');
+const firstExisting = (...paths: string[]) => paths.find((p) => existsSync(p));
+const correctionsDir = resolve(
+  arg('corrections') ?? firstExisting(join(projectPrivate, 'corrections'), join(source, '..', 'corrections')) ?? join(projectPrivate, 'corrections'),
+);
+const overridesPath = arg('overrides') ?? firstExisting(join(projectPrivate, 'household-overrides.json'));
 const force = process.argv.includes('--force');
 const reportPath = arg('report');
 
@@ -34,7 +42,7 @@ function main(): number {
     console.error(`Source directory not found: ${source}`);
     return 2;
   }
-  const bundle = parseSourcePackage(source);
+  const bundle = parseSourcePackage(source, overridesPath ? { overridesPath } : {});
   const parsedForReport = structuredClone(bundle);
   const loaded = loadCorrectionFiles(correctionsDir);
   const corrections = mergeCorrections(BUILTIN_CORRECTIONS, loaded.corrections);
@@ -44,6 +52,7 @@ function main(): number {
 
   console.log(`Source: ${source}`);
   console.log(`Database: ${dbPath}`);
+  console.log(`Household overrides: ${overridesPath ?? 'none found (looked in ./private/household-overrides.json and next to the source)'}`);
   console.log(`Corrections: ${corrections.map((c) => c.id).join(', ') || 'none'}${loaded.files.length ? ` (${loaded.files.length} private file(s))` : ''}`);
   console.log('');
   console.log('Counts (found / expected):');

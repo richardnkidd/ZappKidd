@@ -5,7 +5,7 @@
  *   npm run test:e2e     # all projects
  *   npx playwright test --project=phone tests/e2e/plan.spec.ts
  *
- * Every run starts three fresh throw-away servers (fictional demo household, temp databases): see
+ * Every run starts four fresh throw-away servers (fictional demo household, temp databases): see
  * tests/e2e/support/env.ts. Set E2E_REUSE_SERVER=1 to attach to servers you started yourself on the same ports.
  */
 import { defineConfig } from '@playwright/test';
@@ -71,6 +71,16 @@ export default defineConfig({
       name: 'safety',
       command: `${launcher} safety ${E2E_PORTS.safety}`,
       url: `${baseUrlFor('safety')}/api/health`,
+      reuseExistingServer,
+      timeout: 60_000,
+      gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
+    {
+      name: 'failcreate',
+      command: `${launcher} failcreate ${E2E_PORTS.failcreate} --fixture-fail create`,
+      url: `${baseUrlFor('failcreate')}/api/health`,
       reuseExistingServer,
       timeout: 60_000,
       gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },

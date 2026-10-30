@@ -83,6 +83,10 @@ const costPhaseSchema = z.strictObject({
 
 const linkedList = z.array(line(200)).max(100);
 
+/** personId -> whether an item applies to that person. Merged per key on PATCH; person ids are checked against the household. */
+export const appliesToSchema = z.record(z.string().min(1).max(100), z.enum(['yes', 'no', 'unknown']));
+export const sensitivitySchema = z.enum(['medical', 'financial', 'identity']).nullable();
+
 /* ---------- status vocabulary ---------- */
 
 export const WORK_STATUSES = [
@@ -126,6 +130,8 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     deadline: deadlineSchema.nullable(),
     conditional: text(1000).nullable(),
     dependency_note: text(1000).nullable(),
+    applies_to: appliesToSchema,
+    sensitivity: sensitivitySchema,
   },
   workstream: {
     next_action: text(2000),
@@ -188,6 +194,8 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     refresh_trigger: text(1000).nullable(),
     link: externalLink.nullable(),
     linked_records: linkedList,
+    sensitivity: sensitivitySchema,
+    carry_on_arrival: z.array(z.string().min(1).max(100)).max(10),
   },
   cost: {
     category: line(200),
@@ -223,6 +231,8 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     completion_criteria: text(2000),
     dependencies: text(1000),
     deadline: deadlineSchema.nullable(),
+    applies_to: appliesToSchema,
+    sensitivity: sensitivitySchema,
   },
   horizon: {
     trigger: text(1000),

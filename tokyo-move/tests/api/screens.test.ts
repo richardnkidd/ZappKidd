@@ -471,3 +471,151 @@ describe('import receipts at real-run scale', () => {
     expect(detail.import_changes.every((x: any) => x.record_id === 'milestone:W01')).toBe(true);
   });
 });
+
+describe('applies_to, sensitivity and carry_on_arrival', () => {
+  it('applies_to merges per traveler, validates people and values, is audited and tracked as locally edited', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    for (const id of ['milestone:W06', (await c.get('/api/records?type=arrival')).body.records[0].id]) {
+      const r = (await c.get(`/api/records/${id}`)).body.record;
+      const first = await patch(c, id, r.version, { applies_to: { jun: 'no' } });
+      expect(first.status, id).toBe(200);
+      expect(first.body.record.data.applies_to).toMatchObject({ jun: 'no' });
+      expect(first.body.record.locally_edited).toContain('data.applies_to');
+      // Setting another traveler's answer keeps the first one (and a pet is a person of the household too).
+      const second = await patch(c, id, first.body.record.version, { applies_to: { avery: 'yes', mochi: 'unknown' } });
+      expect(second.status).toBe(200);
+      expect(second.body.record.data.applies_to).toMatchObject({ jun: 'no', avery: 'yes', mochi: 'unknown' });
+      // Changing one answer leaves the others alone.
+      const third = await patch(c, id, second.body.record.version, { applies_to: { jun: 'yes' } });
+      expect(third.body.record.data.applies_to).toMatchObject({ jun: 'yes', avery: 'yes', mochi: 'unknown' });
+      const entry = (await c.get(`/api/audit?record_id=${encodeURIComponent(id)}`)).body.entries[0];
+      expect(entry).toMatchObject({ action: 'update', actor: 'avery' });
+      expect(entry.before.data.applies_to.jun).toBe('no');
+      expect(entry.after.data.applies_to.jun).toBe('yes');
+      // Re-sending the same answers is a no-op: no version bump, no audit.
+      const audits = countRows(h.db, 'audit_log');
+      const same = await patch(c, id, third.body.record.version, { applies_to: { jun: 'yes' } });
+      expect(same.body.record.version).toBe(third.body.record.version);
+      expect(countRows(h.db, 'audit_log')).toBe(audits);
+      // Rejections write nothing.
+      const v = third.body.record.version;
+      for (const applies_to of [{ nobody: 'yes' }, { jun: 'maybe' }, { jun: true }, { jun: null }, 'yes', null, ['jun'], { constructor: 'yes' }]) {
+        expect((await patch(c, id, v, { applies_to })).status, JSON.stringify(applies_to)).toBe(422);
+      }
+      expect(recordRow(h.db, id).version).toBe(v);
+    }
+    const risk = (await c.get('/api/records?type=risk')).body.records[0];
+    expect((await patch(c, risk.id, risk.version, { applies_to: { jun: 'no' } })).status).toBe(422); // only milestones and arrival items
+  });
+
+  it('applies_to answers by one adult are not erased when the other sets theirs', async () => {
+    const h = await harness();
+    const avery = await loginAs(h, 'avery');
+    const jun = await loginAs(h, 'jun');
+    const m = (await avery.get('/api/records/milestone:W06')).body.record;
+    const a = await patch(avery, m.id, m.version, { applies_to: { avery: 'yes' } });
+    const b = await patch(jun, m.id, a.body.record.version, { applies_to: { jun: 'no' } });
+    expect(b.body.record.data.applies_to).toMatchObject({ avery: 'yes', jun: 'no' });
+    // A stale write still gets the normal conflict, not a silent overwrite.
+    expect((await patch(jun, m.id, a.body.record.version, { applies_to: { jun: 'yes' } })).status).toBe(409);
+  });
+
+  it('sensitivity is a closed set (or null) on milestones, arrival items and documents only', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    const doc = (await c.get('/api/records?type=document')).body.records[0];
+    const arrival = (await c.get('/api/records?type=arrival')).body.records[0];
+    const milestone = (await c.get('/api/records/milestone:W06')).body.record;
+    for (const rec of [doc, arrival, milestone]) {
+      let v = rec.version;
+      for (const sensitivity of ['medical', 'financial', 'identity', null]) {
+        const res = await patch(c, rec.id, v, { sensitivity });
+        expect(res.status, `${rec.type} ${sensitivity}`).toBe(200);
+        expect(res.body.record.data.sensitivity).toBe(sensitivity);
+        v = res.body.record.version;
+      }
+      for (const sensitivity of ['secret', 'Medical', '', 3, ['medical']]) {
+        expect((await patch(c, rec.id, v, { sensitivity })).status, JSON.stringify(sensitivity)).toBe(422);
+      }
+    }
+    const risk = (await c.get('/api/records?type=risk')).body.records[0];
+    expect((await patch(c, risk.id, risk.version, { sensitivity: 'medical' })).status).toBe(422);
+    const contact = (await c.get('/api/records?type=contact')).body.records[0];
+    expect((await patch(c, contact.id, contact.version, { sensitivity: 'identity' })).status).toBe(422);
+  });
+
+  it('carry_on_arrival lists people of the household, on documents only', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'jun');
+    const doc = (await c.get('/api/records?type=document')).body.records[0];
+    const ok = await patch(c, doc.id, doc.version, { carry_on_arrival: ['avery', 'mochi', 'avery'] });
+    expect(ok.status).toBe(200);
+    expect(ok.body.record.data.carry_on_arrival).toEqual(['avery', 'mochi']); // duplicates collapse
+    expect(ok.body.record.locally_edited).toContain('data.carry_on_arrival');
+    const cleared = await patch(c, doc.id, ok.body.record.version, { carry_on_arrival: [] });
+    expect(cleared.body.record.data.carry_on_arrival).toEqual([]);
+    const v = cleared.body.record.version;
+    for (const carry_on_arrival of [['nobody'], 'avery', null, [1], Array.from({ length: 11 }, () => 'avery')]) {
+      expect((await patch(c, doc.id, v, { carry_on_arrival })).status, JSON.stringify(carry_on_arrival)).toBe(422);
+    }
+    const milestone = (await c.get('/api/records/milestone:W06')).body.record;
+    expect((await patch(c, milestone.id, milestone.version, { carry_on_arrival: ['avery'] })).status).toBe(422);
+    expect(recordRow(h.db, doc.id).version).toBe(v);
+  });
+});
+
+describe('read-only importer settings: first_review and staging_analysis', () => {
+  const firstReview = { decision_keys: ['D02', 'D03', 'D04'], note: 'Start with the housing choice.' };
+  const staging = { relocation: { pattern: 'one adult first' }, immigration: { statement: 'Adviser to confirm the sequence.', implied_sequence_for_adviser_to_confirm: ['a', 'b'] }, nationality_branches: [{ if: 'x', then: 'y' }] };
+
+  it('appear in the snapshot settings and the settings list, scoped to the household, and stay read-only', async () => {
+    const h = await harness({ secondHousehold: true });
+    const ins = h.db.prepare('INSERT OR REPLACE INTO settings (household_id, key, value) VALUES (?, ?, ?)');
+    ins.run(DEMO_HOUSEHOLD_ID, 'first_review', JSON.stringify(firstReview));
+    ins.run(DEMO_HOUSEHOLD_ID, 'staging_analysis', JSON.stringify(staging));
+    ins.run(DEMO_HOUSEHOLD_ID, '_import.first_review', JSON.stringify({ decision_keys: ['LEAK'] }));
+    ins.run(DEMO_HOUSEHOLD_ID, '_import.staging_analysis', JSON.stringify({ leak: 'LEAK' }));
+    const c = await loginAs(h, 'avery');
+
+    const snap = await c.get('/api/snapshot');
+    expect(snap.body.settings.first_review).toEqual(firstReview);
+    expect(snap.body.settings.staging_analysis).toEqual(staging);
+    expect(snap.raw).not.toContain('LEAK');
+    const list = await c.get('/api/settings');
+    expect(list.body.settings.first_review).toEqual(firstReview);
+    expect(list.body.settings.staging_analysis).toEqual(staging);
+    expect(list.raw).not.toContain('LEAK');
+    expect(list.body.editable).toEqual(['display_timezone', 'scenarios']);
+
+    // Read-only: not in the PUT allowlist.
+    for (const key of ['first_review', 'staging_analysis']) {
+      const res = await c.put(`/api/settings/${key}`, { value: { decision_keys: [] } });
+      expect(res.status, key).toBe(422);
+    }
+    expect(JSON.parse((h.db.prepare("SELECT value FROM settings WHERE household_id = ? AND key = 'first_review'").get(DEMO_HOUSEHOLD_ID) as any).value)).toEqual(firstReview);
+
+    // Another household sees neither.
+    await givePassword(h.db, 'zed');
+    const z = new Client(h.app);
+    await z.passwordLogin('zed');
+    const zs = (await z.get('/api/snapshot')).body.settings;
+    expect(zs).not.toHaveProperty('first_review');
+    expect(zs).not.toHaveProperty('staging_analysis');
+    expect((await z.get('/api/settings')).body.settings).not.toHaveProperty('first_review');
+  });
+
+  it('are left out when absent or malformed (the optional fields are never null)', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    expect(Object.keys((await c.get('/api/snapshot')).body.settings).sort()).toEqual(['jp_holidays', 'plan_baseline', 'task_adapter', 'traveler_gates']);
+    const ins = h.db.prepare('INSERT OR REPLACE INTO settings (household_id, key, value) VALUES (?, ?, ?)');
+    ins.run(DEMO_HOUSEHOLD_ID, 'first_review', '"not an object"');
+    ins.run(DEMO_HOUSEHOLD_ID, 'staging_analysis', '[1,2]');
+    const bad = (await c.get('/api/snapshot')).body.settings;
+    expect(bad).not.toHaveProperty('first_review');
+    expect(bad).not.toHaveProperty('staging_analysis');
+    ins.run(DEMO_HOUSEHOLD_ID, 'first_review', JSON.stringify({ decision_keys: ['D02', 5, null] }));
+    expect((await c.get('/api/snapshot')).body.settings.first_review).toEqual({ decision_keys: ['D02'] });
+  });
+});

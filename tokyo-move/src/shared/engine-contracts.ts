@@ -42,6 +42,14 @@ export interface ComputedDeadline {
   days_until: number | null; // null when awaiting date
   approximate: boolean; // e.g. business days without a holiday calendar
   applies: 'yes' | 'no' | 'unknown';
+  /** Meaning of the date (see DeadlineRuleData.bound). Default 'by'. */
+  bound?: import('./types').RuleBound;
+  /** Plain advice when the date falls on a weekend/holiday, respecting the bound (never earlier than a not_before). */
+  business_day_advice?: string | null;
+  /** Verification state of the (active) rule this date comes from. */
+  verification?: DeadlineRuleData['verification'];
+  /** Rule keys that were superseded on the way to this rule (oldest first), when a record pointed at a replaced rule. */
+  superseded_rule_ids?: string[];
   /** Record keys this deadline dates (rule.linked_records plus records whose deadline derives from the rule). */
   linked_record_keys?: string[];
 }
@@ -118,6 +126,8 @@ export interface TravelerReadiness {
   conditional_unknown: GateStatus[]; // applicability still unknown
   after_arrival: GateStatus[];
   next_action: GateStatus | null;
+  /** Conditional steps that do not apply to this traveler (record applies_to or the gate config), with the reason shown to the household. */
+  not_needed?: { record_id: string; key: string; title: string; reason: string }[];
   departure: AnchorData | null;
   arrival: AnchorData | null;
 }
@@ -125,7 +135,10 @@ export interface TravelerReadiness {
 /* ---------- budget ---------- */
 
 export interface MoneyTotal {
-  known_usd: number; // sum of lines with a usable USD value
+  /** Sum of lines with a usable USD value; null when the section has lines but none is known (unknown is not 0). */
+  known_usd: number | null;
+  /** Number of lines (not excluded) with a usable value. */
+  known_count?: number;
   unknown_count: number; // lines with no amount, missing FX, or still 'review'
   unknown_keys: string[];
   excluded_count: number;
@@ -167,7 +180,8 @@ export interface CashModel {
   extra_us_usd?: number | null;
   other_commitments_usd: number | null;
   return_reserve_usd: number | null;
-  need_usd_known: number;
+  /** Known part of the need; null when nothing at all is known yet (not 0). */
+  need_usd_known: number | null;
   need_complete: boolean;
   cash_usd: number | null;
   cash_as_of: string | null;
@@ -198,3 +212,9 @@ export interface BudgetInputs {
 }
 
 export type { DeadlineRuleData };
+
+/** A traveler's own date rules, split for the readiness page ("Dates before leaving" / "After arrival"). */
+export interface TravelerDeadlines {
+  before_departure: ComputedDeadline[];
+  after_arrival: ComputedDeadline[];
+}

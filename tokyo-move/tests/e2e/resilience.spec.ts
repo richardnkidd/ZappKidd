@@ -67,6 +67,7 @@ test.describe('When things go wrong', () => {
     await page.unroute(`**/api/records/${enc(id)}`);
     try {
       await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(page.getByRole('textbox', { name: 'Next action' })).toHaveCount(0); // closes only after the server accepted it
       await expect(page.getByRole('region', { name: 'Next action' })).toContainText(words);
       expect((await avery.record(id)).data.next_action).toBe(words);
     } finally {

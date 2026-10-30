@@ -194,14 +194,17 @@ function evaluateLine(rec: BaseRecord<'cost', CostData>, fx: number | null, hori
 function totalFor(lines: CostLineView[], monthly: boolean): MoneyTotal {
   const live = lines.filter((l) => l.stage !== 'excluded');
   const unknown = live.filter((l) => l.horizon_usd === null);
+  const knownCount = live.length - unknown.length;
   const total: MoneyTotal = {
-    known_usd: live.reduce((sum, l) => sum + (l.horizon_usd ?? 0), 0),
+    // Unknown is not zero: a section with lines but nothing known reports null, not $0.
+    known_usd: live.length > 0 && knownCount === 0 ? null : live.reduce((sum, l) => sum + (l.horizon_usd ?? 0), 0),
+    known_count: knownCount,
     unknown_count: unknown.length,
     unknown_keys: unknown.map((l) => l.key),
     excluded_count: lines.length - live.length,
     complete: unknown.length === 0,
   };
-  if (monthly) total.monthly_known_usd = live.reduce((sum, l) => sum + (l.usd ?? 0), 0);
+  if (monthly && live.some((l) => l.usd !== null)) total.monthly_known_usd = live.reduce((sum, l) => sum + (l.usd ?? 0), 0);
   return total;
 }
 
@@ -278,14 +281,16 @@ function buildCashModel(args: {
   const other = otherRec ? toUsd(otherRec.data.amount, fx) : null;
 
   const sectionTotals = [bySection.one_time, bySection.reserve, bySection.tokyo_monthly, bySection.us_monthly, bySection.staged_overlap];
-  const needKnown = sectionTotals.reduce((s, t) => s + t.known_usd, 0) + (extra ?? 0) + (other ?? 0) + (reserve ?? 0);
+  const anyKnown = sectionTotals.some((t) => (t.known_count ?? 0) > 0) || other !== null || reserve !== null;
+  // Nothing known at all ⇒ null (the UI says "No amounts known yet"), never 0.
+  const needKnown: number | null = anyKnown ? sectionTotals.reduce((s, t) => s + (t.known_usd ?? 0), 0) + (extra ?? 0) + (other ?? 0) + (reserve ?? 0) : null;
   const linesComplete = sectionTotals.every((t) => t.complete);
   const needComplete = linesComplete && extra !== null && other !== null && reserve !== null;
 
   const allCounted = income.length > 0 && income.every((i) => i.counted && i.monthly_usd !== null);
   const modeledIncome = allCounted ? income.reduce((s, i) => s + (i.monthly_usd ?? 0), 0) * horizonMonths : null;
 
-  const headroom = needComplete && cash !== null ? cash - needKnown : null;
+  const headroom = needComplete && cash !== null && needKnown !== null ? cash - needKnown : null;
   const state: CashModel['state'] = headroom === null ? 'incomplete' : modeledIncome === null ? 'cash_view_ready_income_unverified' : 'complete';
 
   const missing: string[] = [];

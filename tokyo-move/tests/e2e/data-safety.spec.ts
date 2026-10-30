@@ -67,8 +67,9 @@ test.describe('Export', () => {
 
     const notes = await (await avery.ctx.get('/api/export?format=csv&type=note')).text();
     expect(notes).toContain('HYPERLINK');
-    // The dangerous text is stored as text: its cell never starts with = + - or @.
-    for (const cell of notes.split(/[\r\n,]/)) expect(cell.replace(/^"/, '')).not.toMatch(/^[=+@]HYPERLINK/);
+    // The dangerous text is stored as text: a leading apostrophe stops a spreadsheet from running it as a formula.
+    expect(notes).toMatch(/"'=HYPERLINK\(""http:\/\/example\.invalid""/);
+    expect(notes).not.toMatch(/(^|[\r\n,])=HYPERLINK/);
     // CSV needs a record type.
     expect((await avery.ctx.get('/api/export?format=csv')).status()).toBe(422);
   });

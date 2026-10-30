@@ -8,7 +8,7 @@ import { listTaskLinkRows, taskLinkFromRow } from './task-links-repo';
 import { getSetting } from './settings-repo';
 import { adapterStatus } from './tasks-service';
 import { lastCompletedReviewAt } from './reviews-service';
-import { parseJson } from '../util/json';
+import { isPlainObject, parseJson } from '../util/json';
 
 export function buildMe(deps: Deps, ctx: AuthContext): MeResponse {
   return {
@@ -84,7 +84,7 @@ export function mergeScenarios(stored: unknown): ScenarioSettings[] {
 export function buildSettings(deps: Deps, ctx: AuthContext): HouseholdSettings {
   const hh = ctx.householdId;
   const baseline = getSetting<Partial<HouseholdSettings['plan_baseline']>>(deps.db, hh, 'plan_baseline', {});
-  return {
+  const settings: HouseholdSettings = {
     traveler_gates: getSetting<HouseholdSettings['traveler_gates']>(deps.db, hh, 'traveler_gates', []),
     task_adapter: adapterStatus(deps, ctx),
     plan_baseline: {
@@ -94,6 +94,17 @@ export function buildSettings(deps: Deps, ctx: AuthContext): HouseholdSettings {
     },
     jp_holidays: getSetting<string[]>(deps.db, hh, 'jp_holidays', []),
   };
+  // Read-only settings the importer may write; present only when this household has them. Never editable through the API.
+  const firstReview = getSetting<unknown>(deps.db, hh, 'first_review', null);
+  if (isPlainObject(firstReview) && Array.isArray(firstReview.decision_keys)) {
+    settings.first_review = {
+      decision_keys: firstReview.decision_keys.filter((k): k is string => typeof k === 'string'),
+      ...(typeof firstReview.note === 'string' ? { note: firstReview.note } : {}),
+    };
+  }
+  const staging = getSetting<unknown>(deps.db, hh, 'staging_analysis', null);
+  if (isPlainObject(staging)) settings.staging_analysis = staging;
+  return settings;
 }
 
 export function buildSnapshot(deps: Deps, ctx: AuthContext): Snapshot {

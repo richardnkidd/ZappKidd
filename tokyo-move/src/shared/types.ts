@@ -152,6 +152,9 @@ export type DeadlineKind =
   | 'review_date'; // a planning review checkpoint — NEVER an expiry or filing deadline
 
 export type DayUnit = 'calendar_days' | 'business_days' | 'calendar_months';
+export type RuleBound = 'by' | 'not_before' | 'on' | 'continuous_since' | 'recurring';
+/** Explicit sensitivity for printing/sharing decisions — never inferred from keywords (REL-APP-004). */
+export type Sensitivity = 'medical' | 'financial' | 'identity' | null;
 
 export type AnchorCode =
   | 'T' | 'D' // household coordination helpers only
@@ -207,6 +210,20 @@ export interface DeadlineRuleData {
   applies: 'yes' | 'no' | 'unknown';
   applies_when: string;
   linked_records: string[]; // record keys this rule dates, e.g. ['W15']
+  /**
+   * What the computed date MEANS (REL-APP-001). Default 'by'.
+   * - 'by': must be done on or before the date (weekend advice: aim for the prior business day)
+   * - 'not_before': earliest allowed date / a window opens (weekend advice: the first business day ON OR AFTER it;
+   *   never suggest an earlier day)
+   * - 'on': happens on that day (e.g. declare at entry) — note only
+   * - 'continuous_since': a condition that must already hold continuously since the date (e.g. residence since)
+   * - 'recurring': repeats after an event (no single date)
+   */
+  bound?: RuleBound;
+  /** Paired rule key when this rule is one end of a window (e.g. exam window opens ↔ boarding). */
+  window_pair?: string | null;
+  /** How the count is made, as stated by the source (shown as "How it's counted"). */
+  inclusive_note?: string | null;
   notes?: string | null;
   /** Key of the rule that replaces this one (a rule with this set is treated as superseded). */
   superseded_by?: string | null;
@@ -255,6 +272,11 @@ export interface MilestoneData {
   review_note?: string | null;
   /** Source 'Due-date basis' text (why the date/window is what it is), preserved for display. */
   due_basis?: string | null;
+  /** Household answer to "does this conditional step apply to <traveler>?" — overrides the gate config default. */
+  applies_to?: Record<string, 'yes' | 'no' | 'unknown'>;
+  sensitivity?: Sensitivity;
+  /** Dependency key → plain reason this record waits on it (shown with the blocker, e.g. why one adult waits on the other). */
+  dependency_reason?: Record<string, string>;
 }
 
 export interface TravelerProgress {
@@ -339,6 +361,12 @@ export interface QuestionData {
   answer: string | null;
   local_note: string | null;
   relevance: string[]; // record keys or traveler ids used to surface "a few relevant questions"
+  /** 'plan' = one of the source questionnaire items; 'review' = added by a plan review (e.g. questions for an adviser). */
+  origin?: 'plan' | 'review';
+  /** Who the question is for: 'household' (default) or a professional such as 'immigration_adviser', 'tax_adviser', 'veterinarian'. */
+  audience?: string;
+  /** Facts the household must gather before asking (private details stay outside the app). */
+  facts_needed?: string | null;
 }
 
 /* ---------- Risks / RAID ---------- */
@@ -357,6 +385,9 @@ export interface RiskData {
 /* ---------- Documents ---------- */
 
 export interface DocumentData {
+  sensitivity?: Sensitivity;
+  /** Travelers who carry or need this document on arrival (for the arrival pack). */
+  carry_on_arrival?: string[];
   for_whom: string; // source text
   traveler_scope: string[]; // person ids, [] = household
   custodian: string;
@@ -469,6 +500,9 @@ export interface ArrivalData {
   deadline: Deadline | null;
   /** Same semantics as MilestoneData.traveler_progress — each traveler's arrival checklist is independent. */
   traveler_progress?: Record<string, TravelerProgress>;
+  applies_to?: Record<string, 'yes' | 'no' | 'unknown'>;
+  sensitivity?: Sensitivity;
+  review_note?: string | null;
 }
 
 export interface HorizonData {
@@ -714,6 +748,15 @@ export interface HouseholdSettings {
   plan_baseline: { baseline_on: string | null; reviewed_on: string | null; source_label: string };
   /** Optional Japanese public-holiday calendar for business-day math (civil dates). Empty = approximate. */
   jp_holidays: string[];
+  /** At most three decisions the PM review proposed for the first couple review, in order. */
+  first_review?: { decision_keys: string[]; note?: string };
+  /**
+   * Reviewer staging analysis for the "what if the pet arrives later?" comparison. Shape:
+   * { relocation: {...per-pattern analysis...}, immigration: { statement, implied_sequence_for_adviser_to_confirm[],
+   *   what_this_means_for_staging, verification }, nationality_branches: [{if, then}], pet_specific: {...} }.
+   * Read defensively; text only.
+   */
+  staging_analysis?: Record<string, unknown>;
 }
 
 /* ------------------------------------------------------------------ */

@@ -165,13 +165,24 @@ export function travelerReadiness(person: Person, records: BaseRecord[], gates: 
     seen.add(key);
     pre.push(buildGate(rec, person.id, idx, 'required', null, 'before_departure'));
   }
+  const notNeeded: NonNullable<TravelerReadiness['not_needed']> = [];
   for (const c of gates.conditional) {
-    if (c.applies === 'no') continue;
     const rec = resolve(c.key);
     if (!rec) continue;
+    // The record's own per-traveler applicability wins; the gate config's value is the default.
+    const applies = dataOf(rec).applies_to?.[person.id] ?? c.applies;
     seen.add(c.key);
+    if (applies === 'no') {
+      notNeeded.push({
+        record_id: rec.id,
+        key: rec.key,
+        title: rec.title,
+        reason: `Not needed for ${person.display_name}.${c.condition ? ` ${c.condition}` : ''}`.trim(),
+      });
+      continue;
+    }
     const gate = buildGate(rec, person.id, idx, 'conditional', c.condition, 'before_departure');
-    if (c.applies === 'yes') pre.push(gate);
+    if (applies === 'yes') pre.push(gate);
     else conditionalUnknown.push(gate);
   }
   const arrivalSeen = new Set<string>();
@@ -240,6 +251,7 @@ export function travelerReadiness(person: Person, records: BaseRecord[], gates: 
     open,
     met,
     conditional_unknown: conditionalUnknown,
+    not_needed: notNeeded,
     after_arrival: afterArrival,
     next_action: nextAction,
     departure,

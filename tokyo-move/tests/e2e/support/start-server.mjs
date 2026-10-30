@@ -1,6 +1,6 @@
 // Start one throw-away Kadode server for the browser tests.
 //
-//   node tests/e2e/support/start-server.mjs <name> <port> [--build] [--adapter snapshot|fixture]
+//   node tests/e2e/support/start-server.mjs <name> <port> [--build] [--adapter snapshot|fixture] [--fixture-fail create|update|complete|readback]
 //
 // - Creates a fresh temp folder (database + data dir) every time, so every run starts from the fictional demo seed.
 // - With --build it first runs `npm run build` (the server serves dist/web). Set E2E_SKIP_BUILD=1 to reuse dist/web.
@@ -21,6 +21,8 @@ if (!name || !port) {
 const flag = (f) => rest.includes(f);
 const adapterIdx = rest.indexOf('--adapter');
 const adapter = adapterIdx >= 0 ? rest[adapterIdx + 1] : undefined;
+const failIdx = rest.indexOf('--fixture-fail');
+const fixtureFail = failIdx >= 0 ? rest[failIdx + 1] : undefined;
 
 const dir = join(tmpdir(), 'kadode-e2e', `${name}-${port}`);
 rmSync(dir, { recursive: true, force: true });
@@ -55,6 +57,8 @@ for (const k of ['KADODE_LAN', 'KADODE_DEV_IDENTITIES', 'KADODE_COOKIE_SECURE', 
 }
 if (adapter) env.KADODE_TASK_ADAPTER = adapter;
 else delete env.KADODE_TASK_ADAPTER;
+// Demo-only failure injection: the fixture task store fails this kind of call once, to show the error states.
+if (fixtureFail) env.KADODE_TASK_FIXTURE_FAIL = fixtureFail;
 
 const child = spawn(tsx, ['src/server/index.ts'], { cwd: root, env, stdio: 'inherit', shell: process.platform === 'win32' });
 

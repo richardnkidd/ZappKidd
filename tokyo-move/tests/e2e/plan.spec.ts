@@ -325,3 +325,41 @@ test.describe('Propose an action on a read-only task list', () => {
     await expect(page.getByText(/Task list copy .* read-only/)).toBeVisible();
   });
 });
+
+test.describe('Propose an action when the task list fails once', () => {
+  // This server's demo task store is told to fail the first "create": the proposal must not be lost or pretended done.
+  test.describe.configure({ mode: 'serial' });
+  test.use({ baseURL: baseUrlFor('failcreate') });
+
+  test('shows "Couldn’t reach your task list", keeps the proposal, and "Try again" finishes it', async ({ page, signIn, api }, testInfo) => {
+    // Only the first create on this server fails, so run it in one project.
+    test.skip(testInfo.project.name !== 'phone', 'The injected failure happens once per server run.');
+    const title = unique('Order the moving boxes', testInfo);
+    await signIn(page, 'avery', `/r/${enc(PROPOSE_TARGET)}`);
+    await loaded(page);
+    await page.getByRole('button', { name: 'Propose an action' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Propose an action for your task list' });
+    await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill(title);
+    await dialog.getByRole('button', { name: 'Propose action' }).click();
+    await expect(dialog).toHaveCount(0);
+
+    const row = page.getByRole('region', { name: /^Tasks on your task list/ }).getByRole('listitem').filter({ hasText: title });
+    await expect(row).toBeVisible(); // the proposal is kept
+    await expect(row).toContainText(/Couldn.t reach your task list/);
+    await expect(row).not.toContainText('Up to date');
+    const avery = await api('avery', 'failcreate');
+    const failed = ((await avery.get('/api/tasks')).task_links as any[]).find((t) => t.title === title);
+    expect(failed.sync_state).toBe('error');
+    expect(failed.canonical_id).toBeNull();
+
+    // Try again: the same proposal now reaches the (fixture) task list, with the same due date, once.
+    await row.getByRole('button', { name: 'Try again' }).click();
+    await expect(row).toContainText('Up to date');
+    await expect(row.getByRole('button', { name: 'Try again' })).toHaveCount(0);
+    const done = ((await avery.get('/api/tasks')).task_links as any[]).filter((t) => t.title === title);
+    expect(done).toHaveLength(1);
+    expect(done[0].sync_state).toBe('synced');
+    expect(done[0].canonical_id).toBeTruthy();
+    expect(done[0].due).toBe(failed.due);
+  });
+});

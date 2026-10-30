@@ -44,7 +44,9 @@ test.describe('Edit conflicts', () => {
       await startEditingNextAction(a.page, mine);
       await startEditingNextAction(j.page, theirs);
       await j.page.getByRole('button', { name: 'Save', exact: true }).click();
-      await expect(j.page.getByText(theirs)).toBeVisible();
+      // The editor closes only once the server has accepted the change (a typed draft alone would also contain the text).
+      await expect(j.page.getByRole('textbox', { name: 'Next action' })).toHaveCount(0);
+      await expect(j.page.getByRole('region', { name: 'Next action' })).toContainText(theirs);
       expect((await avery.record(id)).data.next_action).toBe(theirs);
 
       // Avery saves second: nothing is overwritten, and the conflict is explained in words.
@@ -88,14 +90,17 @@ test.describe('Edit conflicts', () => {
       await startEditingNextAction(a.page, mine);
       await startEditingNextAction(j.page, theirs);
       await j.page.getByRole('button', { name: 'Save', exact: true }).click();
-      await expect(j.page.getByText(theirs)).toBeVisible();
+      // The editor closes only once the server has accepted the change (a typed draft alone would also contain the text).
+      await expect(j.page.getByRole('textbox', { name: 'Next action' })).toHaveCount(0);
+      await expect(j.page.getByRole('region', { name: 'Next action' })).toContainText(theirs);
 
       await a.page.getByRole('button', { name: 'Save', exact: true }).click();
       const banner = a.page.getByRole('alert').filter({ hasText: 'changed this while you were editing' });
       await expect(banner).toBeVisible();
       await banner.getByRole('button', { name: 'Use mine instead' }).click();
 
-      // Avery's wording is now the saved one, and the editor is closed.
+      // Avery's wording is now the saved one, and the editor is closed (it closes only after the server accepted it).
+      await expect(a.page.getByRole('textbox', { name: 'Next action' })).toHaveCount(0);
       await expect(a.page.getByRole('region', { name: 'Next action' })).toContainText(mine);
       await expect(a.page.getByRole('alert').filter({ hasText: 'changed this while you were editing' })).toHaveCount(0);
       await expect(a.page.getByText(/^Saved\b/)).toBeVisible();

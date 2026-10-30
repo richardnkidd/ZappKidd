@@ -338,7 +338,7 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
           resetNote = 'Options changed; earlier approvals were cleared';
         }
       }
-      postValidate(row.type, next.data, people, cur.data, Object.keys(incoming));
+      postValidate(row.type, next.data, people, cur.data, Object.keys(incoming), incoming);
       if (row.type === 'funding') {
         // Once a planning-zero income line leaves that status it stays guarded, so a two-step edit cannot dodge the rule.
         if (cur.data.income_status === 'planning_zero' && merged.income_status !== 'planning_zero') {
@@ -410,7 +410,28 @@ function requiredApproversOf(data: Record<string, unknown>, people: Person[]): s
 }
 
 /** Cross-field rules that single-field schemas cannot express. */
-function postValidate(type: RecordType, data: Record<string, unknown>, people: Person[], before: Record<string, unknown>, changed: string[]): void {
+function postValidate(
+  type: RecordType,
+  data: Record<string, unknown>,
+  people: Person[],
+  before: Record<string, unknown>,
+  changed: string[],
+  incoming: Record<string, unknown>,
+): void {
+  const personIds = new Set(people.map((p) => p.id));
+  if (changed.includes('applies_to') && (type === 'milestone' || type === 'arrival')) {
+    // Only the answers being set now are checked, so an old answer never blocks setting another traveler's.
+    const unknown = Object.keys((incoming.applies_to as Record<string, unknown> | undefined) ?? {}).filter((id) => !personIds.has(id));
+    if (unknown.length > 0) {
+      throw validation('Unknown person', unknown.map((id) => issue(`data.applies_to.${id}`, 'No such person in this household')));
+    }
+  }
+  if (changed.includes('carry_on_arrival') && type === 'document') {
+    const list = (data.carry_on_arrival as string[] | undefined) ?? [];
+    const unknown = [...new Set(list)].filter((id) => !personIds.has(id));
+    if (unknown.length > 0) throw validation('Unknown person', [issue('data.carry_on_arrival', 'Every entry must be a person in this household')]);
+    data.carry_on_arrival = [...new Set(list)];
+  }
   if (type === 'contact' && (changed.includes('relationship') || changed.includes('relationship_basis'))) {
     if (data.relationship !== 'potential' && !String(data.relationship_basis ?? '').trim()) {
       throw validation('A relationship beyond "potential" needs a basis', [

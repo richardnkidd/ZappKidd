@@ -169,7 +169,7 @@ test.describe('Home', () => {
     await page.getByRole('group', { name: 'Show items for' }).getByRole('button', { name: 'Everything' }).click();
   });
 
-  test('a decision links to Decide, and "Needs a decision" never hides how many are waiting', async ({ page, signIn }) => {
+  test('a decision on Home opens the Decide screen', async ({ page, signIn }) => {
     await openHome(page, signIn);
     const s = sections(page);
     const link = s.decisions.getByRole('link').first();

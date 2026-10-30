@@ -6,6 +6,7 @@ import { EmptyState, PageTitle, Skeleton, Card } from '../../components/Layout';
 import { useSnapshot } from '../../state/snapshot';
 import { GenericDetail } from './GenericDetail';
 import { MilestoneDetail } from './MilestoneDetail';
+import { hasTypedDetail, TypedDetail } from './TypedDetail';
 import type { Milestone } from '../../lib/records';
 
 function useRecordId(): string {
@@ -26,11 +27,8 @@ function RecordBody({ id, variant }: { id: string; variant: 'page' | 'panel' }) 
           );
         }
         const level = variant === 'page' ? 2 : 3;
-        return record.type === 'milestone' ? (
-          <MilestoneDetail record={record as unknown as Milestone} idx={idx} dir={dir} level={level} />
-        ) : (
-          <GenericDetail record={record} idx={idx} dir={dir} />
-        );
+        if (record.type === 'milestone') return <MilestoneDetail record={record as unknown as Milestone} idx={idx} dir={dir} level={level} />;
+        return hasTypedDetail(record) ? <TypedDetail record={record} idx={idx} dir={dir} level={level} /> : <GenericDetail record={record} idx={idx} dir={dir} />;
       }}
     </DataGate>
   );

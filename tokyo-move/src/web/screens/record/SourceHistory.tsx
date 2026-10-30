@@ -43,21 +43,7 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
     setState((s) => (s.kind === 'ready' ? s : { kind: 'loading' }));
     api
       .record(record.id, ctl.signal)
-      .then(async (detail) => {
-        // Older servers do not include per-record import receipts; look them up from the latest import runs.
-        if (detail.import_changes === undefined) {
-          try {
-            const runs = (await api.importRuns()).slice(0, 3);
-            const found: ImportChange[] = [];
-            for (const run of runs) {
-              const page = await api.importChanges(run.id, 1000, 0);
-              found.push(...page.changes.filter((c) => c.record_id === record.id));
-            }
-            detail = { ...detail, import_changes: found };
-          } catch {
-            detail = { ...detail, import_changes: [] };
-          }
-        }
+      .then((detail) => {
         if (!ctl.signal.aborted) setState({ kind: 'ready', detail });
       })
       .catch((e) => {

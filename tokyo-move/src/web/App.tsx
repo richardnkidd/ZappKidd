@@ -3,12 +3,20 @@ import { ButtonLink } from './components/Controls';
 import { EmptyState, PageTitle } from './components/Layout';
 import { AppShell } from './layout/AppShell';
 import { useIsDesktop } from './layout/useMedia';
+import { Arrival } from './screens/arrival/Arrival';
+import { Contacts } from './screens/contacts/Contacts';
+import { DataImports } from './screens/data/DataImports';
 import { Decide } from './screens/decide/Decide';
+import { Documents } from './screens/documents/Documents';
+import { Future } from './screens/future/Future';
+import { ArrivalPack } from './screens/pack/ArrivalPack';
+import { Review } from './screens/review/Review';
+import { Settings } from './screens/settings/Settings';
+import { WhatIf } from './screens/whatif/WhatIf';
 import { Home } from './screens/home/Home';
 import { Money } from './screens/money/Money';
 import { More } from './screens/More';
 import { ReadyDetail } from './screens/ready/ReadyDetail';
-import { ComingSoon } from './screens/Placeholder';
 import { Plan } from './screens/plan/Plan';
 import { RecordPage, RecordPanel } from './screens/record/RecordDetail';
 import { SignIn } from './screens/SignIn';
@@ -54,12 +62,15 @@ function AppRoutes() {
         <Route path="/money" element={<Money />} />
         <Route path="/ready/:personId" element={<ReadyDetail />} />
         <Route path="/more" element={<More />} />
-        <Route path="/documents" element={<ComingSoon title="Documents" icon="doc" />} />
-        <Route path="/contacts" element={<ComingSoon title="Contacts & evidence" icon="contacts" />} />
-        <Route path="/arrival" element={<ComingSoon title="Arrival & living in Tokyo" icon="plane" />} />
-        <Route path="/future" element={<ComingSoon title="Future work" icon="sprout" />} />
-        <Route path="/data" element={<ComingSoon title="Data & imports" icon="database" />} />
-        <Route path="/settings" element={<ComingSoon title="Settings" icon="gear" />} />
+        <Route path="/documents" element={<Documents />} />
+        <Route path="/contacts/*" element={<Contacts />} />
+        <Route path="/arrival" element={<Arrival />} />
+        <Route path="/future" element={<Future />} />
+        <Route path="/data" element={<DataImports />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/review" element={<Review />} />
+        <Route path="/what-if" element={<WhatIf />} />
+        <Route path="/arrival-pack" element={<ArrivalPack />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AppShell>

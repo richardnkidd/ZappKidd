@@ -6,20 +6,36 @@ import { StatusBadge } from '../../components/Badges';
 import { Button, ButtonLink } from '../../components/Controls';
 import { Fact, Section } from '../../components/Layout';
 import { OwnerChip } from '../../components/People';
+import { LinkedKeys } from '../../components/LinkedKeys';
 import { RecordLink } from '../../components/RecordLink';
+import { DATA_FIELD_LABEL } from '@shared/labels';
+import type { Money } from '@shared/types';
 import { humanizeKey } from '../../lib/format';
+import { fmtMoney } from '../../lib/money';
 import type { Directory, Indexes } from '../../lib/records';
 import { StatusDialog } from './dialogs';
 import { TravelerProgress } from './MilestoneDetail';
 import { SourceHistory } from './SourceHistory';
 import { Notes } from './Notes';
 
-const SKIP_KEYS = new Set(['linked_task_ids', 'source_ids', 'completion_evidence', 'traveler_progress', 'dependency_scope', 'review_note', 'approvals', 'options']);
+const SKIP_KEYS = new Set([
+  'linked_task_ids', 'source_ids', 'completion_evidence', 'traveler_progress', 'dependency_scope', 'review_note', 'approvals', 'options',
+  'workstream_key', 'milestone_links', 'linked_records', 'milestone_keys', 'question_keys', 'related', 'outside_critical_path', 'parent_key',
+]);
+const LINK_KEYS: [string, string][] = [
+  ['milestone_links', 'Linked work'],
+  ['linked_records', 'Linked work'],
+  ['milestone_keys', 'Plan items in this workstream'],
+  ['question_keys', 'Questions in this workstream'],
+];
+
+const SNAKE = /^[a-z0-9]+(_[a-z0-9]+)+$/;
 
 function scalar(v: unknown): string | null {
-  if (typeof v === 'string') return v.trim() ? v : null;
+  if (typeof v === 'string') return v.trim() ? (SNAKE.test(v) ? v.replace(/_/g, ' ') : v) : null;
   if (typeof v === 'number') return String(v);
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
+  if (v && typeof v === 'object' && !Array.isArray(v) && 'amount' in v && 'currency' in v) return fmtMoney(v as Money);
   if (Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === 'string' || typeof x === 'number')) return v.join(', ');
   return null;
 }
@@ -72,12 +88,16 @@ export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: I
         ) : (
           <dl className="facts">
             {rows.map(([k, v]) => (
-              <Fact key={k} label={humanizeKey(k)} wide={v.length > 80}>
+              <Fact key={k} label={DATA_FIELD_LABEL[k] ?? humanizeKey(k)} wide={v.length > 80}>
                 <span className="preline">{v}</span>
               </Fact>
             ))}
           </dl>
         )}
+        {LINK_KEYS.map(([k, label]) => {
+          const keys = (data as Record<string, unknown>)[k];
+          return Array.isArray(keys) ? <LinkedKeys key={k} keys={keys.filter((x): x is string => typeof x === 'string')} idx={idx} label={label} /> : null;
+        })}
         {related.length > 0 && (
           <p className="small muted">
             Related (nothing waits on these):{' '}

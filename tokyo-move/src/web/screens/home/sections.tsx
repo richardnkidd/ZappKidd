@@ -468,6 +468,11 @@ export function SinceReviewSection({ idx, dir }: { idx: Indexes; dir: Directory 
     <Section
       title={title}
       count={state.kind === 'ready' && lines.length ? lines.length : undefined}
+      action={
+        <Link to="/review" className="more-link">
+          Review together
+        </Link>
+      }
       className="sec-since"
       intro={since ? `Everything that changed after ${instant(since, zone, 'long')}.` : 'No review has been finished yet, so here is what changed most recently.'}
     >

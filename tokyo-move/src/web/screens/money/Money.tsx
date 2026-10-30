@@ -162,7 +162,7 @@ function FxPanel({ budget, scenario, fxRecord, onEdit }: { budget: BudgetView; s
   );
 }
 
-function IncomeCards({ budget, dir }: { budget: BudgetView; dir: Directory }) {
+function IncomeCards({ budget }: { budget: BudgetView }) {
   if (budget.income.length === 0) return null;
   return (
     <Section title="Income" headingLevel={3} intro="Only income that has been checked is counted. Everything else is left out of the totals.">
@@ -186,7 +186,6 @@ function IncomeCards({ budget, dir }: { budget: BudgetView; dir: Directory }) {
                         : 'Not counted.'}
               </p>
               {i.note && <p className="small muted preline">{i.note}</p>}
-              <p className="small faint">{dir.nameOf(i.person_id)}</p>
             </li>
           );
         })}
@@ -326,7 +325,7 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
             </Disclosure>
           )}
         </Card>
-        <IncomeCards budget={b} dir={dir} />
+        <IncomeCards budget={b} />
       </Section>
 
       <Section title="Where the money goes" headingLevel={2} intro="Each part shows what is known so far and how much is still unknown. A total is never shown on its own.">
@@ -359,3 +358,48 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
   );
 }
 
+
+/** One cost line on its own (record detail): what it is, where each amount stands and what is missing. */
+export function CostDetail({ record }: { record: BaseRecord }) {
+  const d = dataOf<CostData>(record);
+  const [edit, setEdit] = useState(false);
+  const rows: [string, string | null][] = [
+    ['Kind of cost', d.section ? SECTION_TITLE[d.section] : null],
+    ['Category', d.category ?? null],
+    ['Stage', d.commitment_state ? (STAGE_LABEL[d.commitment_state] ?? d.commitment_state.replace(/_/g, ' ')) : null],
+    ['Estimate', d.estimate ? fmtMoney(d.estimate) : 'Not known yet'],
+    ['Quote', d.quote ? fmtMoney(d.quote) : 'None yet'],
+    ['Approved amount', d.committed ? fmtMoney(d.committed) : 'None yet'],
+    ['Paid so far', d.paid ? fmtMoney(d.paid) : 'Nothing recorded'],
+    ['Still to pay', d.unpaid_balance ? fmtMoney(d.unpaid_balance) : null],
+    ['Who pays', d.payer ?? null],
+    ['Where the amount came from', d.quote_source ?? null],
+    ['Date of the quote', d.quote_date ? civil(d.quote_date) : null],
+    ['Deposit due', d.deposit_due ? civil(d.deposit_due) : null],
+    ['Refundable', d.refundable && d.refundable !== 'unknown' ? d.refundable : 'Not known yet'],
+    ['How sure we are', d.uncertainty ?? null],
+    ['Counts toward the plan', d.applicability === 'exclude' ? `No — ${d.exclusion_reason ?? 'left out'}` : d.applicability === 'review' ? 'Not decided yet' : d.applicability ? 'Yes' : null],
+    ['Timing notes', d.phase?.note ?? null],
+  ];
+  return (
+    <Card className="stack">
+      <p className="muted preline">{d.description}</p>
+      <dl className="facts facts--tight">
+        {rows
+          .filter(([, v]) => v)
+          .map(([label, v]) => (
+            <div key={label} className="fact">
+              <dt>{label}</dt>
+              <dd className="preline">{v}</dd>
+            </div>
+          ))}
+      </dl>
+      <div className="row-actions">
+        <Button variant="secondary" small icon="pencil" onClick={() => setEdit(true)}>
+          Edit this amount
+        </Button>
+      </div>
+      {edit && <CostLineDialog open onClose={() => setEdit(false)} record={record} />}
+    </Card>
+  );
+}

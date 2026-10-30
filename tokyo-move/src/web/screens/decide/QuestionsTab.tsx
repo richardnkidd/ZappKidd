@@ -26,7 +26,7 @@ export function relevanceScore(q: Question, idx: Indexes, dir: Directory, phaseK
   return score;
 }
 
-function QuestionCard({ q }: { q: Question }) {
+export function QuestionCard({ q, defaultOpen = false, showLink = true }: { q: Question; defaultOpen?: boolean; showLink?: boolean }) {
   const d = q.data;
   return (
     <li>
@@ -34,6 +34,7 @@ function QuestionCard({ q }: { q: Question }) {
         title={d?.question || q.title}
         meta={QUESTION_DISPOSITION_LABEL[d?.disposition as QuestionDisposition] ?? undefined}
         level={3}
+        defaultOpen={defaultOpen}
       >
         <div className="stack">
           {d?.topic && <p className="kicker">{d.topic}</p>}
@@ -67,9 +68,11 @@ function QuestionCard({ q }: { q: Question }) {
               <p className="preline muted">{d.evidence_basis}</p>
             </div>
           )}
-          <p className="small">
-            <RecordLink id={q.id}>Open details and history</RecordLink>
-          </p>
+          {showLink && (
+            <p className="small">
+              <RecordLink id={q.id}>Open details and history</RecordLink>
+            </p>
+          )}
         </div>
       </Disclosure>
     </li>

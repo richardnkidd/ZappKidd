@@ -13,6 +13,7 @@ import { OwnerChip } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, plural } from '../../lib/format';
 import { compareDates } from '../../lib/format';
+import type { BaseRecord } from '@shared/types';
 import { selectDecisions } from '../../lib/home';
 import { firstReviewDecisionKeys, type Decision, type Directory, type Indexes } from '../../lib/records';
 import { useData } from '../../state/data';
@@ -22,7 +23,7 @@ import { approvalSummary, YourTurnTag } from './decisionText';
 
 /* ------------------------------------------------------------------ approve */
 
-function ApproveDialog({ decision, open, onClose, dir }: { decision: Decision; open: boolean; onClose: () => void; dir: Directory }) {
+export function ApproveDialog({ decision, open, onClose, dir, onDone }: { decision: Decision; open: boolean; onClose: () => void; dir: Directory; onDone?: (rec: BaseRecord, optionLabel: string | null) => void }) {
   const { actions } = useSnapshot();
   const w = useWrite();
   const options = decision.data?.options ?? [];
@@ -46,8 +47,14 @@ function ApproveDialog({ decision, open, onClose, dir }: { decision: Decision; o
   const submit = async () => {
     setTried(true);
     if (!optionId) return;
-    const ok = await w.run((v) => actions.approveDecision(decision.id, v, optionId, note.trim() || null), startVersion);
-    if (ok) onClose();
+    let out: BaseRecord | null = null;
+    const ok = await w.run(async (v) => {
+      out = await actions.approveDecision(decision.id, v, optionId, note.trim() || null);
+    }, startVersion);
+    if (ok) {
+      if (out) onDone?.(out, options.find((o) => o.id === optionId)?.label ?? null);
+      onClose();
+    }
   };
 
   return (
@@ -102,7 +109,7 @@ function ApproveDialog({ decision, open, onClose, dir }: { decision: Decision; o
 
 /* ------------------------------------------------------------------ defer / reject */
 
-function ReasonDialog({ decision, mode, onClose }: { decision: Decision; mode: 'reject' | 'defer' | null; onClose: () => void }) {
+export function ReasonDialog({ decision, mode, onClose, onDone }: { decision: Decision; mode: 'reject' | 'defer' | null; onClose: () => void; onDone?: (rec: BaseRecord, mode: 'reject' | 'defer') => void }) {
   const { actions } = useSnapshot();
   const w = useWrite();
   const [reason, setReason] = useState('');
@@ -123,14 +130,14 @@ function ReasonDialog({ decision, mode, onClose }: { decision: Decision; mode: '
   const submit = async () => {
     setTried(true);
     if (!reason.trim()) return;
-    const ok = await w.run(
-      (v) =>
-        mode === 'reject'
-          ? actions.rejectDecision(decision.id, v, reason.trim())
-          : actions.deferDecision(decision.id, v, reason.trim(), isCivilDate(revisit) ? revisit : null),
-      startVersion,
-    );
-    if (ok) onClose();
+    let out: BaseRecord | null = null;
+    const ok = await w.run(async (v) => {
+      out = mode === 'reject' ? await actions.rejectDecision(decision.id, v, reason.trim()) : await actions.deferDecision(decision.id, v, reason.trim(), isCivilDate(revisit) ? revisit : null);
+    }, startVersion);
+    if (ok) {
+      if (out && mode) onDone?.(out, mode);
+      onClose();
+    }
   };
 
   return (
@@ -172,7 +179,7 @@ function ReasonDialog({ decision, mode, onClose }: { decision: Decision; mode: '
 
 /* ------------------------------------------------------------------ card */
 
-function DecisionCard({ d, idx, dir, today }: { d: Decision; idx: Indexes; dir: Directory; today: string }) {
+export function DecisionCard({ d, idx, dir, today }: { d: Decision; idx: Indexes; dir: Directory; today: string }) {
   const data = d.data ?? ({} as Decision['data']);
   const summary = approvalSummary(d, dir);
   const open = d.status === 'open' || d.status === 'proposed';

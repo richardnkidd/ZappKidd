@@ -32,6 +32,8 @@ export interface Actions {
   deferDecision(id: string, baseVersion: number, rationale: string, revisitOn?: string | null): Promise<BaseRecord>;
   proposeTask(body: { title: string; record_id?: string | null; owner?: string | null; due?: string | null; due_mode: DueMode }): Promise<void>;
   retryTask(id: string): Promise<void>;
+  /** Set or clear a travel/anchor date (applies it; preview first with the shared engine). */
+  setAnchor(code: string, baseVersion: number, body: { date: string | null; confidence: string; evidence?: string | null }): Promise<BaseRecord>;
   undoAudit(auditId: string): Promise<void>;
   /** Replace a record in the local copy (after a successful write, or when someone chooses "keep theirs"). */
   adoptRecord(rec: BaseRecord): void;
@@ -174,6 +176,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
         await track(api.retryTask(id));
         await refresh();
       },
+      setAnchor: (code, baseVersion, body) => track(api.putAnchor(code, { baseVersion, ...body })).then((r) => written(r.record)),
       undoAudit: async (auditId) => {
         await track(api.undoAudit(auditId));
         await refresh();

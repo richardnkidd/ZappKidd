@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { ComputedDeadline, TravelerReadiness } from '@shared/engine-contracts';
 import { todayIn } from '@shared/dates';
-import { collectDeadlines } from '@shared/deadlines';
+import { collectDeadlines, type DeadlineContext } from '@shared/deadlines';
 import { householdReadiness } from '@shared/readiness';
 import type { IanaZone } from '@shared/types';
 import { attempt, type Attempt } from '../lib/safe';
@@ -10,6 +10,8 @@ import { useSnapshot } from './snapshot';
 
 interface DataCtx {
   today: string;
+  /** Inputs for deadline previews (anchor changes, what-if). Same data the engine already used. */
+  deadlineContext: DeadlineContext;
   zone: IanaZone;
   /** All deadlines from the shared engine, or the error if the engine could not run. */
   deadlines: Attempt<ComputedDeadline[]>;
@@ -39,7 +41,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     () =>
       snapshot
         ? attempt(() =>
-            collectDeadlines({ records: snapshot.records, people: snapshot.people, task_links: snapshot.task_links, today }),
+            collectDeadlines({ records: snapshot.records, people: snapshot.people, task_links: snapshot.task_links, today, jp_holidays: snapshot.settings?.jp_holidays }),
           )
         : { ok: true, value: [] },
     [snapshot, today],
@@ -66,7 +68,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [snapshot, today],
   );
 
-  const value = useMemo(() => ({ today, zone, deadlines, deadlinesByRecord, readiness }), [today, zone, deadlines, deadlinesByRecord, readiness]);
+  const deadlineContext = useMemo<DeadlineContext>(
+    () => ({ records: snapshot?.records ?? [], people: snapshot?.people ?? [], task_links: snapshot?.task_links ?? [], today, jp_holidays: snapshot?.settings?.jp_holidays }),
+    [snapshot, today],
+  );
+
+  const value = useMemo(() => ({ today, zone, deadlineContext, deadlines, deadlinesByRecord, readiness }), [today, zone, deadlineContext, deadlines, deadlinesByRecord, readiness]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

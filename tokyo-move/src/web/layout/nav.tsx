@@ -17,7 +17,7 @@ export const MAIN_NAV: NavItem[] = [
     to: '/more',
     label: 'More',
     icon: 'more',
-    match: (p) => ['/more', '/documents', '/contacts', '/arrival', '/future', '/data', '/settings'].some((x) => p.startsWith(x)),
+    match: (p) => ['/more', '/documents', '/contacts', '/arrival', '/future', '/data', '/settings', '/review', '/what-if'].some((x) => p.startsWith(x)),
   },
 ];
 
@@ -25,6 +25,9 @@ export const MORE_NAV: { to: string; label: string; icon: IconName; blurb: strin
   { to: '/documents', label: 'Documents', icon: 'doc', blurb: 'What we need, who holds it, and whether it has been accepted.' },
   { to: '/contacts', label: 'Contacts & evidence', icon: 'contacts', blurb: 'People we may talk to, and the sources behind the plan.' },
   { to: '/arrival', label: 'Arrival & living in Tokyo', icon: 'plane', blurb: 'The first days, weeks and months after landing.' },
+  { to: '/review', label: 'Couple review', icon: 'compass', blurb: 'A calm twenty-minute walk through where things stand.' },
+  { to: '/what-if', label: 'What if the pet arrives later?', icon: 'plane', blurb: 'Compare dates and costs without changing anything.' },
+  { to: '/arrival-pack', label: 'Printable arrival pack', icon: 'file', blurb: 'A page per traveler to take with you.' },
   { to: '/future', label: 'Future work', icon: 'sprout', blurb: 'Optional ideas that sit outside the move.' },
   { to: '/data', label: 'Data & imports', icon: 'database', blurb: 'Where the plan came from and what changed.' },
   { to: '/settings', label: 'Settings', icon: 'gear', blurb: 'Dates, display and household preferences.' },
@@ -54,7 +57,7 @@ export function MainNav() {
       <ul className="app-nav__more" aria-label="More places">
         {MORE_NAV.map((item) => (
           <li key={item.to}>
-            <Link to={item.to} className="nav-sublink" aria-current={pathname.startsWith(item.to) ? 'page' : undefined}>
+            <Link to={item.to} className="nav-sublink" aria-current={pathname === item.to || pathname.startsWith(`${item.to}/`) ? 'page' : undefined}>
               <Icon name={item.icon} size={18} />
               <span>{item.label}</span>
             </Link>

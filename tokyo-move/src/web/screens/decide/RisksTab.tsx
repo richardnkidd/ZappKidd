@@ -15,7 +15,7 @@ function sevTone(s: RiskData['severity'] | undefined): 'kaki' | 'kin' | 'neutral
   return s === 'critical' || s === 'high' ? 'kaki' : s === 'medium' ? 'kin' : 'neutral';
 }
 
-function RiskCard({ r, idx }: { r: Risk; idx: Indexes }) {
+export function RiskCard({ r, idx }: { r: Risk; idx: Indexes }) {
   const d = r.data;
   const sev = d?.severity;
   const closed = r.status === 'completed' || r.status === 'eliminated' || r.status === 'closed';

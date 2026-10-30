@@ -2,6 +2,7 @@
  * Typed fetch client for the Kadode API. Same-origin cookies only; JSON in, JSON out.
  * 401 => the app shows sign-in; 409 => ConflictError (carries the server's copy); unreachable => NetworkError.
  */
+import type { AnchorChangePreview } from '@shared/engine-contracts';
 import type {
   AuditEntry,
   BaseRecord,
@@ -133,6 +134,13 @@ export function unwrapRecord(body: unknown): BaseRecord {
   return ((b as { record?: BaseRecord }).record ?? (b as BaseRecord)) as BaseRecord;
 }
 
+export interface BackupInfo {
+  name: string;
+  bytes: number;
+  created_at: string;
+  integrity?: 'ok';
+}
+
 export interface DevIdentity {
   person_id: string;
   display_name: string;
@@ -145,7 +153,7 @@ export interface RecordDetail {
   linked_notes: BaseRecord[];
   /** Server-evaluated state of a decision's approvals (only for decisions). */
   decision?: { awaiting: string[]; awaiting_text: string | null; disagreement: boolean };
-  /** Per-record import receipts. Optional: when the server omits it the screen looks them up from the import runs. */
+  /** Import receipts for this record, newest first (at most 100). */
   import_changes?: ImportChange[];
 }
 
@@ -266,13 +274,46 @@ export const api = {
     const body = await get<ImportRun[] | { runs?: ImportRun[] }>('/api/import/runs');
     return Array.isArray(body) ? body : (body.runs ?? []);
   },
-  importChanges: (runId: string, limit = 1000, offset = 0) =>
-    get<{ run: ImportRun; changes: ImportChange[]; total: number }>(`/api/import/runs/${q(runId)}/changes?limit=${limit}&offset=${offset}`),
+  importChanges: (runId: string, opts: { limit?: number; offset?: number; correction_id?: string | null } = {}) => {
+    const qs = new URLSearchParams({ limit: String(opts.limit ?? 100), offset: String(opts.offset ?? 0) });
+    if (opts.correction_id) qs.set('correction_id', opts.correction_id);
+    return get<{ run: ImportRun; changes: ImportChange[]; total: number; limit: number; offset: number }>(`/api/import/runs/${q(runId)}/changes?${qs}`);
+  },
+
+  settings: () => get<{ settings: Record<string, unknown>; editable: string[] }>('/api/settings'),
+  putSetting: (key: string, body: { value: unknown; base?: unknown; reason?: string }) =>
+    send<{ key: string; value: unknown; effective: unknown }>('PUT', `/api/settings/${q(key)}`, body),
+
+  previewAnchor: (code: string, date: string | null) => send<{ preview: AnchorChangePreview }>('POST', `/api/anchors/${q(code)}/preview`, { date }),
+  putAnchor: async (code: string, body: { baseVersion: number; date: string | null; confidence: string; evidence?: string | null }) =>
+    send<{ record: BaseRecord; preview: AnchorChangePreview | null }>('PUT', `/api/anchors/${q(code)}`, {
+      baseVersion: body.baseVersion,
+      date: body.date,
+      confidence: body.confidence,
+      ...(body.evidence ? { evidence: body.evidence } : {}),
+    }),
+
+  startReview: (body: { title?: string; participants?: string[] } = {}) => send<{ record: BaseRecord; resumed: boolean }>('POST', '/api/reviews', body),
+  patchReview: async (id: string, body: { baseVersion: number; changes: Record<string, unknown> }) =>
+    unwrapRecord(await send<unknown>('PATCH', `/api/reviews/${q(id)}`, body)),
+  completeReview: async (id: string, body: { baseVersion: number } & Record<string, unknown>) =>
+    unwrapRecord(await send<unknown>('POST', `/api/reviews/${q(id)}/complete`, body)),
+
+  createBackup: () => send<{ backup: BackupInfo }>('POST', '/api/admin/backup'),
+  listBackups: () => get<{ backups: BackupInfo[] }>('/api/admin/backups'),
+  restoreBackup: (backup: string) =>
+    send<{ restore: { restored_from: string; pre_restore_backup: string; session_invalidated: boolean } }>('POST', '/api/admin/restore', { backup, confirm: 'RESTORE' }),
 };
 
-/** Human message for any thrown error, safe to show. */
+/** Human message for any thrown error, safe to show. Validation failures say plainly what was wrong. */
 export function describeError(e: unknown): string {
-  if (e instanceof ApiError) return e.message;
+  if (e instanceof ApiError) {
+    if (e.code === 'validation' && Array.isArray(e.details)) {
+      const reasons = [...new Set((e.details as { message?: unknown }[]).map((d) => (typeof d?.message === 'string' ? d.message : '')).filter(Boolean))];
+      if (reasons.length) return reasons.slice(0, 3).join(' ');
+    }
+    return e.message;
+  }
   if (e instanceof Error) return e.message;
   return 'Something went wrong.';
 }

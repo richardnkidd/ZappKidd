@@ -53,7 +53,7 @@ export default defineConfig({
       reuseExistingServer,
       timeout: 120_000,
       gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
-      stdout: 'pipe',
+      stdout: 'ignore',
       stderr: 'pipe',
     },
     {
@@ -63,7 +63,7 @@ export default defineConfig({
       reuseExistingServer,
       timeout: 60_000,
       gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
-      stdout: 'pipe',
+      stdout: 'ignore',
       stderr: 'pipe',
     },
     {
@@ -73,7 +73,7 @@ export default defineConfig({
       reuseExistingServer,
       timeout: 60_000,
       gracefulShutdown: { signal: 'SIGTERM', timeout: 5_000 },
-      stdout: 'pipe',
+      stdout: 'ignore',
       stderr: 'pipe',
     },
   ],

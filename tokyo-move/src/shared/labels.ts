@@ -188,7 +188,7 @@ export const COMMITMENT_STATE_LABEL: Record<CommitmentState, string> = {
 };
 
 export const CONTACT_RELATIONSHIP_LABEL: Record<ContactRelationship, string> = {
-  potential: 'Saved name only — not contacted',
+  potential: 'Potential resource',
   contacted: 'Contacted',
   engaged: 'Engaged',
   former: 'Former',
@@ -271,4 +271,84 @@ export const JURISDICTION_LABEL: Record<string, string> = {
   'US-MD': 'Maryland',
   household: 'Our household',
   contract: 'Set by a contract',
+};
+
+export const FINDING_DISPOSITION_LABEL: Record<string, string> = {
+  open: 'Open',
+  accepted: 'Accepted',
+  deferred: 'Deferred',
+  rejected: 'Rejected',
+};
+
+export const FINDING_TYPE_LABEL: Record<string, string> = {
+  safe_local_fix: 'A safe fix we can make here',
+  household_decision: 'Needs a household decision',
+  research_needed: 'Needs more research',
+  professional_determination: 'Needs a professional’s view',
+};
+
+export const REVIEWER_LABEL: Record<string, string> = {
+  pm: 'Project review',
+  relocation: 'Relocation review',
+  'immigration-tax': 'Immigration and tax review',
+  ux: 'Design review',
+  security: 'Security review',
+  functional: 'Functional review',
+};
+
+/** What a saved contact does and does not mean, used when the record has no sentence of its own. */
+export const CONTACT_BOUNDARY_DEFAULT: Record<string, string> = {
+  potential: 'Candidate only — nothing booked and nobody has been contacted.',
+  contacted: 'Someone has been in touch. Nothing is booked.',
+  engaged: 'Already working with us.',
+  former: 'No longer working with us.',
+};
+
+export const ARRIVAL_WINDOW_LABEL: Record<string, string> = {
+  arrival_day: 'Arrival day',
+  first_week: 'First week',
+  day_30: 'First 30 days',
+  day_60: 'By day 60',
+  day_90: 'By day 90',
+  ongoing: 'Ongoing',
+};
+export const ARRIVAL_WINDOW_ORDER = ['arrival_day', 'first_week', 'day_30', 'day_60', 'day_90', 'ongoing'] as const;
+
+export const CADENCE_LABEL: Record<string, string> = {
+  event: 'When it happens',
+  quarterly: 'Every quarter',
+  annual: 'Once a year',
+  once: 'Once',
+};
+
+/** Plain names for record fields shown on generic detail screens (anything not listed is humanized). */
+export const DATA_FIELD_LABEL: Record<string, string> = {
+  for_whom: 'For',
+  custodian: 'Who holds it',
+  needed_by: 'Needed by',
+  jpy_per_usd: 'Yen per US dollar',
+  as_of: 'As of',
+  income_status: 'Income status',
+  person_id: 'Person',
+  kind: 'Kind',
+  window: 'When',
+  trigger: 'Starts when',
+  action: 'What to do',
+  scope: 'What it covers',
+  cadence: 'How often',
+  completion_criteria: 'Done when',
+  known_context: 'What we know',
+  people_resources: 'Who can help',
+  evidence_caution: 'Take care',
+  obligation: 'What it is',
+  restriction_check: 'Restrictions to check',
+  dimensions_weight: 'Size and weight',
+  value_text: 'Value',
+  quote_source: 'Quote from',
+  decision_evidence: 'What decided it',
+  work_area: 'Area',
+  source_status: 'Status in the plan',
+  recorded_date: 'Recorded date',
+  meaning: 'What it means',
+  workstream_key: 'Workstream',
 };

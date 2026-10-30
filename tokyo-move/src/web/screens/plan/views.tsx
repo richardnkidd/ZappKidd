@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { dependencyChain } from '@shared/readiness';
 import { PHASE_LABEL, PHASE_ORDER, WORK_STATUS_LABEL, ANCHOR_CONFIDENCE_LABEL } from '@shared/labels';
 import type { PhaseKey, WorkStatus } from '@shared/types';
+import { AnchorDialog } from '../../components/AnchorDialog';
 import { DateText, DeadlineBadge, OptionalTag, StatusBadge } from '../../components/Badges';
 import { Button, Field, SegmentedControl, Select } from '../../components/Controls';
 import { Disclosure } from '../../components/Disclosure';
@@ -280,6 +281,7 @@ function Chain({ itemKey, idx }: { itemKey: string; idx: Indexes }) {
 }
 
 function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
+  const [editing, setEditing] = useState<(typeof idx.anchors)[number] | null>(null);
   const anchors = idx.anchors.map((a) => dataOf<AnchorData>(a)).filter((a) => a.code);
   const forPerson = (id: string) => idx.anchors.filter((a) => dataOf<AnchorData>(a).traveler === id);
   const helpers = idx.anchors.filter((a) => dataOf<AnchorData>(a).traveler === 'household' || dataOf<AnchorData>(a).coordination_only);
@@ -292,6 +294,9 @@ function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
         <span className="lane__when">
           <DateText date={d.date ?? null} />
           {d.confidence && d.confidence !== 'awaiting' && <span className="chip chip--neutral chip--sm">{ANCHOR_CONFIDENCE_LABEL[d.confidence] ?? d.confidence}</span>}
+          <Button variant="quiet" small icon="pencil" onClick={() => setEditing(a)} aria-label={`${d.date ? 'Change' : 'Set'} date: ${d.meaning ?? a.title}`}>
+            {d.date ? 'Change' : 'Set date'}
+          </Button>
         </span>
       </li>
     );
@@ -311,6 +316,7 @@ function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
           );
         })}
       </div>
+      {editing && <AnchorDialog record={editing} onClose={() => setEditing(null)} />}
       {helpers.length > 0 && (
         <Disclosure title="Household helper dates" level={4} className="disclosure--flat">
           <p className="small muted">Used only to coordinate. They never decide any one person's legal deadlines.</p>

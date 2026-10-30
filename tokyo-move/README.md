@@ -26,7 +26,8 @@ take to use it from two phones.
 
 Rules of the house:
 
-- Real data is only ever imported **from a folder you point at**, into `private/data/`. Nothing in the repo reads it by default.
+- Real data is only ever read from the gitignored `private/` folder (or a folder you point at) and imported into
+  `private/data/`. Nothing committed contains it.
 - The browser tests and the default `npm test` run use the fictional demo only. The real-data tests read
   `TOKYO_SOURCE_DIR` and are **skipped** when it is not set.
 - `npm run export` and `npm run backup` write under `private/`. An export contains your private notes: keep it there.
@@ -68,21 +69,30 @@ Start the demo over from scratch: `npm run seed:demo -- --reset` (only ever rese
 
 This is a **local preview**: the real plan on one computer, nobody else can reach it.
 
-If you were given a **private bundle** (the reviewed corrections, household settings, reviews and reports), unzip it
-inside this `tokyo-move` folder first so its files land in `tokyo-move/private/` (gitignored). The import then applies
-the reviewed corrections automatically and says so ("Household overrides: …/private/household-overrides.json" and
-"(N private file(s))" with N above zero). Without the bundle you get the unreviewed source plan.
+1. Unzip the **private bundle** you were given inside this `tokyo-move` folder, so its files land in
+   `tokyo-move/private/` (gitignored). It holds the source package, the reviewed corrections and household settings.
+2. On a Mac, double-click **`Start Kadode.command`** in Finder. Or, in Terminal:
 
 ```bash
-# 1. Import the Revision 2 source package (a folder holding the workbook and its sidecar files).
-npm run import -- --source "/path/to/the Revision 2 package"
-#    Prints counts, status and receipts (never record text). Safe to run again: the same files change nothing.
-#    Writes private/data/kadode.db.
-
-# 2. Run it. KADODE_MODE=local means "the real database"; the flag lets you pick a person without a password.
-KADODE_MODE=local KADODE_DEV_IDENTITIES=1 npm run dev
-#    open http://localhost:5173
+npm run preview
 ```
+
+The first run installs dependencies, imports the plan from `private/source-package/` (with the reviewed corrections;
+it prints counts, "Household overrides: …" and receipts, never record text), builds the app, starts it on
+`127.0.0.1:8787` and opens your browser. Pick a person to sign in. Later runs skip the steps that are already done.
+Leave the Terminal window open while you use it; close it or press `Ctrl-C` to stop.
+
+| Want to… | Run |
+|---|---|
+| Look at the fictional demo instead | `npm run preview -- --demo` |
+| Import again after the bundle changed (the same files change nothing) | `npm run preview -- --reimport` |
+| Import from a package somewhere else | `npm run preview -- --source "/path/to/the Revision 2 package"` |
+| Not open a browser | `npm run preview -- --no-open` |
+
+Under the hood (if you'd rather run the steps yourself): `npm ci`, `npm run import` (defaults to
+`private/source-package`), `npm run build`, then `KADODE_MODE=local KADODE_DEV_IDENTITIES=1 npm start`.
+`KADODE_MODE=local` means "the real database"; the flag lets you pick a person without a password, and the server
+refuses it anywhere but this computer.
 
 Commands that work on the real database (`backup`, `export`, `restore`, `user:password`, `db:migrate`) must be told
 which database with `KADODE_MODE=local`, for example `KADODE_MODE=local npm run backup`. Without it they look for the
@@ -121,6 +131,7 @@ this is for trying the layout, not for anything you would not say on your own Wi
 
 | Command | What it does |
 |---|---|
+| `npm run preview` | One command for the local preview: install, first import, build when needed, start, open the browser (`-- --demo`, `--reimport`, `--source <dir>`, `--no-open`) |
 | `npm run dev` | API (`tsx watch`, port 8787) and Vite web dev server (port 5173) together; `Ctrl-C` stops both |
 | `npm run build` | Builds the web app into `dist/web` (the API serves it) |
 | `npm start` | Starts the API on `127.0.0.1:8787` and serves `dist/web` |

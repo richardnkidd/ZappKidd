@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "preview": "node scripts/preview.mjs",
     "dev:server": "tsx watch src/server/index.ts",
     "dev:web": "vite",
     "build": "vite build",

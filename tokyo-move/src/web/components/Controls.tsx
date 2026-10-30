@@ -103,7 +103,7 @@ export function SegmentedControl<V extends string>({ label, value, options, onCh
   );
 }
 
-/** Single-choice filter chips (e.g. Mine · Nic's · Together). */
+/** Single-choice filter chips (e.g. Mine · <name>'s · Together). */
 export function FilterChips<V extends string>({ label, value, options, onChange, className = '' }: GroupProps<V>) {
   return (
     <div role="group" aria-label={label} className={`filter-chips ${className}`.trim()}>

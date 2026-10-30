@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import { Link } from 'react-router';
 import { DECISION_STATE_LABEL } from '@shared/labels';
 import type { BaseRecord, DecisionState } from '@shared/types';
 import { StatusBadge } from '../../components/Badges';
-import { ButtonLink } from '../../components/Controls';
+import { Button, ButtonLink } from '../../components/Controls';
 import { Fact, Section } from '../../components/Layout';
 import { OwnerChip } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { humanizeKey } from '../../lib/format';
 import type { Directory, Indexes } from '../../lib/records';
+import { StatusDialog } from './dialogs';
+import { TravelerProgress } from './MilestoneDetail';
 import { SourceHistory } from './SourceHistory';
 import { Notes } from './Notes';
 
@@ -22,7 +25,11 @@ function scalar(v: unknown): string | null {
 }
 
 /** Fallback for record types without a dedicated screen yet: plain labelled facts, never internal field names. */
+const WORK_TYPES = new Set(['arrival', 'horizon']);
+
 export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: Indexes; dir: Directory }) {
+  const [statusOpen, setStatusOpen] = useState(false);
+  const hasWorkStatus = WORK_TYPES.has(record.type);
   const data = (record.data ?? {}) as Record<string, unknown>;
   const rows = Object.entries(data)
     .filter(([k]) => !SKIP_KEYS.has(k))
@@ -44,6 +51,14 @@ export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: I
         {statusLabel ? <span className="chip chip--ai">{statusLabel}</span> : <StatusBadge status={record.status} />}
         <OwnerChip owner={record.owner} proposed={record.owner_proposed} />
       </div>
+      {hasWorkStatus && (
+        <div>
+          <Button variant="primary" icon="check" onClick={() => setStatusOpen(true)}>
+            Change status
+          </Button>
+        </div>
+      )}
+      {hasWorkStatus && <TravelerProgress record={record} level={2} />}
       {linkTo && (
         <div>
           <ButtonLink to={linkTo.to} variant="secondary" icon="arrow-right">
@@ -80,8 +95,9 @@ export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: I
       </Section>
       <Notes record={record} idx={idx} dir={dir} />
       <SourceHistory record={record} idx={idx} dir={dir} />
+      {hasWorkStatus && <StatusDialog open={statusOpen} onClose={() => setStatusOpen(false)} record={record} currentStatus={record.status} />}
       <p className="small">
-        <Link to="/plan">Back to the plan</Link>
+        <Link to="/plan" className="more-link">Back to the plan</Link>
       </p>
     </div>
   );

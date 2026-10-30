@@ -232,9 +232,9 @@ function commitment(key: string, title: string, date: string | null, kind: Exist
 function buildCommitments(): BundleRecord[] {
   return [
     commitment('EC-GYM', 'Gym membership transfer', '2026-11-30', 'user_committed', 'Existing deadline; outcome unverified', 'Confirm the transfer was accepted before relying on it.', ['W20']),
-    commitment('EC-STORAGE', 'Storage review', '2026-12-18', 'user_committed', 'Verify current contract', 'The contract has not been read yet.', ['W23']),
-    commitment('EC-STORAGE-PAY', 'Storage next recorded payment', '2027-01-20', 'estimate', 'Recorded date; verify contract', 'A recorded date is not a contract term.', ['W23']),
-    commitment('EC-OLD-PASSPORT', 'Passport task old due date', '2026-08-15', 'review_date', 'Historical task date, not passport expiry', 'An old task date does not show the work was left undone.', ['W06']),
+    commitment('EC-STORAGE', 'Locker contract review', '2026-12-18', 'user_committed', 'Verify current contract', 'The contract has not been read yet.', ['W23']),
+    commitment('EC-STORAGE-PAY', 'Locker next recorded payment', '2027-01-20', 'estimate', 'Recorded date; verify contract', 'A recorded date is not a contract term.', ['W23']),
+    commitment('EC-OLD-PASSPORT', 'Old reminder date for the passport check', '2026-08-15', 'review_date', 'Historical task date, not passport expiry', 'An old task date does not show the work was left undone.', ['W06']),
   ];
 }
 
@@ -773,7 +773,7 @@ export function demoTravelerGates(): TravelerGateConfig[] {
       release_key: 'W26',
       required_at_or_after_arrival: ['A02'],
       conditional: [],
-      explicitly_not_gates: [],
+      explicitly_not_gates: [{ key: 'W05', reason: 'Optional future work; never a move gate.' }],
     },
   ];
 }

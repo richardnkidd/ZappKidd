@@ -76,8 +76,10 @@ export class PeopleIndex {
   }
 }
 
-const EACH_ADULT = /\b(each|both|every)\s+(working\s+|affected\s+)?(adult|adults|account holder|traveler)s?\b|\bnamed patient\b|\ball participants\b|\bboth adults\b/i;
-const OWNER_SUFFIX = /^(?:custodian|prepares|verifies|approves?|chooses|decides|only|individually|jointly)\b.*$/i;
+const EACH_ADULT = /\b(each|both|every)\s+(working\s+|affected\s+)?(adult|adults|account holder|traveler)s?\b|\bnamed patient\b|\ball participants\b|\bboth adults\b|\bcouple\b/i;
+const ROLE_VERB = '(?:custodian|prepares?|verif(?:y|ies)|approv(?:e|es)|choos(?:e|es)|decid(?:e|es)|drafts?|only|individually|jointly)';
+const OWNER_SUFFIX = new RegExp(`^${ROLE_VERB}\\b.*$`, 'i');
+const TRAILING_VERB = new RegExp(`\\s+${ROLE_VERB}$`, 'i');
 
 export interface OwnerParse {
   owner: OwnerRef;
@@ -87,7 +89,7 @@ export interface OwnerParse {
 }
 
 export function normalizeCollaborator(token: string): string | null {
-  const t = clean(token.replace(/\(proposed\)/gi, ''));
+  const t = clean(token.replace(/\(proposed\)/gi, '').replace(TRAILING_VERB, ''));
   if (!t) return null;
   if (/^(local\s+)?codex\b/i.test(t)) return 'Assistant';
   return sentenceCase(t);
@@ -117,6 +119,7 @@ export function parseOwner(text: string | null | undefined, people: PeopleIndex)
       if (person.kind === 'adult') adults.add(person.id);
       continue;
     }
+    if (/^(?:the\s+)?couple\b/i.test(token)) continue;
     if (EACH_ADULT.test(token)) {
       // 'Each adult' itself is an owner; the remainder of a longer phrase is not parsed further
       if (/^(each|both|every)\b.*\b(adult|adults|account holder|traveler)s?$/i.test(token) || /^(named patient|all participants|both adults)$/i.test(token)) continue;
@@ -132,4 +135,67 @@ export function parseOwner(text: string | null | undefined, people: PeopleIndex)
 
 export function personIdFromName(name: string): string {
   return slugify(name);
+}
+
+/* ------------------------------------------------------------------ */
+/* Dependency cells                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface ParsedDependencies {
+  /** Blocking dependencies: record keys that resolve. */
+  dependencies: string[];
+  /** Dependency key → the travelers it applies to (only when the source scopes it, e.g. "W02 for Avery"). */
+  scope: Record<string, string[]>;
+  /** Source text that is not a plain, resolvable dependency (conditions, free text). */
+  note: string | null;
+  /** Referenced IDs that do not exist. */
+  dangling: string[];
+}
+
+/**
+ * Split a milestone 'Dependencies' cell on ';'. Plain IDs that resolve are blocking dependencies. "W02 for Avery stage" style
+ * tokens become scoped dependencies (they block only the named traveler). Conditional or free text ("W19 if applicable",
+ * "Existing claim records") is kept in `note` and never blocks.
+ */
+export function parseDependencies(text: string | null | undefined, selfKey: string, knownKeys: ReadonlySet<string>, people: PeopleIndex): ParsedDependencies {
+  const plain = new Set<string>();
+  const scoped = new Map<string, Set<string>>();
+  const noteParts: string[] = [];
+  for (const token of splitList(text, ';')) {
+    if (/^none$/i.test(token)) continue;
+    if (/^W\d{2}$/.test(token)) {
+      plain.add(token);
+      continue;
+    }
+    const ids = findIds(token, 'W', 2);
+    if (ids.length === 0) {
+      noteParts.push(token);
+      continue;
+    }
+    const rest = token.replace(/\bW\d{2}\b/g, ' ').replace(/\band\b/gi, ' ').replace(/\s+/g, ' ').trim();
+    const m = /^(?:only\s+)?(?:for|when)\s+(.+?)(?:\s+(?:stage|date|travels))*$/i.exec(rest);
+    const who = m ? people.mentioned(m[1] as string) : [];
+    if (m && who.length > 0 && !/\b(if|applicable|relevant|each)\b/i.test(rest)) {
+      for (const id of ids) {
+        const set = scoped.get(id) ?? new Set<string>();
+        for (const p of who) set.add(p.id);
+        scoped.set(id, set);
+      }
+    } else {
+      noteParts.push(token);
+    }
+  }
+  const dependencies: string[] = [];
+  const scope: Record<string, string[]> = {};
+  const dangling: string[] = [];
+  for (const id of [...plain, ...scoped.keys()].sort()) {
+    if (!knownKeys.has(id)) {
+      dangling.push(id);
+      continue;
+    }
+    if (id === selfKey) continue;
+    dependencies.push(id);
+    if (!plain.has(id) && scoped.has(id)) scope[id] = [...(scoped.get(id) as Set<string>)].sort();
+  }
+  return { dependencies, scope, note: noteParts.length ? noteParts.join('; ') : null, dangling };
 }

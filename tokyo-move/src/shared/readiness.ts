@@ -207,7 +207,7 @@ export function travelerReadiness(person: Person, records: BaseRecord[], gates: 
   else state = 'not_started';
 
   const name = person.display_name;
-  const extra = conditionalUnknown.length > 0 ? ` ${plural(conditionalUnknown.length, 'optional-if-needed step still has', 'optional-if-needed steps still have')} to be decided.` : '';
+  const extra = conditionalUnknown.length > 0 ? ` ${plural(conditionalUnknown.length, 'conditional step still needs', 'conditional steps still need')} a yes or no on whether ${conditionalUnknown.length === 1 ? 'it applies' : 'they apply'}.` : '';
   let headline: string;
   switch (state) {
     case 'settled':

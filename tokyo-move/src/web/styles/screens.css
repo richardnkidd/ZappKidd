@@ -48,6 +48,10 @@
   color: var(--ai);
   text-decoration: underline;
 }
+a.item__title {
+  display: inline-block;
+  min-height: 24px;
+}
 a.item__title::after {
   content: '';
   position: absolute;
@@ -472,8 +476,13 @@ a.coming__title {
 }
 .chain__list li {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 4px;
+}
+.chain__list a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
 }
 .chain__arrow {
   color: var(--ink-3);
@@ -921,4 +930,11 @@ code {
 }
 .more-item__blurb {
   font-size: var(--fs-1);
+}
+
+.subhead {
+  font-family: var(--font-ui);
+  font-size: var(--fs-1);
+  font-weight: 650;
+  margin-bottom: var(--s-1);
 }

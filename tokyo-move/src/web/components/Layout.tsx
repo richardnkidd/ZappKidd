@@ -9,11 +9,11 @@ let firstTitleMounted = false;
  */
 export function PageTitle({ children, kicker, actions, id }: { children: ReactNode; kicker?: ReactNode; actions?: ReactNode; id?: string }) {
   const ref = useRef<HTMLHeadingElement>(null);
+  // Decided during the first render so React's dev-mode double effect does not steal focus on the initial load.
+  const skipFocus = useRef(!firstTitleMounted);
   useEffect(() => {
-    if (!firstTitleMounted) {
-      firstTitleMounted = true;
-      return;
-    }
+    firstTitleMounted = true;
+    if (skipFocus.current) return;
     ref.current?.focus({ preventScroll: false });
     window.scrollTo?.({ top: 0 });
   }, []);

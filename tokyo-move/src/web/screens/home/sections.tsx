@@ -80,7 +80,7 @@ export function NowSection({ idx, filter, ctx }: CommonProps) {
         </ul>
       )}
       <p className="small">
-        <Link to="/plan">See the whole plan</Link>
+        <Link to="/plan" className="more-link">See the whole plan</Link>
       </p>
     </Section>
   );
@@ -138,7 +138,7 @@ export function DecisionsSection({ idx, dir, filter, ctx }: CommonProps & { dir:
       )}
       {all.length > shown.length && (
         <p className="small">
-          <Link to="/decide">{plural(all.length - shown.length, 'more decision')} waiting in Decide</Link>
+          <Link to="/decide" className="more-link">{plural(all.length - shown.length, 'more decision')} waiting in Decide</Link>
         </p>
       )}
     </Section>
@@ -185,7 +185,7 @@ export function BlockedSection({ idx, filter, ctx }: CommonProps) {
       )}
       {all.length > shown.length && (
         <p className="small">
-          <Link to="/plan?view=board">{all.length - shown.length} more in the plan board</Link>
+          <Link to="/plan?view=board" className="more-link">{all.length - shown.length} more in the plan board</Link>
         </p>
       )}
     </Section>

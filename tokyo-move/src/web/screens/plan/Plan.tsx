@@ -84,6 +84,7 @@ export function Plan() {
                   <Link to="/future">See Future work</Link>
                 </p>
               )}
+              <h2 className="visually-hidden">{VIEW_OPTIONS.find((o) => o.value === view)?.label}</h2>
               {shown.length === 0 ? (
                 <Card>
                   <EmptyState icon="plan" title="Nothing matches these filters.">

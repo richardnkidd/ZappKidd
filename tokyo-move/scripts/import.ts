@@ -1,15 +1,16 @@
 /**
- * npm run import -- --source <dir> [--db <path>] [--corrections <dir>] [--force]
+ * npm run import -- --source <dir> [--db <path>] [--corrections <dir>] [--report <file.md>] [--force]
  *
  * Reads the source package (workbook + sidecars), applies generic and private reviewed-model corrections, upserts the
  * result into the database idempotently, and prints counts, status and receipts. Exits non-zero when the plan's IDs
  * fail validation (for example a missing W01–W71) or the import fails. Never prints record bodies.
  */
-import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { applyBundle } from '../src/import/apply';
-import { BUILTIN_CORRECTIONS, loadCorrectionFiles, mergeCorrections } from '../src/import/corrections';
+import { applyCorrections, BUILTIN_CORRECTIONS, loadCorrectionFiles, mergeCorrections } from '../src/import/corrections';
 import { parseSourcePackage } from '../src/import/normalize';
+import { buildReconciliationReport } from '../src/import/report';
 import { sha256Hex } from '../src/import/util';
 import { defaultDbPath, openDb } from '../src/server/db/db';
 
@@ -22,6 +23,7 @@ const source = resolve(arg('source') ?? process.env.TOKYO_SOURCE_DIR ?? join(pro
 const dbPath = arg('db') ?? defaultDbPath();
 const correctionsDir = resolve(arg('corrections') ?? join(source, '..', 'corrections'));
 const force = process.argv.includes('--force');
+const reportPath = arg('report');
 
 function main(): number {
   if (!existsSync(source)) {
@@ -29,6 +31,7 @@ function main(): number {
     return 2;
   }
   const bundle = parseSourcePackage(source);
+  const parsedForReport = structuredClone(bundle);
   const loaded = loadCorrectionFiles(correctionsDir);
   const corrections = mergeCorrections(BUILTIN_CORRECTIONS, loaded.corrections);
   for (const f of loaded.files) {
@@ -78,6 +81,29 @@ function main(): number {
     if (res.status === 'failed') {
       console.error(`Import failed: ${res.error ?? res.run.summary}`);
       return 1;
+    }
+    if (reportPath) {
+      const target = resolve(reportPath);
+      if (!target.includes(`${join('private')}`)) {
+        console.error('Refusing to write a report outside a private/ directory (it contains real household data).');
+        return 1;
+      }
+      const verificationFile = join(source, 'verification.json');
+      const { bundle: final, receipts: allReceipts } = applyCorrections(parsedForReport, corrections);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(
+        target,
+        buildReconciliationReport({
+          sourceDir: source,
+          parsed: bundle,
+          final,
+          receipts: allReceipts,
+          corrections,
+          verification: existsSync(verificationFile) ? JSON.parse(readFileSync(verificationFile, 'utf8')) : undefined,
+          run: { id: res.run.id, status: res.status, summary: res.run.summary },
+        }),
+      );
+      console.log(`  report written: ${target}`);
     }
     return 0;
   } finally {

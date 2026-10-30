@@ -77,3 +77,43 @@ minimum (44px preferred); `prefers-reduced-motion` disables transitions; timelin
 
 Arrival pack prints cleanly on A4/Letter: no nav, black on white, links shown as text, sensitive fields excluded by
 default with an explicit opt-in per section.
+
+## Implementation notes (web)
+
+Source lives in `src/web/`. Plain CSS in `styles/` (`tokens.css` → `base.css` → `layout.css` → `components.css` →
+`screens.css`); one stylesheet per layer, no framework.
+
+**Tokens added to the table above.** `--line-strong` `#8A8375` (input and control borders, 3:1 on paper and cards),
+`--stone-soft` (neutral chip fill), and soft fills `--matcha-soft`, `--kaki-soft`, `--kin-soft` for tone chips and banners.
+`--line` is decorative only (dividers). Dark values are in the same file under `prefers-color-scheme`.
+`tests/web/contrast.test.tsx` reads `tokens.css` and checks every foreground/background pair the CSS uses in both themes
+(4.5:1 text, 3:1 boundaries/focus). Add a pair there when you add a token pairing.
+
+**Shell.** Phone: header (wordmark, account button), content, fixed bottom tab bar (Home · Plan · Decide · Money · More)
+with `env(safe-area-inset-bottom)`. ≥1024px: left rail (same `<nav>`, plus the "More" destinations listed under a rule).
+Record detail opens as a right-hand panel on ≥1024px when reached from a list (the opener passes `backgroundLocation`
+in router state) and as a full page on phones or a direct link. Focus moves to the page `<h1>` on route change
+(not on first load); the panel heading takes focus when it opens and focus returns to the opening link on close.
+
+**Components** (`components/`): `Card`, `Section`, `PageTitle`, `Chip`, `OwnerChip`, `PersonBadge` (initial or paw),
+`StatusBadge`, `DeadlineBadge`, `VerificationNote`, `DateText`, `ItemCard`, `EmptyState`, `Skeleton`, `SaveIndicator`
+(persistent polite live region), `ErrorBanner`, `StaleBanner`, `ConflictBanner`, `Dialog` (portal, focus trap, Escape,
+makes `#root` inert, bottom sheet on phones), `Disclosure` (native `<details>`), `SegmentedControl`, `FilterChips`,
+`Field` (label/hint/error wiring), `DataGate` (skeleton → content → error with Retry). Every icon is decorative; meaning is
+always carried by adjacent text.
+
+**Data and saving.** `state/snapshot.tsx` holds `/api/snapshot` with `status` (loading | ready | stale | error), `loadedAt`
+and `refresh()`; it refreshes on focus/visibility and every 90 s, and keeps showing the last data (dated banner) if a
+refresh fails. Writes go through `actions.*` and `useWrite()`, which send the `baseVersion` the person started editing
+from, track Saving / Saved / Unsaved / Conflict / Error, and on a 409 show both versions so the person chooses. Engines
+(`collectDeadlines`, `householdReadiness`, `dependencyChain`, `downstreamOf`) are wrapped in `attempt()`: a thrown error
+renders an inline error for that section only.
+
+**Honesty rules in the UI.** Review checkpoints that share a date collapse into one expandable "Proposed review
+checkpoint · N items · not yet scheduled" row and never appear as deadlines. Any rule not `verified_official` shows a
+plain verification note beside its date. `related` links are labelled "Related (nothing waits on these)". Imported text is
+passed through `plain()`/`plainRefs()` before display so internal codes such as "(W02)" read as plain words; the original
+is untouched in Source & history. Old commitment dates never appear in "Now" and never imply non-completion.
+
+**Why `src/web/net/` and not `src/web/api/`.** Vite's `/api` dev proxy would swallow requests for any source file under a
+top-level `api/` folder (`/api/client.ts`), so the client lives in `src/web/net/client.ts`.

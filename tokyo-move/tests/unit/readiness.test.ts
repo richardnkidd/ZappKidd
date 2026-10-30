@@ -208,6 +208,16 @@ describe('states', () => {
     for (const rr of [s0, s1]) expect(rr.headline).not.toMatch(/%|percent/i);
   });
 
+  it('a release record listed among the required steps is never counted as one, so readiness can be reached before release', () => {
+    const { records } = demo();
+    const gates: TravelerGateConfig = { ...gatesFor('avery'), required_before_departure: ['W06', 'W17', 'W24'], required_at_or_after_arrival: [], release_key: 'W24' };
+    const ready = complete(records, ['W06', 'W17']);
+    const r = travelerReadiness(person('avery'), ready, gates, TODAY);
+    expect(r.state).toBe('ready_to_release');
+    expect([...r.met, ...r.open, ...r.blockers].map((g) => g.key)).not.toContain('W24');
+    expect(travelerReadiness(person('avery'), complete(ready, ['W24']), gates, TODAY).state).toBe('released');
+  });
+
   it('a traveler with no configured gates is not_started, not ready', () => {
     const { records, people } = demo();
     const out = householdReadiness(people, records, [], TODAY);

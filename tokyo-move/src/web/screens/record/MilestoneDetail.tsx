@@ -11,7 +11,7 @@ import {
   SYNC_STATE_LABEL,
   WORK_STATUS_LABEL,
 } from '@shared/labels';
-import type { Deadline, DeadlineRuleData, OwnerRef, TaskLink } from '@shared/types';
+import type { Deadline, DeadlineRuleData, OwnerRef, TaskLink, TravelerProgress as TravelerProgressData } from '@shared/types';
 import { DateText, DeadlineBadge, OptionalTag, PriorityTag, StatusBadge, SyncBadge, VerificationNote } from '../../components/Badges';
 import { Button } from '../../components/Controls';
 import { Icon } from '../../components/Icon';
@@ -20,7 +20,7 @@ import { OwnerChip, PersonBadge, useDir, usePlain } from '../../components/Peopl
 import { RecordLink } from '../../components/RecordLink';
 import { civil, instant, safeHref } from '../../lib/format';
 import { deadlineVerification } from '../../lib/home';
-import { dataOf, type Directory, type Indexes, type Milestone } from '../../lib/records';
+import { dataOf, type AnyRecord, type Directory, type Indexes, type Milestone } from '../../lib/records';
 import { attempt } from '../../lib/safe';
 import { useData } from '../../state/data';
 import { usePrefs } from '../../state/prefs';
@@ -33,6 +33,12 @@ import { SourceHistory } from './SourceHistory';
 import { ConflictBanner } from '../../components/Feedback';
 
 type Level = 2 | 3;
+
+/** A sub-heading one level below the section headings (h3 on the page, h4 in the side panel). */
+function SubHead({ level, children }: { level: Level; children: React.ReactNode }) {
+  const H = level === 2 ? 'h3' : 'h4';
+  return <H className="subhead">{children}</H>;
+}
 
 /* ------------------------------------------------------------------ deadline facts */
 
@@ -65,9 +71,9 @@ function DeadlineFacts({ deadline, state, idx, dir, today, computed }: { deadlin
 
 /* ------------------------------------------------------------------ per-traveler progress */
 
-export function TravelerProgress({ record, level }: { record: Milestone; level: Level }) {
+export function TravelerProgress({ record, level }: { record: AnyRecord; level: Level }) {
   const dir = useDir();
-  const progress = record.data?.traveler_progress;
+  const progress = dataOf<{ traveler_progress?: Record<string, TravelerProgressData> }>(record).traveler_progress;
   const [target, setTarget] = useState<string | null>(null);
   if (!progress || Object.keys(progress).length === 0) return null;
   return (
@@ -175,7 +181,7 @@ function Dependencies({ record, idx, dir, level }: { record: Milestone; idx: Ind
       )}
       {downstream.ok && downstream.value.length > 0 && (
         <div className="downstream">
-          <h4>Work that depends on this</h4>
+          <SubHead level={level}>Work that depends on this</SubHead>
           <ul className="plain-list">
             {downstream.value.map((k) => {
               const r = idx.byKey.get(k);
@@ -391,7 +397,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
         {engine.length > 0
           ? engine.map((c) => (
               <div key={c.id} className="stack stack--tight">
-                {engine.length > 1 && <h4>{c.label}</h4>}
+                {engine.length > 1 && <SubHead level={level}>{c.label}</SubHead>}
                 <DeadlineFacts deadline={c.deadline} state={c.state} idx={idx} dir={dir} today={today} computed={c} />
                 {c.approximate && <p className="small muted">Approximate: public holidays aren’t counted. Check before relying on it.</p>}
               </div>
@@ -416,7 +422,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
         )}
         {evidence.length > 0 && (
           <div className="evidence-block">
-            <h4>What shows it’s done</h4>
+            <SubHead level={level}>What shows it’s done</SubHead>
             <ul className="evidence">
               {evidence.map((e, i) => {
                 const href = safeHref(e.link);

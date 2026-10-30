@@ -429,6 +429,15 @@
   font-size: var(--fs-1);
   flex: 1 1 auto;
 }
+@media (max-width: 479.98px) {
+  .segmented__btn {
+    padding: 0 var(--s-2);
+    font-size: 0.875rem;
+  }
+  .plan-views .segmented__btn .icon {
+    display: none;
+  }
+}
 .segmented__btn[aria-pressed='true'] {
   background: var(--surface);
   color: var(--ai);
@@ -807,4 +816,11 @@ legend {
 }
 .sort-btn[aria-pressed='true'] {
   color: var(--ai);
+}
+
+/* Standalone links (not inside a sentence) get a full-size touch target. */
+.more-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }

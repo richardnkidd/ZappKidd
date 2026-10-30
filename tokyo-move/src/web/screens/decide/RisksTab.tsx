@@ -102,6 +102,7 @@ function Risks({ idx }: { idx: Indexes }) {
 
   return (
     <div className="stack">
+      <h2 className="visually-hidden">Risks and issues</h2>
       <p className="muted">
         A short list of what could go wrong or is being assumed, who is watching it, and what we’d do. Most severe first.
       </p>

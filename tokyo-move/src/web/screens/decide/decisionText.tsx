@@ -3,7 +3,7 @@ import { Chip } from '../../components/Badges';
 import type { Decision, Directory } from '../../lib/records';
 
 export interface ApprovalSummary {
-  /** Plain sentence, e.g. "Approved by Richard · awaiting Nic". */
+  /** Plain sentence, e.g. "Approved by <name> · awaiting <name>". */
   text: string;
   state: 'none' | 'partial' | 'agreed' | 'disagree' | 'closed';
 }

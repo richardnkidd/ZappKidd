@@ -45,7 +45,7 @@ import type {
   WorkStatus,
   WorkstreamData,
 } from '../shared/types';
-import { clean, findIds, PeopleIndex, parseOwner, splitList, type ParsedPerson } from './text';
+import { clean, findIds, PeopleIndex, parseDependencies, parseOwner, splitList, type ParsedPerson } from './text';
 import { fileEntry, mapDisposition, readCoverage, readCrosswalk, readOverrides, sidecarPaths, type CoverageRow, type CrosswalkRow, type FileEntry, type Overrides } from './sidecars';
 import { slugify } from './util';
 import { table, type Raw, type TableRow } from './workbook';
@@ -293,49 +293,6 @@ export function parseSourcePackage(dir: string, opts: ParseOptions = {}): Import
   const crossById = new Map(crosswalk.map((c) => [c.id, c]));
   const danglingRefs: ImportBundle['validation']['dangling_refs'] = [];
 
-  const parseDeps = (text: string | null, selfKey: string): { deps: string[]; scope: Record<string, string[]>; note: string | null } => {
-    const deps: string[] = [];
-    const scoped = new Map<string, Set<string>>();
-    const plain = new Set<string>();
-    const noteParts: string[] = [];
-    for (const token of splitList(text, ';')) {
-      if (/^none$/i.test(token)) continue;
-      if (/^W\d{2}$/.test(token)) {
-        plain.add(token);
-        continue;
-      }
-      const ids = findIds(token, 'W', 2);
-      if (ids.length === 0) {
-        noteParts.push(token);
-        continue;
-      }
-      const rest = token.replace(/\bW\d{2}\b/g, ' ').replace(/\band\b/gi, ' ').replace(/\s+/g, ' ').trim();
-      const m = /^(?:only\s+)?(?:for|when)\s+(.+?)(?:\s+(?:stage|date|travels))*$/i.exec(rest);
-      const who = m ? pidx.mentioned(m[1] as string) : [];
-      if (m && who.length > 0 && !/\b(if|applicable|relevant|each)\b/i.test(rest)) {
-        for (const id of ids) {
-          const set = scoped.get(id) ?? new Set<string>();
-          for (const p of who) set.add(p.id);
-          scoped.set(id, set);
-        }
-      } else {
-        noteParts.push(token);
-      }
-    }
-    const scope: Record<string, string[]> = {};
-    const all = [...plain, ...scoped.keys()].sort();
-    for (const id of all) {
-      if (!msKeys.has(id)) {
-        danglingRefs.push({ record: `milestone:${selfKey}`, field: 'data.dependencies', ref: id });
-        continue;
-      }
-      if (id === selfKey) continue;
-      deps.push(id);
-      if (!plain.has(id) && scoped.has(id)) scope[id] = [...(scoped.get(id) as Set<string>)].sort();
-    }
-    return { deps, scope, note: noteParts.length ? noteParts.join('; ') : null };
-  };
-
   const drafts71: MilestoneDraft[] = msRows.map((r) => {
     const key = r.t('A') as string;
     const title = r.t('C') ?? key;
@@ -343,7 +300,9 @@ export function parseSourcePackage(dir: string, opts: ParseOptions = {}): Import
     const owner = parseOwner(ownerText, pidx);
     const sourceStatus = r.t('E') ?? '';
     const reviewRaw = r.t('G');
-    const { deps, scope, note } = parseDeps(r.t('J'), key);
+    const parsedDeps = parseDependencies(r.t('J'), key, msKeys, pidx);
+    for (const ref of parsedDeps.dangling) danglingRefs.push({ record: `milestone:${key}`, field: 'data.dependencies', ref });
+    const { dependencies: deps, scope, note } = parsedDeps;
     const crossRow = crossById.get(key);
     const workArea = r.t('B') ?? '';
     const optional = sourceStatus === 'Deferred — conditional';

@@ -33,7 +33,7 @@ function QuestionCard({ q }: { q: Question }) {
       <Disclosure
         title={d?.question || q.title}
         meta={QUESTION_DISPOSITION_LABEL[d?.disposition as QuestionDisposition] ?? undefined}
-        level={4}
+        level={3}
       >
         <div className="stack">
           {d?.topic && <p className="kicker">{d.topic}</p>}

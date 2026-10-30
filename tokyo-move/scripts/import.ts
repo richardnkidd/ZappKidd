@@ -88,7 +88,7 @@ function main(): number {
     const res = applyBundle(db, bundle, { actor: 'import', corrections, force });
     console.log('');
     console.log(`Import ${res.run.id}: ${res.status}`);
-    console.log(`  created ${res.created}, updated ${res.updated}, kept local ${res.kept_local}, corrections ${res.corrections}, unchanged ${res.unchanged}`);
+    console.log(`  created ${res.created}, updated ${res.updated}, kept local ${res.kept_local}, corrections ${res.corrections}, unchanged ${res.unchanged}${res.removed ? `, removed ${res.removed} outside the move` : ''}`);
     const receipts = (db.prepare('SELECT COUNT(*) AS n FROM import_changes WHERE import_run_id = ?').get(res.run.id) as { n: number }).n;
     console.log(`  receipts written: ${receipts}`);
     if (res.status === 'failed') {

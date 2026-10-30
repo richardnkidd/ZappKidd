@@ -43,7 +43,7 @@ describe('applyBundle: first import', () => {
 
     expect(scalar(db, 'SELECT COUNT(*) AS n FROM records WHERE household_id = ?', HH)).toBe(bundle.records.length);
     expect(scalar(db, "SELECT COUNT(*) AS n FROM import_changes WHERE import_run_id = ? AND change = 'created' AND record_id NOT LIKE 'setting:%'", res.run.id)).toBe(bundle.records.length);
-    expect(scalar(db, "SELECT COUNT(*) AS n FROM import_changes WHERE import_run_id = ? AND change = 'created' AND record_id LIKE 'setting:%'", res.run.id)).toBe(4);
+    expect(scalar(db, "SELECT COUNT(*) AS n FROM import_changes WHERE import_run_id = ? AND change = 'created' AND record_id LIKE 'setting:%'", res.run.id)).toBe(5);
     expect(scalar(db, 'SELECT COUNT(*) AS n FROM source_snapshots WHERE import_run_id = ?', res.run.id)).toBe(bundle.records.length);
     expect(scalar(db, "SELECT COUNT(*) AS n FROM audit_log WHERE action = 'import_create'")).toBe(bundle.records.length);
     expect(scalar(db, 'SELECT COUNT(*) AS n FROM people WHERE household_id = ?', HH)).toBe(3);
@@ -183,6 +183,39 @@ describe('applyBundle: new source version', () => {
     expect(JSON.parse(base.value).baseline_on).toBe('2026-10-02');
     const link = db.prepare("SELECT title FROM task_links WHERE canonical_id = 'FX-0001'").get() as { title: string };
     expect(link.title).toBe('Edited by the adapter');
+  });
+});
+
+describe('applyBundle: planning target', () => {
+  const stored = () => {
+    const row = db.prepare("SELECT value FROM settings WHERE household_id = ? AND key = 'planning_target'").get(HH) as { value: string } | undefined;
+    return row ? JSON.parse(row.value) : undefined;
+  };
+
+  it('stores the demo planning target like the plan baseline, updates it from the source, and keeps an in-app change', () => {
+    const bundle = buildDemoBundle();
+    applyBundle(db, bundle, { now: T0 });
+    expect(stored()).toMatchObject({ date: '2027-07-01', label: 'July 2027' });
+
+    const moved = newVersion(bundle, 'pt1');
+    moved.settings = { ...moved.settings, planning_target: { date: '2027-08-01', label: 'August 2027' } };
+    applyBundle(db, moved, { now: T1 });
+    expect(stored()).toEqual({ date: '2027-08-01', label: 'August 2027' });
+
+    db.prepare("UPDATE settings SET value = ? WHERE household_id = ? AND key = 'planning_target'").run(JSON.stringify({ date: '2027-09-01', label: 'September 2027' }), HH);
+    const again = newVersion(bundle, 'pt2');
+    again.settings = { ...again.settings, planning_target: { date: '2027-10-01', label: 'October 2027' } };
+    applyBundle(db, again, { now: T2 });
+    expect(stored()).toEqual({ date: '2027-09-01', label: 'September 2027' });
+  });
+
+  it('leaves the stored target alone when a later source does not carry one', () => {
+    const bundle = buildDemoBundle();
+    applyBundle(db, bundle, { now: T0 });
+    const without = newVersion(bundle, 'pt3');
+    delete without.settings.planning_target;
+    applyBundle(db, without, { now: T1 });
+    expect(stored()).toMatchObject({ date: '2027-07-01' });
   });
 });
 

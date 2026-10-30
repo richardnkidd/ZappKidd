@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Db } from '../server/db/db';
 import type { HouseholdSettings, ImportBundle, ImportRun, SourceRef, TaskLink } from '../shared/types';
-import { applyCorrections, BUILTIN_CORRECTIONS, type Correction, type CorrectionReceipt } from './corrections';
+import { applyCorrections, BUILTIN_CORRECTIONS, excludedIds, type Correction, type CorrectionReceipt } from './corrections';
 import { clone, deepEqual, sha256Hex, stableStringify } from './util';
 
 export interface ApplyOptions {
@@ -35,6 +35,8 @@ export interface ApplyResult {
   /** created + updated + kept_local + corrections (receipt rows other than 'unchanged'). */
   changes: number;
   unchanged: number;
+  /** Records and task links an earlier import stored that the scope corrections now leave out (removed, with audit). */
+  removed?: number;
   error?: string;
 }
 
@@ -74,7 +76,7 @@ function rawHash(raw: unknown): string {
   return sha256Hex(stableStringify(raw ?? {}));
 }
 
-const SETTING_KEYS = ['traveler_gates', 'task_adapter', 'plan_baseline', 'jp_holidays'] as const;
+const SETTING_KEYS = ['traveler_gates', 'task_adapter', 'plan_baseline', 'planning_target', 'jp_holidays'] as const;
 const SNAPSHOT_LINK_FIELDS = ['title', 'status', 'due', 'due_basis', 'owner', 'notes', 'proposal_note', 'record_id'] as const;
 
 export function applyBundle(db: Db, bundle: ImportBundle, opts: ApplyOptions = {}): ApplyResult {
@@ -86,7 +88,7 @@ export function applyBundle(db: Db, bundle: ImportBundle, opts: ApplyOptions = {
   const fileset = filesetSha256(bundle.files);
   const runId = `run-${at.replace(/[-:.TZ]/g, '').slice(0, 14)}-${randomUUID().slice(0, 8)}`;
 
-  const counts = { created: 0, updated: 0, kept_local: 0, corrections: 0, unchanged: 0, not_applicable: 0, missing_from_source: 0, task_links_created: 0, task_links_updated: 0 };
+  const counts = { created: 0, updated: 0, kept_local: 0, corrections: 0, unchanged: 0, not_applicable: 0, missing_from_source: 0, task_links_created: 0, task_links_updated: 0, removed: 0 };
 
   const insertRun = (status: ImportRun['status'], summary: string, extraCounts: Record<string, number>, finishedAt: string | null): ImportRun => {
     const typeCounts: Record<string, number> = {};
@@ -221,6 +223,31 @@ export function applyBundle(db: Db, bundle: ImportBundle, opts: ApplyOptions = {
         }
         if (rawChanged && source) stmts.insertSnapshot.run(hh, rec.id, runId, rawHash(source.raw), JSON.stringify(source.raw));
       }
+      // Items the scope corrections leave out of the plan: an earlier import may have stored them. Remove them (and task
+      // links attached to them), keeping the full prior state in the audit log; the source package still holds them.
+      const why = new Map(corrected.receipts.filter((r) => r.op === 'exclude' && r.field === null).map((r) => [r.record_id, r.rationale]));
+      for (const id of excludedIds(corrected.receipts)) {
+        const reason = why.get(id) ?? 'Outside the move.';
+        if (id.startsWith('task_link:')) {
+          const gone = stmts.getTaskLink.get(hh, id.slice('task_link:'.length)) as { id: string; title: string; status: string } | undefined;
+          if (!gone) continue;
+          stmts.deleteTaskLink.run(hh, gone.id);
+          change(id, 'removed_out_of_scope', null, { title: gone.title, status: gone.status }, null, reason);
+          counts.removed++;
+          continue;
+        }
+        const existing = stmts.getRecord.get(hh, id) as StoredRow | undefined;
+        if (!existing) continue;
+        audit(id, 'import_exclude', { title: existing.title, status: existing.status, owner: existing.owner, data: parse(existing.data, {}) }, null, `Removed: ${reason}`);
+        change(id, 'removed_out_of_scope', null, { title: existing.title, status: existing.status }, null, reason);
+        stmts.deleteRecord.run(hh, id);
+        counts.removed++;
+        for (const link of stmts.listTaskLinksFor.all(hh, id) as { id: string; canonical_id: string | null; title: string; status: string }[]) {
+          stmts.deleteTaskLink.run(hh, link.id);
+          change(`task_link:${link.canonical_id ?? link.id}`, 'removed_out_of_scope', null, { title: link.title, status: link.status }, null, reason);
+          counts.removed++;
+        }
+      }
       counts.missing_from_source = (stmts.listImportedIds.all(hh) as { id: string }[]).filter((r) => !incomingIds.has(r.id)).length;
 
       // Settings
@@ -253,14 +280,16 @@ export function applyBundle(db: Db, bundle: ImportBundle, opts: ApplyOptions = {
       }
 
       const changes = counts.created + counts.updated + counts.kept_local + counts.corrections;
-      const summary = `Created ${counts.created}, updated ${counts.updated}, kept ${counts.kept_local} local edit(s), applied ${counts.corrections} correction(s); ${counts.unchanged} unchanged.`;
-      run = insertRun('completed', summary, { created: counts.created, updated: counts.updated, kept_local: counts.kept_local, corrections: counts.corrections, unchanged: counts.unchanged, not_applicable: counts.not_applicable, task_links_created: counts.task_links_created, task_links_updated: counts.task_links_updated, missing_from_source: counts.missing_from_source }, new Date().toISOString());
+      const summary =
+        `Created ${counts.created}, updated ${counts.updated}, kept ${counts.kept_local} local edit(s), applied ${counts.corrections} correction(s)` +
+        `${counts.removed ? `, removed ${counts.removed} item(s) outside the move` : ''}; ${counts.unchanged} unchanged.`;
+      run = insertRun('completed', summary, { created: counts.created, updated: counts.updated, kept_local: counts.kept_local, corrections: counts.corrections, unchanged: counts.unchanged, not_applicable: counts.not_applicable, task_links_created: counts.task_links_created, task_links_updated: counts.task_links_updated, missing_from_source: counts.missing_from_source, removed: counts.removed }, new Date().toISOString());
       void changes;
     })();
 
     return {
       run, status: 'completed', created: counts.created, updated: counts.updated, kept_local: counts.kept_local, corrections: counts.corrections,
-      changes: counts.created + counts.updated + counts.kept_local + counts.corrections, unchanged: counts.unchanged,
+      changes: counts.created + counts.updated + counts.kept_local + counts.corrections + counts.removed, unchanged: counts.unchanged, removed: counts.removed,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -280,6 +309,10 @@ export function applyBundle(db: Db, bundle: ImportBundle, opts: ApplyOptions = {
 function prepareStatements(db: Db) {
   return {
     getRecord: db.prepare('SELECT * FROM records WHERE household_id = ? AND id = ?'),
+    deleteRecord: db.prepare('DELETE FROM records WHERE household_id = ? AND id = ?'),
+    getTaskLink: db.prepare('SELECT id, title, status FROM task_links WHERE household_id = ? AND canonical_id = ?'),
+    listTaskLinksFor: db.prepare('SELECT id, canonical_id, title, status FROM task_links WHERE household_id = ? AND record_id = ?'),
+    deleteTaskLink: db.prepare('DELETE FROM task_links WHERE household_id = ? AND id = ?'),
     listImportedIds: db.prepare(`SELECT id FROM records WHERE household_id = ? AND created_by = 'import'`),
     insertRecord: db.prepare(
       `INSERT INTO records (id, household_id, type, key, title, status, owner, owner_proposed, visibility, created_by, data, source, locally_edited, version, created_at, updated_at, updated_by)

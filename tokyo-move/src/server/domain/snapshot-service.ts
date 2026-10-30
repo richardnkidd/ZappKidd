@@ -2,6 +2,7 @@
 import type { Deps, AuthContext } from '../context';
 import type { HouseholdSettings, ImportRun, MeResponse, ScenarioSettings, Snapshot } from '../../shared/types';
 import { DEFAULT_SCENARIOS } from '../../shared/budget';
+import { isCivilDate } from '../../shared/dates';
 import { listPeople } from '../auth/users';
 import { listRecordRows, rowToRecord } from './records-repo';
 import { listTaskLinkRows, taskLinkFromRow } from './task-links-repo';
@@ -100,6 +101,14 @@ export function buildSettings(deps: Deps, ctx: AuthContext): HouseholdSettings {
     settings.first_review = {
       decision_keys: firstReview.decision_keys.filter((k): k is string => typeof k === 'string'),
       ...(typeof firstReview.note === 'string' ? { note: firstReview.note } : {}),
+    };
+  }
+  const target = getSetting<unknown>(deps.db, hh, 'planning_target', null);
+  if (isPlainObject(target) && typeof target.date === 'string' && isCivilDate(target.date) && typeof target.label === 'string' && target.label.trim() !== '') {
+    settings.planning_target = {
+      date: target.date,
+      label: target.label.trim(),
+      ...(typeof target.note === 'string' && target.note.trim() !== '' ? { note: target.note.trim() } : {}),
     };
   }
   const staging = getSetting<unknown>(deps.db, hh, 'staging_analysis', null);

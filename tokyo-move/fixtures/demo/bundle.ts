@@ -856,6 +856,7 @@ export function buildDemoBundle(): ImportBundle {
     traveler_gates: demoTravelerGates(),
     task_adapter: { name: 'fixture', can_write: true, as_of: null, note: 'Isolated fixture task store for the fictional demo household.' },
     plan_baseline: { baseline_on: '2026-10-01', reviewed_on: '2026-10-20', source_label: DEMO_SOURCE_LABEL },
+    planning_target: { date: '2027-07-01', label: 'July 2027', note: 'The month Avery and Jun are aiming for. It only places timing on the Plan timeline; it is not a deadline.' },
     jp_holidays: [],
   };
 

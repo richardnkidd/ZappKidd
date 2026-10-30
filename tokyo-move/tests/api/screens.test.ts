@@ -347,7 +347,7 @@ describe('household settings', () => {
     const h = await harness();
     const c = await loginAs(h, 'avery');
     const settingsBefore = JSON.stringify(h.db.prepare('SELECT * FROM settings ORDER BY household_id, key').all());
-    for (const key of ['traveler_gates', 'plan_baseline', 'jp_holidays', 'task_adapter', '_import.jp_holidays', 'home_timezone', 'nope']) {
+    for (const key of ['traveler_gates', 'plan_baseline', 'planning_target', 'jp_holidays', 'task_adapter', '_import.jp_holidays', 'home_timezone', 'nope']) {
       const res = await c.put(`/api/settings/${key}`, { value: [] });
       expect(res.status, key).toBe(422);
     }
@@ -396,7 +396,7 @@ describe('household settings', () => {
     const snap = (await c.get('/api/snapshot')).raw;
     expect(snap).not.toContain('leak-canary');
     expect(snap).not.toContain('2099-01-01');
-    expect(Object.keys((await c.get('/api/snapshot')).body.settings).sort()).toEqual(['jp_holidays', 'plan_baseline', 'task_adapter', 'traveler_gates']);
+    expect(Object.keys((await c.get('/api/snapshot')).body.settings).sort()).toEqual(['jp_holidays', 'plan_baseline', 'planning_target', 'task_adapter', 'traveler_gates']);
     const list = (await c.get('/api/settings')).body;
     expect(JSON.stringify(list)).not.toContain('leak-canary');
     expect(Object.keys(list.settings).some((k) => k.startsWith('_'))).toBe(false);
@@ -609,7 +609,7 @@ describe('read-only importer settings: first_review and staging_analysis', () =>
   it('are left out when absent or malformed (the optional fields are never null)', async () => {
     const h = await harness();
     const c = await loginAs(h, 'avery');
-    expect(Object.keys((await c.get('/api/snapshot')).body.settings).sort()).toEqual(['jp_holidays', 'plan_baseline', 'task_adapter', 'traveler_gates']);
+    expect(Object.keys((await c.get('/api/snapshot')).body.settings).sort()).toEqual(['jp_holidays', 'plan_baseline', 'planning_target', 'task_adapter', 'traveler_gates']);
     const ins = h.db.prepare('INSERT OR REPLACE INTO settings (household_id, key, value) VALUES (?, ?, ?)');
     ins.run(DEMO_HOUSEHOLD_ID, 'first_review', '"not an object"');
     ins.run(DEMO_HOUSEHOLD_ID, 'staging_analysis', '[1,2]');
@@ -618,6 +618,21 @@ describe('read-only importer settings: first_review and staging_analysis', () =>
     expect(bad).not.toHaveProperty('staging_analysis');
     ins.run(DEMO_HOUSEHOLD_ID, 'first_review', JSON.stringify({ decision_keys: ['D02', 5, null] }));
     expect((await c.get('/api/snapshot')).body.settings.first_review).toEqual({ decision_keys: ['D02'] });
+  });
+
+  it('planning_target reaches the snapshot only as a real date with a label, and is never null', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    expect((await c.get('/api/snapshot')).body.settings.planning_target).toMatchObject({ date: '2027-07-01', label: 'July 2027' });
+    const ins = h.db.prepare('INSERT OR REPLACE INTO settings (household_id, key, value) VALUES (?, ?, ?)');
+    for (const bad of ['"July 2027"', '[1]', '{"date":"2027-02-30","label":"February"}', '{"date":"2027-07-01"}', '{"date":"2027-07-01","label":"  "}', '{"label":"July 2027"}']) {
+      ins.run(DEMO_HOUSEHOLD_ID, 'planning_target', bad);
+      expect((await c.get('/api/snapshot')).body.settings, bad).not.toHaveProperty('planning_target');
+    }
+    ins.run(DEMO_HOUSEHOLD_ID, 'planning_target', JSON.stringify({ date: '2027-07-01', label: ' July 2027 ', note: 5, extra: 'dropped' }));
+    expect((await c.get('/api/snapshot')).body.settings.planning_target).toEqual({ date: '2027-07-01', label: 'July 2027' });
+    ins.run(DEMO_HOUSEHOLD_ID, 'planning_target', JSON.stringify({ date: '2027-07-01', label: 'July 2027', note: ' Aiming for early July. ' }));
+    expect((await c.get('/api/snapshot')).body.settings.planning_target).toEqual({ date: '2027-07-01', label: 'July 2027', note: 'Aiming for early July.' });
   });
 });
 

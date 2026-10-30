@@ -30,7 +30,7 @@ describe('snapshot', () => {
     expect(s.last_import).toMatchObject({ source_label: 'Fictional demo' });
     expect(s.last_review_completed_at).toBeNull();
     expect(s.scenarios.map((x: any) => x.key)).toEqual(['planning', 'condo_delay', 'combined_stress']);
-    expect(Object.keys(s.settings).sort()).toEqual(['jp_holidays', 'plan_baseline', 'task_adapter', 'traveler_gates']);
+    expect(Object.keys(s.settings).sort()).toEqual(['jp_holidays', 'plan_baseline', 'planning_target', 'task_adapter', 'traveler_gates']);
     expect(s.settings.task_adapter).toMatchObject({ name: 'fixture', can_write: true });
     expect(Array.isArray(s.settings.traveler_gates)).toBe(true);
   });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { applyCorrections, excludedIds, parseCorrectionFile, type Correction } from '../../src/import/corrections';
+import { applyBundle } from '../../src/import/apply';
+import { applyCorrections, BUILTIN_CORRECTIONS, excludedIds, parseCorrectionFile, type Correction } from '../../src/import/corrections';
+import { openDb } from '../../src/server/db/db';
 import { buildDemoBundle } from '../../fixtures/demo/bundle';
 import type { ImportBundle } from '../../src/shared/types';
 
@@ -92,5 +94,33 @@ describe('exclude in correction files', () => {
     expect(() => parseCorrectionFile(JSON.stringify({ corrections: [{ id: 'X', ops: [{ op: 'exclude', record: 'milestone:W01' }] }] }), 'f.json')).toThrow(/reason/);
     const ok = parseCorrectionFile(JSON.stringify({ corrections: [{ id: 'X', ops: [{ op: 'exclude', record: 'milestone:W01', reason: 'Outside the move.' }] }] }), 'f.json');
     expect(ok[0]!.ops![0]).toMatchObject({ op: 'exclude', record: 'milestone:W01' });
+  });
+});
+
+describe('re-importing with a narrower scope', () => {
+  it('removes items an earlier import stored, keeps the household\'s own edits, and is idempotent', () => {
+    const db = openDb(':memory:');
+    const first = applyBundle(db, buildDemoBundle(), { now: new Date('2026-10-29T12:00:00Z'), corrections: BUILTIN_CORRECTIONS });
+    expect(first.status).toBe('completed');
+    expect(db.prepare("SELECT COUNT(*) AS n FROM task_links WHERE canonical_id = 'FX-0002'").get()).toEqual({ n: 1 });
+    // a local edit on an item that stays
+    db.prepare(`UPDATE records SET status = 'in_progress', locally_edited = '["status"]' WHERE id = 'milestone:W06'`).run();
+
+    const narrowed = [...BUILTIN_CORRECTIONS, scope([{ op: 'exclude', record: 'milestone:W23', reason: 'Outside the move.' }])];
+    const second = applyBundle(db, buildDemoBundle(), { now: new Date('2026-10-30T12:00:00Z'), corrections: narrowed });
+    expect(second.status).toBe('completed');
+    expect(second.removed).toBe(2); // the record and the task link attached to it
+    expect(db.prepare("SELECT COUNT(*) AS n FROM records WHERE id = 'milestone:W23'").get()).toEqual({ n: 0 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM task_links WHERE canonical_id = 'FX-0002'").get()).toEqual({ n: 0 });
+    expect(db.prepare("SELECT status FROM records WHERE id = 'milestone:W06'").get()).toEqual({ status: 'in_progress' });
+    const audit = db.prepare("SELECT before, reason FROM audit_log WHERE action = 'import_exclude' AND record_id = 'milestone:W23'").get() as { before: string; reason: string };
+    expect(JSON.parse(audit.before).title).toBeTruthy();
+    expect(audit.reason).toMatch(/Outside the move/);
+    // nothing still points at it
+    expect(JSON.stringify(db.prepare('SELECT data FROM records').all())).not.toMatch(/"W23"/);
+
+    const third = applyBundle(db, buildDemoBundle(), { now: new Date('2026-10-31T12:00:00Z'), corrections: narrowed });
+    expect(third.status).toBe('no_changes');
+    db.close();
   });
 });

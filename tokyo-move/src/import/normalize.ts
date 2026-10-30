@@ -1165,6 +1165,7 @@ export function parseSourcePackage(dir: string, opts: ParseOptions = {}): Import
       },
       plan_baseline: { baseline_on: baselineOn, reviewed_on: overrides.plan_baseline?.reviewed_on ?? null, source_label: sourceLabel },
       jp_holidays: [],
+      ...(overrides.planning_target ? { planning_target: overrides.planning_target } : {}),
     },
     validation: { counts, expected: { ...EXPECTED_COUNTS }, dangling_refs: danglingRefs, notes },
   };

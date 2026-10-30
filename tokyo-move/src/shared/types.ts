@@ -738,6 +738,13 @@ export interface ImportBundle {
   };
 }
 
+/** A month-level aim for the move; see HouseholdSettings.planning_target. */
+export interface PlanningTarget {
+  date: string; // civil date
+  label: string; // e.g. 'July 2027'
+  note?: string;
+}
+
 /** Household-level configuration stored in the `settings` table (one JSON value per key). */
 export interface HouseholdSettings {
   /** Per-traveler gate lists (see engine-contracts TravelerGateConfig). */
@@ -746,6 +753,12 @@ export interface HouseholdSettings {
   task_adapter: { name: 'fixture' | 'snapshot' | 'script'; can_write: boolean; as_of: string | null; note: string };
   /** Civil date the plan considers its baseline, and the local review date. Historical dates are never rolled forward. */
   plan_baseline: { baseline_on: string | null; reviewed_on: string | null; source_label: string };
+  /**
+   * The month the household is aiming for (a civil date such as 2027-07-01 and a label such as "July 2027").
+   * Used ONLY to place work that is timed relative to a departure date that is not set yet on the Plan timeline.
+   * It is never a deadline and never moves one.
+   */
+  planning_target?: PlanningTarget;
   /** Optional Japanese public-holiday calendar for business-day math (civil dates). Empty = approximate. */
   jp_holidays: string[];
   /** At most three decisions the PM review proposed for the first couple review, in order. */

@@ -6,6 +6,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import type { IanaZone, QuestionDisposition } from '../shared/types';
 import { SUPPORTED_ZONES } from '../shared/types';
+import { isCivilDate } from '../shared/dates';
 import { isObject, sha256Hex } from './util';
 
 export interface FileEntry {
@@ -55,6 +56,8 @@ export interface Overrides {
   home_timezone?: IanaZone;
   people: Record<string, { display_name?: string; aliases?: string[]; descriptor?: string | null; note?: string }>;
   plan_baseline?: { baseline_on?: string | null; reviewed_on?: string | null; source_label?: string };
+  /** The month the household is aiming for; only places undated, departure-relative work on the timeline. */
+  planning_target?: { date: string; label: string; note?: string };
   task_snapshot_as_of?: string | null;
 }
 
@@ -143,6 +146,9 @@ export function readOverrides(path: string): Overrides {
   }
   const tz = str(data.home_timezone);
   const baseline = isObject(data.plan_baseline) ? data.plan_baseline : null;
+  const targetDate = isObject(data.planning_target) ? str(data.planning_target.date) : null;
+  const targetLabel = isObject(data.planning_target) ? str(data.planning_target.label)?.trim() : null;
+  const targetNote = isObject(data.planning_target) ? str(data.planning_target.note)?.trim() : null;
   return {
     household_id: str(data.household_id) ?? undefined,
     household_name: str(data.household_name) ?? undefined,
@@ -152,6 +158,8 @@ export function readOverrides(path: string): Overrides {
     plan_baseline: baseline
       ? { baseline_on: str(baseline.baseline_on), reviewed_on: str(baseline.reviewed_on), source_label: str(baseline.source_label) ?? undefined }
       : undefined,
+    planning_target:
+      targetDate && isCivilDate(targetDate) && targetLabel ? { date: targetDate, label: targetLabel, ...(targetNote ? { note: targetNote } : {}) } : undefined,
     task_snapshot_as_of: str(data.task_snapshot_as_of),
   };
 }

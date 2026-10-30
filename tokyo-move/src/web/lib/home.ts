@@ -7,20 +7,26 @@ import { addCalendarDays, diffDays, formatCivil, weekday } from '@shared/dates';
 import { PHASE_ORDER } from '@shared/labels';
 import type { BaseRecord, DeadlineKind, DeadlineRuleData, OwnerRef, PhaseKey, Priority } from '@shared/types';
 import { compareDates } from './format';
+import { NO_WHEN, whenFor, type WhenInfo } from './when';
 import { commitmentIsLinked, dataOf, isOpenWork, normalizedOwner, unmetDependencyKeys, type Commitment, type Decision, type Directory, type Indexes, type Milestone } from './records';
 
-export type OwnerFilter = 'all' | 'mine' | 'other' | 'together' | 'unassigned' | 'waiting';
+export type OwnerFilter = 'all' | 'needs_me' | 'mine' | 'other' | 'together' | 'unassigned' | 'waiting';
 
 export interface FilterContext {
   meId: string | null;
   otherIds: string[];
+  /** True when this record is waiting for the signed-in person's approval ("Needs me" includes it). */
+  awaitingMe?: (rec: BaseRecord) => boolean;
 }
 
-export function matchesOwnerFilter(filter: OwnerFilter, owner: OwnerRef | null | undefined, status: string | null, ctx: FilterContext): boolean {
+export function matchesOwnerFilter(filter: OwnerFilter, owner: OwnerRef | null | undefined, status: string | null, ctx: FilterContext, rec?: BaseRecord): boolean {
   const o = normalizedOwner(owner);
   switch (filter) {
     case 'all':
       return true;
+    case 'needs_me':
+      // Mine, shared with me, or waiting for my approval.
+      return o === ctx.meId || o === 'together' || Boolean(rec && ctx.awaitingMe?.(rec));
     case 'mine':
       return o === ctx.meId;
     case 'other':
@@ -59,6 +65,8 @@ export interface NowItem {
   date: string | null;
   dateKind: DeadlineKind | null;
   dateState: DeadlineState | null;
+  /** The one date shown on the card (see lib/when.ts). */
+  when: WhenInfo;
   status: string;
   /** Plain note such as "From your task list". */
   note: string | null;
@@ -74,7 +82,10 @@ interface NowOptions {
   horizonDays?: number;
 }
 
-/** Earliest meaningful date for a milestone: a real deadline first, otherwise a review checkpoint. */
+/**
+ * The date used to RANK a milestone: its own real deadline first, otherwise its check-in. (Cards show the one primary
+ * date from lib/when.ts, which also looks at linked tasks and commitments.)
+ */
 export function milestoneDate(
   m: Milestone,
   engine?: ComputedDeadline[],
@@ -112,7 +123,7 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
 
   for (const m of idx.milestones) {
     if (!want.includes(m.status) || m.data?.optional_future_work) continue;
-    if (!matchesOwnerFilter(filter, m.owner, m.status, ctx)) continue;
+    if (!matchesOwnerFilter(filter, m.owner, m.status, ctx, m)) continue;
     const mPhase = m.data?.phase ? PHASE_ORDER.indexOf(m.data.phase) : -1;
     if (mPhase > phaseIdx) continue; // later phases are not "now"
     if (unmetDependencyKeys(m, idx).length > 0) continue;
@@ -132,6 +143,7 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
       date: when.date,
       dateKind: when.kind,
       dateState: when.state,
+      when: whenFor(m, idx, opts.deadlinesByRecord?.get(m.id), today),
       status: m.status,
       note: null,
       rank: [bucket, when.date ?? '9999-12-31', m.status === 'in_progress' ? 0 : 1, m.key],
@@ -143,7 +155,7 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
   for (const c of idx.commitments as Commitment[]) {
     if (!isOpenWork(c.status) || !c.data?.recorded_date) continue;
     if (c.data.historical || commitmentIsLinked(c, idx)) continue; // old dates prove nothing; linked ones live on their milestone
-    if (!matchesOwnerFilter(filter, c.owner, c.status, ctx)) continue;
+    if (!matchesOwnerFilter(filter, c.owner, c.status, ctx, c)) continue;
     const away = diffDays(today, c.data.recorded_date);
     if (away > horizon || away < -3) continue; // an old date is not 'now' and proves nothing about whether it was done
     ranked.push({
@@ -157,6 +169,7 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
       date: c.data.recorded_date,
       dateKind: c.data.deadline_kind ?? 'user_committed',
       dateState: null,
+      when: { primary: { date: c.data.recorded_date, kind: c.data.deadline_kind ?? 'user_committed', source: 'commitment', state: null, deadline: null, label: 'Recorded date' }, others: [] },
       status: c.status,
       note: 'Already on your calendar',
       rank: [0, c.data.recorded_date, 1, c.key],
@@ -165,7 +178,12 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
 
   for (const t of idx.taskLinks) {
     if (t.status !== 'open' || !t.due) continue; // done and cancelled tasks never appear
+    // A proposal that has not reached the task list yet is not "in the task list": it has its own Home row.
+    if (t.sync_state === 'pending_capture') continue;
     if (t.record_id && taken.has(t.record_id)) continue;
+    // Work already finished in the plan: the leftover task copy is for tidying, not for "now".
+    const linked = t.record_id ? idx.byId.get(t.record_id) : undefined;
+    if (linked && !isOpenWork(linked.status)) continue;
     // A past date in a read-only copy of the task list says nothing about whether the task was done.
     if (t.sync_state === 'snapshot' && diffDays(today, t.due) < 0) continue;
     if (!matchesOwnerFilter(filter, t.owner, null, ctx) && filter !== 'all') continue;
@@ -176,12 +194,13 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
       recordId: t.record_id,
       kind: 'task',
       title: t.title,
-      owner: t.owner,
+      owner: t.owner ?? linked?.owner ?? null,
       ownerProposed: false,
       nextAction: null,
       date: t.due,
       dateKind: null,
       dateState: null,
+      when: { primary: { date: t.due, kind: 'task', source: 'task', state: null, deadline: null, label: 'In your task list' }, others: [] },
       status: 'planned',
       note: t.sync_state === 'snapshot' ? 'From your task list (read-only copy)' : 'From your task list',
       rank: [0, t.due, 2, t.id],
@@ -201,6 +220,27 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
 }
 
 /* ---------- Decisions ---------- */
+
+/** A decision the plan already records as decided (never asked again). */
+export interface RecordedDecision {
+  on: string | null;
+  source: string | null;
+  summary: string | null;
+  open_part: string | null;
+}
+
+export function recordedDecision(d: { data?: unknown }): RecordedDecision | null {
+  const r = (d.data as { recorded_decision?: Partial<RecordedDecision> } | undefined)?.recorded_decision;
+  if (!r || typeof r !== 'object') return null;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+  return { on: str(r.on), source: str(r.source), summary: str(r.summary), open_part: str(r.open_part) };
+}
+
+/** Scope the household already settled, shown above the open question as "Already decided: …". */
+export function settledPart(d: { data?: unknown }): string | null {
+  const v = (d.data as { settled_part?: unknown } | undefined)?.settled_part;
+  return typeof v === 'string' && v.trim() ? v : null;
+}
 
 /**
  * Open and proposed decisions, in the order a person should see them:
@@ -223,7 +263,7 @@ export function selectDecisions(
     return [2, date ?? '9999-12-31'];
   };
   return idx.decisions
-    .filter((d) => (d.status === 'open' || d.status === 'proposed') && matchesOwnerFilter(filter, d.owner, d.status, ctx))
+    .filter((d) => (d.status === 'open' || d.status === 'proposed') && !recordedDecision(d) && matchesOwnerFilter(filter, d.owner, d.status, ctx, d))
     .sort((a, b) => {
       const [ba, ka] = bucket(a);
       const [bb, kb] = bucket(b);
@@ -248,7 +288,7 @@ export function selectBlocked(idx: Indexes, filter: OwnerFilter, ctx: FilterCont
   for (const m of idx.milestones) {
     if (m.data?.optional_future_work) continue;
     if (m.status !== 'blocked' && m.status !== 'waiting_external') continue;
-    if (!matchesOwnerFilter(filter, m.owner, m.status, ctx)) continue;
+    if (!matchesOwnerFilter(filter, m.owner, m.status, ctx, m)) continue;
     const waitingOn = unmetDependencyKeys(m, idx).map((k) => ({ key: k, title: idx.byKey.get(k)?.title ?? k }));
     out.push({ record: m, reason: m.data?.status_reason?.trim() || null, waitingOn, kind: m.status === 'blocked' ? 'blocked' : 'waiting' });
   }

@@ -87,7 +87,7 @@ describe('status and deadline badges carry words and icons', () => {
   });
   it('labels deadline kinds so a review checkpoint never reads as a deadline', () => {
     const el = mount(createElement('div', null, createElement(DeadlineBadge, { kind: 'legal' }), createElement(DeadlineBadge, { kind: 'review_date' }), createElement(DeadlineBadge, { kind: 'internal_target' })));
-    expect(el.textContent).toBe('Legal deadlineReview checkpointOur target');
+    expect(el.textContent).toBe('Legal deadlineCheck-inOur target');
   });
   it('shows an honest note for any rule that is not verified from official text', () => {
     const el = mount(createElement('div', null, createElement(VerificationNote, { verification: 'indexed_only', kind: 'legal' }), createElement(VerificationNote, { verification: 'verified_official' }), createElement(VerificationNote, { verification: 'not_verified' })));

@@ -35,7 +35,7 @@ describe('what a computed date means, in words', () => {
     expect(p.suffix).toBe(' (window opens)');
   });
   it('a window pair reads as one window, earlier date first, naming an exam when it is one', () => {
-    const p = dateParts({ bound: 'not_before', kind: 'legal', date: '2027-08-21', pairDate: '2027-08-31', label: "Scout's vet exam must be within the 10 days before she is loaded" });
+    const p = dateParts({ bound: 'not_before', kind: 'legal', date: '2027-08-21', pairDate: '2027-08-31', label: "Mochi's vet exam must be within the 10 days before she is loaded" });
     expect(p).toMatchObject({ prefix: 'Exam window: ', date: '2027-08-21', endDate: '2027-08-31' });
     expect(dateParts({ bound: 'not_before', kind: 'legal', date: '2027-08-31', pairDate: '2027-08-21' }).date).toBe('2027-08-21');
   });

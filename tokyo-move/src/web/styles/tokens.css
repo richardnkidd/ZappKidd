@@ -1,0 +1,120 @@
+/*
+ * Kadode design tokens. Light is the default; dark follows prefers-color-scheme.
+ * Every text/background pair used by the app is verified against WCAG 2.2 AA by tests/web/contrast.test.tsx
+ * (4.5:1 for text, 3:1 for large text and UI boundaries). Keep that test's pair list in step with new tokens.
+ * The test reads this file, so keep one declaration per line inside the two blocks below.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces */
+  --paper: #f6f3ec;
+  --surface: #ffffff;
+  --surface-2: #fbf8f2;
+  --overlay: rgb(30 28 25 / 0.45);
+
+  /* Ink */
+  --ink: #1e1c19;
+  --ink-2: #4a463f;
+  --ink-3: #655f55;
+
+  /* Lines */
+  --line: #e2dccf;
+  --line-strong: #8a8375;
+
+  /* Indigo (ai): primary actions, links, focus, selected */
+  --ai: #2b4a6f;
+  --ai-soft: #e7edf4;
+  --on-ai: #ffffff;
+
+  /* Matcha: done, ready */
+  --matcha: #47632f;
+  --matcha-soft: #e8f0df;
+
+  /* Persimmon (kaki): blocked, legal deadlines near */
+  --kaki: #a9471f;
+  --kaki-soft: #fbe9e0;
+
+  /* Amber (kin): due soon, attention */
+  --kin: #7a5300;
+  --kin-soft: #fbf0d9;
+
+  /* Warm grey chip for neutral labels */
+  --stone-soft: #efeadf;
+
+  /* Focus */
+  --focus: var(--ai);
+
+  /* Type */
+  --font-ui: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-head: 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
+  --font-jp: 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  --fs-0: 0.8125rem; /* 13 */
+  --fs-1: 0.9375rem; /* 15 */
+  --fs-2: 1.0625rem; /* 17 */
+  --fs-3: 1.25rem; /* 20 */
+  --fs-4: 1.5rem; /* 24 */
+  --fs-5: 1.875rem; /* 30 */
+  --fs-6: 2.375rem; /* 38 */
+
+  /* Space (4px base) */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 24px;
+  --s-6: 32px;
+  --s-7: 48px;
+
+  /* Shape */
+  --r-card: 14px;
+  --r-ctl: 10px;
+  --r-pill: 999px;
+  --shadow-sheet: 0 -8px 32px rgb(30 28 25 / 0.18);
+  --shadow-panel: -12px 0 40px rgb(30 28 25 / 0.14);
+
+  --tab-h: 64px;
+  --rail-w: 248px;
+  --gutter: 16px;
+  --content-max: 1100px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #15130f;
+    --surface: #1e1b16;
+    --surface-2: #1a1813;
+    --overlay: rgb(0 0 0 / 0.6);
+
+    --ink: #f3efe6;
+    --ink-2: #d0c9bb;
+    --ink-3: #a9a193;
+
+    --line: #38332b;
+    --line-strong: #7d766a;
+
+    --ai: #9fbce3;
+    --ai-soft: #1f2c3d;
+    --on-ai: #0e1a28;
+
+    --matcha: #a9cc8c;
+    --matcha-soft: #222d1a;
+
+    --kaki: #f2a584;
+    --kaki-soft: #37211a;
+
+    --kin: #ebc67f;
+    --kin-soft: #33290f;
+
+    --stone-soft: #2a2620;
+
+    --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.5);
+    --shadow-panel: -12px 0 40px rgb(0 0 0 / 0.5);
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --gutter: 24px;
+  }
+}

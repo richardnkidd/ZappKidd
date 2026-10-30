@@ -1,0 +1,240 @@
+/* Kadode base: reset, typography, focus, motion, print. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-padding-top: var(--s-5);
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 1rem;
+  line-height: 1.5;
+  font-feature-settings: 'cv11', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  min-height: 100vh;
+  overflow-wrap: break-word;
+}
+
+@media (min-width: 768px) {
+  body {
+    font-size: 1.0625rem;
+  }
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-head);
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+h1 {
+  font-size: var(--fs-5);
+}
+h2 {
+  font-size: var(--fs-3);
+}
+h3 {
+  font-size: var(--fs-2);
+}
+h4 {
+  font-size: var(--fs-1);
+  font-family: var(--font-ui);
+  font-weight: 650;
+  letter-spacing: 0;
+}
+@media (min-width: 768px) {
+  h1 {
+    font-size: var(--fs-6);
+  }
+  h2 {
+    font-size: var(--fs-4);
+  }
+}
+
+p {
+  margin: 0;
+  max-width: 68ch;
+  text-wrap: pretty;
+}
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+a {
+  color: var(--ai);
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+}
+a:hover {
+  text-decoration-thickness: 2px;
+}
+strong,
+b {
+  font-weight: 650;
+}
+small {
+  font-size: var(--fs-0);
+}
+img,
+svg {
+  max-width: 100%;
+}
+table {
+  border-collapse: collapse;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+[hidden] {
+  display: none !important;
+}
+
+/* Japanese text */
+:lang(ja),
+.jp {
+  font-family: var(--font-jp), var(--font-head);
+  font-weight: 500;
+}
+
+/* Focus: visible everywhere, 3px, offset 2px */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+h1:focus,
+h1:focus-visible,
+[tabindex='-1']:focus {
+  outline: none;
+}
+h1[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
+::selection {
+  background: var(--ai-soft);
+  color: var(--ink);
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--s-3);
+  top: -100px;
+  z-index: 200;
+  background: var(--ai);
+  color: var(--on-ai);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-ctl);
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: var(--s-3);
+}
+
+.preline {
+  white-space: pre-line;
+}
+.muted {
+  color: var(--ink-2);
+}
+.faint {
+  color: var(--ink-3);
+}
+.nowrap {
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  :root {
+    --paper: #fff;
+    --surface: #fff;
+    --surface-2: #fff;
+    --ink: #000;
+    --ink-2: #222;
+    --ink-3: #333;
+    --line: #bbb;
+  }
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 11pt;
+  }
+  .no-print,
+  .app-nav,
+  .app-header,
+  .mode-banner,
+  .skip-link,
+  .save-indicator {
+    display: none !important;
+  }
+  a {
+    color: #000;
+    text-decoration: underline;
+  }
+  a[href^='http']::after {
+    content: ' (' attr(href) ')';
+    font-size: 0.85em;
+  }
+  .card {
+    break-inside: avoid;
+    border-color: #999;
+  }
+  .app-main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}

@@ -1,0 +1,10 @@
+private/
+node_modules/
+dist/
+*.db
+*.db-*
+test-results/
+playwright-report/
+coverage/
+.env
+.env.*

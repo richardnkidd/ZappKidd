@@ -1,0 +1,39 @@
+{
+  "_comment": "Fictional fixture task store seed for the demo household. Task ids match task_links.canonical_id in the demo bundle. Safe to commit.",
+  "revision": 3,
+  "tasks": [
+    {
+      "id": "FX-0001",
+      "title": "Check both passports and renewal receipts",
+      "status": "open",
+      "due": "2026-11-11",
+      "owner": "together",
+      "notes": "Fixture task (fictional).",
+      "created_on": "2026-10-12",
+      "updated_at": "2026-10-20T18:30:00Z",
+      "revision": "1"
+    },
+    {
+      "id": "FX-0002",
+      "title": "Read the storage contract",
+      "status": "open",
+      "due": "2026-12-04",
+      "owner": "avery",
+      "notes": null,
+      "created_on": "2026-10-20",
+      "updated_at": "2026-10-20T18:35:00Z",
+      "revision": "1"
+    },
+    {
+      "id": "FX-0003",
+      "title": "Order a spare set of passport photos",
+      "status": "done",
+      "due": "2026-10-15",
+      "owner": "jun",
+      "notes": null,
+      "created_on": "2026-10-01",
+      "updated_at": "2026-10-15T12:00:00Z",
+      "revision": "2"
+    }
+  ]
+}

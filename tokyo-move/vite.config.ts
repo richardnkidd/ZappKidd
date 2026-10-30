@@ -34,5 +34,7 @@ export default defineConfig({
     },
   },
   // assetsInlineLimit 0: fonts/images ship as files so the strict CSP (font-src 'self') never meets data: URLs.
-  build: { outDir: '../../dist/web', emptyOutDir: true, sourcemap: false, assetsInlineLimit: 0 },
+  // One ~650 kB bundle (~200 kB gzipped) is fine for a two-person app on a private network; the limit only silences
+  // Vite's code-splitting hint so first-run output isn't alarming.
+  build: { outDir: '../../dist/web', emptyOutDir: true, sourcemap: false, assetsInlineLimit: 0, chunkSizeWarningLimit: 900 },
 });

@@ -15,12 +15,21 @@ approval first.
 
 ## Recommended hosting: private network, no public exposure
 
-**Run the production build on an always-on home computer and reach it over a private Tailscale network.**
+**Run the production build on a small always-on cloud server that has no public ports, and reach it only over a
+private Tailscale network.**
 
 - Why: two people, a few hundred records, SQLite file. A private network means the app is never on the public
-  internet, which removes most attack surface; both phones join the household network; HTTPS certificates come from
-  `tailscale serve`. No new paid service is required for two users at the time of writing (verify current terms).
-- Trade-off: the host must stay on. After the move, either take the host to Tokyo or move to a small VPS (same steps).
+  internet, which removes most attack surface; each adult's devices join with their own identity-provider sign-in
+  (with its own two-step verification), and Kadode's own password is the third lock. HTTPS certificates come from
+  `tailscale serve`. Tailscale's free Personal plan covers this household (non-commercial use; verify current terms
+  at sign-up).
+- Why a cloud server rather than a home computer: the household will be split between two cities for months. A home
+  host has to be packed, shipped and re-networked exactly when the plan matters most, and is down whenever it sleeps
+  or loses power. A small server (a few dollars a month; a new paid service, so it needs approval) keeps the same
+  address from either city. Kadode stores links, not uploaded documents, and the plan avoids passport numbers, medical
+  originals and full statements, which limits what the hosting provider could ever hold.
+- Alternative host: an always-on home computer (free if one exists; same steps), moved to a cloud server before the
+  first departure.
 
 Steps (each needs approval where marked):
 
@@ -47,8 +56,9 @@ Alternatives considered:
 
 | Option | Pros | Cons |
 |---|---|---|
-| Cloudflare Tunnel + Access | Free tier, identity gate in front of the app | Public hostname; another account; more configuration |
-| Managed host (Fly.io/Render) + volume | Always on, no home hardware | Paid; public internet exposure; more ops |
+| Cloudflare Tunnel + Access | Nothing to install on phones (email one-time code or Google sign-in at a web gate); free tier for small teams | Public hostname (discoverable; one wrong rule exposes the sign-in page); Cloudflare decrypts traffic at its edge; needs a domain on Cloudflare |
+| Managed host (Fly.io/Render) + volume, public | Always on, simplest to reach | Public internet exposure with only the app password in front; paid |
+| The planner's laptop + Tailscale | Free, nothing new | The other adult loses access whenever the lid is closed or it is travelling |
 | Google Sheet as master | Familiar | No per-traveler gates, version conflicts, audit or one-owner rule; competes with the app |
 
 ## Task-Management integration (later, separate approval)

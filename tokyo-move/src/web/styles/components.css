@@ -866,3 +866,23 @@ legend {
     padding: 0;
   }
 }
+
+.date-text--old {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.linked-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+  font-size: var(--fs-1);
+  color: var(--ink-2);
+  max-width: none;
+}
+.linked-line__label {
+  font-size: var(--fs-0);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}

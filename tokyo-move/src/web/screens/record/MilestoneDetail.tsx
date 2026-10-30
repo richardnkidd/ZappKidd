@@ -17,6 +17,7 @@ import { Button } from '../../components/Controls';
 import { Icon } from '../../components/Icon';
 import { Fact, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge, useDir, usePlain } from '../../components/People';
+import { LinkedDates } from '../../components/LinkedDates';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, instant, safeHref } from '../../lib/format';
 import { deadlineVerification } from '../../lib/home';
@@ -271,7 +272,8 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
   const [statusOpen, setStatusOpen] = useState(false);
   const accept = useWrite();
 
-  const engine = (deadlinesByRecord.get(record.id) ?? []).filter((x) => x.kind !== 'review_date');
+  // Only this milestone's own dates (record or rule). A linked task's or commitment's date is shown separately below.
+  const engine = (deadlinesByRecord.get(record.id) ?? []).filter((x) => x.kind !== 'review_date' && (x.source === 'record' || x.source === 'rule'));
   const ownDeadline = d.deadline;
   const hasDates = engine.length > 0 || Boolean(ownDeadline);
 
@@ -393,7 +395,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
       </Section>
 
       <Section title="Dates" headingLevel={level}>
-        {!hasDates && !d.review_date && <p className="muted"><DateText date={null} /> — no deadline is attached to this yet.</p>}
+        {!hasDates && !d.review_date && <p className="muted"><DateText date={null} /> — no deadline of its own is attached to this yet.</p>}
         {engine.length > 0
           ? engine.map((c) => (
               <div key={c.id} className="stack stack--tight">
@@ -403,6 +405,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
               </div>
             ))
           : ownDeadline && <DeadlineFacts deadline={ownDeadline} idx={idx} dir={dir} today={today} />}
+        <LinkedDates milestoneId={record.id} today={today} />
         {d.review_date && (
           <div className="review-line">
             <p>

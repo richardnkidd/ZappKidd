@@ -438,6 +438,8 @@ export interface FundingData {
   source: string | null;
   evidence: string | null;
   excluded_reason?: string | null; // speculative work, unsold assets, pending claims
+  /** Server-set the first time a planning-zero income line changes status; blocks a two-step bypass of evidence rules. */
+  planning_zero_origin?: boolean;
 }
 
 export type ScenarioKey = 'planning' | 'condo_delay' | 'combined_stress';

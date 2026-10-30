@@ -26,7 +26,7 @@ import {
   type OwnerFilter,
 } from '../../lib/home';
 import type { Directory, Indexes } from '../../lib/records';
-import { dataOf } from '../../lib/records';
+import { dataOf, firstReviewDecisionKeys } from '../../lib/records';
 import { useData } from '../../state/data';
 import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
@@ -90,7 +90,9 @@ export function NowSection({ idx, filter, ctx }: CommonProps) {
 
 export function DecisionsSection({ idx, dir, filter, ctx }: CommonProps & { dir: Directory }) {
   const { today } = useData();
-  const all = useMemo(() => selectDecisions(idx, filter, ctx), [idx, filter, ctx]);
+  const { snapshot } = useSnapshot();
+  const firstKeys = useMemo(() => firstReviewDecisionKeys(snapshot?.settings), [snapshot]);
+  const all = useMemo(() => selectDecisions(idx, filter, ctx, { today, firstReviewKeys: firstKeys }), [idx, filter, ctx, today, firstKeys]);
   const shown = all.slice(0, 3);
   return (
     <Section
@@ -317,6 +319,24 @@ export function ComingUpSection({ idx, dir, filter, ctx }: CommonProps & { dir: 
             Show fewer
           </Button>
         </div>
+      )}
+      {coming.historical.length > 0 && (
+        <Disclosure title="Old dates to check" meta={String(coming.historical.length)} className="disclosure--calm">
+          <p className="muted small">
+            These dates are in the past. They come from a copy of your task list or from old records, so they do not show whether anything was done. Check the task list.
+          </p>
+          <ul className="awaiting-list">
+            {coming.historical.map((d) => (
+              <li key={d.id} className="awaiting">
+                {d.record_id ? <RecordLink id={d.record_id}>{d.label}</RecordLink> : <span>{d.label}</span>}
+                <span className="item__meta">
+                  <DateText date={d.deadline.date} state="historical" />
+                  <span className="faint small">{d.source === 'task' ? 'in your task-list copy' : 'in an old record'}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Disclosure>
       )}
       {coming.awaiting.length > 0 && (
         <Disclosure title="Awaiting a date" meta={String(coming.awaiting.length)} className="disclosure--calm">

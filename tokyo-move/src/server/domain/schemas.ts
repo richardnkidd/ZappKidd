@@ -41,6 +41,7 @@ export const externalLink = z
   .max(2000)
   .refine((s) => {
     try {
+      if (!/^\S+$/.test(s)) return false; // no spaces or control characters anywhere (URL parsing would trim them)
       const u = new URL(s);
       return u.protocol === 'https:' && u.hostname !== '' && u.username === '' && u.password === '';
     } catch {

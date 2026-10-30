@@ -68,6 +68,8 @@ export interface Indexes {
   risks: Risk[];
   workstreams: Workstream[];
   commitments: Commitment[];
+  /** Existing commitments that point at a milestone, by that milestone's key (shown on the milestone itself). */
+  commitmentsByMilestoneKey: Map<string, Commitment[]>;
   notes: Note[];
   rules: Rule[];
   anchors: Anchor[];
@@ -88,6 +90,16 @@ export function buildIndexes(records: BaseRecord[], taskLinks: TaskLink[]): Inde
   }
   const milestones = ofType<'milestone', MilestoneData>(records, 'milestone');
   const milestoneByKey = new Map(milestones.map((m) => [m.key, m]));
+  const commitments = ofType<'existing_commitment', ExistingCommitmentData>(records, 'existing_commitment');
+  const commitmentsByMilestoneKey = new Map<string, Commitment[]>();
+  for (const c of commitments) {
+    for (const key of c.data?.linked_records ?? []) {
+      if (!milestoneByKey.has(key)) continue;
+      const list = commitmentsByMilestoneKey.get(key) ?? [];
+      list.push(c);
+      commitmentsByMilestoneKey.set(key, list);
+    }
+  }
   const taskLinksByRecord = new Map<string, TaskLink[]>();
   for (const t of taskLinks) {
     if (!t.record_id) continue;
@@ -105,7 +117,8 @@ export function buildIndexes(records: BaseRecord[], taskLinks: TaskLink[]): Inde
     questions: ofType<'question', QuestionData>(records, 'question'),
     risks: ofType<'risk', RiskData>(records, 'risk'),
     workstreams: ofType<'workstream', Workstream['data']>(records, 'workstream'),
-    commitments: ofType<'existing_commitment', ExistingCommitmentData>(records, 'existing_commitment'),
+    commitments,
+    commitmentsByMilestoneKey,
     notes: ofType<'note', NoteData>(records, 'note'),
     rules: ofType<'deadline_rule', DeadlineRuleData>(records, 'deadline_rule'),
     anchors: ofType<'anchor', AnchorData>(records, 'anchor'),
@@ -184,4 +197,16 @@ export function nextDateOf(m: Milestone): { date: string | null; kind: 'deadline
 
 export function statusOf(r: BaseRecord): WorkStatus {
   return r.status as WorkStatus;
+}
+
+/** True when a commitment points at a milestone, so it is shown on that milestone instead of as its own item. */
+export function commitmentIsLinked(c: { data: { linked_records?: string[] } }, idx: Indexes): boolean {
+  return (c.data?.linked_records ?? []).some((k) => idx.milestoneByKey.has(k));
+}
+
+/** Household settings that are not in the shared type yet; read defensively. */
+export function firstReviewDecisionKeys(settings: unknown): string[] {
+  const fr = (settings as { first_review?: { decision_keys?: unknown } } | null | undefined)?.first_review;
+  const keys = fr?.decision_keys;
+  return Array.isArray(keys) ? keys.filter((k): k is string => typeof k === 'string') : [];
 }

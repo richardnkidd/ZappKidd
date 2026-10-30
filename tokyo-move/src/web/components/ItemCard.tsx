@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { DeadlineState } from '@shared/engine-contracts';
 import type { DeadlineKind, OwnerRef } from '@shared/types';
 import { DateText, DeadlineBadge, OptionalTag, StatusBadge } from './Badges';
+import { LinkedDates } from './LinkedDates';
 import { OwnerChip, usePlain } from './People';
 import { RecordLink } from './RecordLink';
 
@@ -42,6 +43,7 @@ export function ItemCard(p: ItemCardProps) {
           </p>
         )}
         {p.children}
+        {p.recordId && p.recordId.startsWith('milestone:') && <LinkedDates milestoneId={p.recordId} today={p.today} />}
         <div className="item__meta">
           <OwnerChip owner={p.owner} proposed={p.ownerProposed} compact />
           {p.showStatus && p.status && <StatusBadge status={p.status} small />}

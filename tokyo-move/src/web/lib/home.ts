@@ -7,7 +7,7 @@ import { addCalendarDays, diffDays, formatCivil, weekday } from '@shared/dates';
 import { PHASE_ORDER } from '@shared/labels';
 import type { BaseRecord, DeadlineKind, DeadlineRuleData, OwnerRef, PhaseKey, Priority } from '@shared/types';
 import { compareDates } from './format';
-import { dataOf, isOpenWork, normalizedOwner, unmetDependencyKeys, type Commitment, type Decision, type Directory, type Indexes, type Milestone } from './records';
+import { commitmentIsLinked, dataOf, isOpenWork, normalizedOwner, unmetDependencyKeys, type Commitment, type Decision, type Directory, type Indexes, type Milestone } from './records';
 
 export type OwnerFilter = 'all' | 'mine' | 'other' | 'together' | 'unassigned' | 'waiting';
 
@@ -79,7 +79,16 @@ export function milestoneDate(
   m: Milestone,
   engine?: ComputedDeadline[],
 ): { date: string | null; kind: DeadlineKind | null; state: DeadlineState | null } {
-  const live = (engine ?? []).filter((d) => d.applies !== 'no' && d.state !== 'met' && d.state !== 'not_applicable' && d.deadline.date);
+  // Only the milestone's own dates: a linked task's or commitment's date is shown separately and never becomes its target.
+  const live = (engine ?? []).filter(
+    (d) =>
+      (d.source === 'record' || d.source === 'rule' || d.source === 'review') &&
+      d.applies !== 'no' &&
+      d.state !== 'met' &&
+      d.state !== 'not_applicable' &&
+      d.state !== 'historical' &&
+      d.deadline.date,
+  );
   const real = live.filter((d) => d.kind !== 'review_date').sort((a, b) => compareDates(a.deadline.date, b.deadline.date));
   if (real[0]) return { date: real[0].deadline.date, kind: real[0].kind, state: real[0].state };
   const own = m.data?.deadline;
@@ -133,6 +142,7 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
 
   for (const c of idx.commitments as Commitment[]) {
     if (!isOpenWork(c.status) || !c.data?.recorded_date) continue;
+    if (c.data.historical || commitmentIsLinked(c, idx)) continue; // old dates prove nothing; linked ones live on their milestone
     if (!matchesOwnerFilter(filter, c.owner, c.status, ctx)) continue;
     const away = diffDays(today, c.data.recorded_date);
     if (away > horizon || away < -3) continue; // an old date is not 'now' and proves nothing about whether it was done
@@ -154,8 +164,10 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
   }
 
   for (const t of idx.taskLinks) {
-    if (t.status !== 'open' || !t.due) continue;
+    if (t.status !== 'open' || !t.due) continue; // done and cancelled tasks never appear
     if (t.record_id && taken.has(t.record_id)) continue;
+    // A past date in a read-only copy of the task list says nothing about whether the task was done.
+    if (t.sync_state === 'snapshot' && diffDays(today, t.due) < 0) continue;
     if (!matchesOwnerFilter(filter, t.owner, null, ctx) && filter !== 'all') continue;
     if (filter === 'waiting') continue;
     if (diffDays(today, t.due) > horizon) continue;
@@ -190,13 +202,35 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
 
 /* ---------- Decisions ---------- */
 
-export function selectDecisions(idx: Indexes, filter: OwnerFilter, ctx: FilterContext): Decision[] {
+/**
+ * Open and proposed decisions, in the order a person should see them:
+ *  1. a dated needed-by within 30 days (soonest first),
+ *  2. the household's chosen first-review decisions, in the order they were listed,
+ *  3. everything else by needed-by date, then by when it is needed.
+ */
+export function selectDecisions(
+  idx: Indexes,
+  filter: OwnerFilter,
+  ctx: FilterContext,
+  opts: { today?: string; firstReviewKeys?: string[] } = {},
+): Decision[] {
+  const firstKeys = opts.firstReviewKeys ?? [];
+  const bucket = (d: Decision): [number, string] => {
+    const date = d.data?.needed_by?.date ?? null;
+    if (opts.today && date && diffDays(opts.today, date) <= 30) return [0, date];
+    const i = firstKeys.indexOf(d.key);
+    if (i >= 0) return [1, String(i).padStart(4, '0')];
+    return [2, date ?? '9999-12-31'];
+  };
   return idx.decisions
     .filter((d) => (d.status === 'open' || d.status === 'proposed') && matchesOwnerFilter(filter, d.owner, d.status, ctx))
     .sort((a, b) => {
-      const byDate = compareDates(a.data?.needed_by?.date, b.data?.needed_by?.date);
-      if (byDate !== 0) return byDate;
-      return a.key.localeCompare(b.key, undefined, { numeric: true });
+      const [ba, ka] = bucket(a);
+      const [bb, kb] = bucket(b);
+      if (ba !== bb) return ba - bb;
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      const t = (a.data?.trigger ?? '').localeCompare(b.data?.trigger ?? '');
+      return t !== 0 ? t : a.key.localeCompare(b.key, undefined, { numeric: true });
     });
 }
 
@@ -241,6 +275,8 @@ export interface ComingGroup {
 export interface ComingUp {
   groups: ComingGroup[];
   awaiting: ComputedDeadline[];
+  /** Past dates from a task-list copy or old records. Listed once, neutrally; never as overdue. */
+  historical: ComputedDeadline[];
   /** Dated rows that were left out because of `maxRows` (a collapsed review-checkpoint row counts as one). */
   hidden: number;
 }
@@ -281,6 +317,8 @@ export function selectComingUp(
 
   const usable = deadlines.filter((d) => {
     if (d.applies === 'no' || d.state === 'met' || d.state === 'not_applicable') return false;
+    // A commitment that points at a milestone is shown on that milestone, not as a second item here.
+    if (d.source === 'commitment' && (d.linked_record_keys ?? []).some((k) => idx.milestoneByKey.has(k))) return false;
     const rec = d.record_id ? idx.byId.get(d.record_id) : undefined;
     if (rec && (rec.status === 'completed' || rec.status === 'eliminated' || rec.status === 'not_applicable')) return false;
     if (rec && dataOf<{ optional_future_work?: boolean }>(rec).optional_future_work) return false;
@@ -288,7 +326,8 @@ export function selectComingUp(
   });
 
   const awaiting = usable.filter((d) => !d.deadline.date).sort((a, b) => a.label.localeCompare(b.label));
-  const dated = usable.filter((d) => d.deadline.date && diffDays(today, d.deadline.date) <= windowDays);
+  const historical = usable.filter((d) => d.state === 'historical' && d.deadline.date).sort((a, b) => compareDates(b.deadline.date, a.deadline.date));
+  const dated = usable.filter((d) => d.state !== 'historical' && d.deadline.date && diffDays(today, d.deadline.date) <= windowDays);
 
   // Collapse review checkpoints that share a date into one calm summary row.
   const reviewsByDate = new Map<string, ComputedDeadline[]>();
@@ -350,7 +389,7 @@ export function selectComingUp(
     left -= keep.length;
     capped.push({ ...g, rows: keep });
   }
-  return { groups: capped, awaiting, hidden };
+  return { groups: capped, awaiting, historical, hidden };
 }
 
 /** Which rule (if any) produced a computed deadline, so its verification can be shown. */

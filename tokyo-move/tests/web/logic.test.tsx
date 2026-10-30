@@ -405,3 +405,92 @@ describe('conflict diffs', () => {
     ]);
   });
 });
+
+describe('real-shaped dates: tasks, commitments and old dates', () => {
+  const task = (over: Record<string, unknown>) =>
+    ({
+      id: 't1',
+      household_id: 'h',
+      adapter: 'snapshot',
+      canonical_id: 'c1',
+      record_id: null,
+      title: 'A task',
+      status: 'open',
+      due: '2026-08-15',
+      due_basis: 'source',
+      owner: null,
+      notes: null,
+      proposal_note: null,
+      sync_state: 'snapshot',
+      last_synced_at: null,
+      last_error: null,
+      remote_revision: null,
+      version: 1,
+      created_at: '2026-10-01T00:00:00Z',
+      updated_at: '2026-10-01T00:00:00Z',
+      ...over,
+    }) as never;
+  const commitment = (key: string, linked: string[], over: Record<string, unknown> = {}) =>
+    rec('existing_commitment', key, {
+      status: 'open',
+      data: { recorded_date: '2026-11-03', meaning: 'Recorded', deadline_kind: 'contractual', evidence_caution: '', linked_records: linked, ...over },
+    });
+
+  it("a milestone never takes its date from a linked task: only its own deadline or review date counts", () => {
+    const records = [milestone('W01', 'planned', { priority: 'now', review_date: '2026-11-11' })];
+    const idx = buildIndexes(records, []);
+    const taskDeadline = computed('task:t1', '2026-08-15', 'internal_target', { source: 'task', record_id: 'milestone:W01', state: 'historical' });
+    const items = selectNow(idx, { today: TODAY, filter: 'all', ctx: CTX, deadlinesByRecord: new Map([['milestone:W01', [taskDeadline]]]) });
+    expect(items[0]!.date).toBe('2026-11-11');
+    expect(items[0]!.dateKind).toBe('review_date'); // not "Our target", and not the old task date
+  });
+
+  it('a commitment linked to a milestone is not a separate item in Now or Coming up', () => {
+    const records = [milestone('W20', 'in_progress', { priority: 'now' }), commitment('EC-LINKED', ['W20']), commitment('EC-ALONE', [])];
+    const idx = buildIndexes(records, []);
+    const now = selectNow(idx, { today: TODAY, filter: 'all', ctx: CTX });
+    expect(now.map((i) => i.id)).toContain('existing_commitment:EC-ALONE');
+    expect(now.map((i) => i.id)).not.toContain('existing_commitment:EC-LINKED');
+    expect(idx.commitmentsByMilestoneKey.get('W20')!.map((c) => c.key)).toEqual(['EC-LINKED']);
+
+    const deadlines = [
+      computed('commitment:EC-LINKED', '2026-11-03', 'contractual', { source: 'commitment', record_id: 'existing_commitment:EC-LINKED', linked_record_keys: ['W20'] }),
+      computed('commitment:EC-ALONE', '2026-11-03', 'contractual', { source: 'commitment', record_id: 'existing_commitment:EC-ALONE', linked_record_keys: [] }),
+    ];
+    const coming = selectComingUp(deadlines, idx, DIR, { today: TODAY, filter: 'all', ctx: CTX });
+    const ids = coming.groups.flatMap((g) => g.rows).map((r) => r.deadline!.id);
+    expect(ids).toEqual(['commitment:EC-ALONE']);
+  });
+
+  it('old dates are kept out of Now and Coming up proper and listed once, neutrally', () => {
+    const records = [milestone('W01', 'planned', { priority: 'now' }), commitment('EC-OLD', [], { recorded_date: '2026-10-09', historical: true })];
+    const idx = buildIndexes(records, [task({ id: 't-old', record_id: null, title: 'Old snapshot task', due: '2026-08-15' }), task({ id: 't-done', title: 'Finished', status: 'done', due: '2026-11-02' })]);
+    const now = selectNow(idx, { today: TODAY, filter: 'all', ctx: CTX });
+    expect(now.map((i) => i.title)).not.toContain('Old snapshot task');
+    expect(now.map((i) => i.title)).not.toContain('Finished'); // closed tasks never appear
+    expect(now.map((i) => i.id)).not.toContain('existing_commitment:EC-OLD');
+
+    const deadlines = [
+      computed('task:t-old', '2026-08-15', 'internal_target', { source: 'task', state: 'historical' }),
+      computed('commitment:EC-OLD', '2026-10-09', 'user_committed', { source: 'commitment', record_id: 'existing_commitment:EC-OLD', state: 'historical' }),
+      computed('task:t-done', '2026-11-02', 'internal_target', { source: 'task', state: 'met' }),
+    ];
+    const coming = selectComingUp(deadlines, idx, DIR, { today: TODAY, filter: 'all', ctx: CTX });
+    expect(coming.groups).toEqual([]); // nothing under "Past their date"
+    expect(coming.historical.map((d) => d.id)).toEqual(['commitment:EC-OLD', 'task:t-old']); // newest old date first
+  });
+
+  it('Needs a decision: dated within 30 days, then first-review picks in order, then the rest', () => {
+    const records = [
+      decision('D01', 'proposed', { needed_by: deadline('2026-12-20', 'internal_target') }),
+      decision('D02', 'proposed', { trigger: 'Later' }),
+      decision('D03', 'open', { trigger: 'First review' }),
+      decision('D04', 'open', { needed_by: deadline('2026-11-20', 'internal_target') }),
+      decision('D05', 'open', { trigger: 'First review' }),
+      decision('D06', 'approved'),
+    ];
+    const idx = buildIndexes(records, []);
+    const keys = selectDecisions(idx, 'all', CTX, { today: TODAY, firstReviewKeys: ['D05', 'D03'] }).map((d) => d.key);
+    expect(keys).toEqual(['D04', 'D05', 'D03', 'D01', 'D02']);
+  });
+});

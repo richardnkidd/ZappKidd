@@ -13,7 +13,8 @@ import { OwnerChip } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, plural } from '../../lib/format';
 import { compareDates } from '../../lib/format';
-import type { Decision, Directory, Indexes } from '../../lib/records';
+import { selectDecisions } from '../../lib/home';
+import { firstReviewDecisionKeys, type Decision, type Directory, type Indexes } from '../../lib/records';
 import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
@@ -338,19 +339,20 @@ export function DecisionsTab() {
 }
 
 function DecisionsList({ idx, dir, today }: { idx: Indexes; dir: Directory; today: string }) {
+  const { snapshot } = useSnapshot();
+  const firstKeys = useMemo(() => firstReviewDecisionKeys(snapshot?.settings), [snapshot]);
   const { openOnes, closed } = useMemo(() => {
     const byDate = (a: Decision, b: Decision) => {
       const c = compareDates(a.data?.needed_by?.date, b.data?.needed_by?.date);
       return c !== 0 ? c : a.key.localeCompare(b.key, undefined, { numeric: true });
     };
-    const openOnes = idx.decisions
-      .filter((d) => d.status === 'open' || d.status === 'proposed')
-      .sort(byDate); // stable order: a card never jumps away just because you approved it
+    // Same order as Home. A card never jumps away just because you approved it (approval does not change the order).
+    const openOnes = selectDecisions(idx, 'all', { meId: null, otherIds: [] }, { today, firstReviewKeys: firstKeys });
     const closed = idx.decisions
       .filter((d) => d.status !== 'open' && d.status !== 'proposed')
       .sort((a, b) => ((b.data?.decided_at ?? b.updated_at) > (a.data?.decided_at ?? a.updated_at) ? 1 : -1));
     return { openOnes, closed };
-  }, [idx]);
+  }, [idx, today, firstKeys]);
 
   return (
     <div className="stack stack--loose">

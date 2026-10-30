@@ -100,9 +100,19 @@ export function VerificationNote({ verification, kind }: { verification: Deadlin
 export function DateText({ date, today, state, kind }: { date: string | null | undefined; today?: string; state?: DeadlineState; kind?: DeadlineKind | null }) {
   const holidays = useOptionalSnapshot()?.snapshot?.settings?.jp_holidays;
   if (!date) return <span className="date-text date-text--awaiting">Awaiting date</span>;
-  const rel = today ? relative(date, today) : null;
+  const historical = state === 'historical';
+  const rel = today && !historical ? relative(date, today) : null;
   const overdue = state === 'overdue';
-  const note = weekendNote(date, kind, holidays);
+  const note = historical ? null : weekendNote(date, kind, holidays);
+  if (historical) {
+    // A past date from a dated copy or an old record: neutral, and explicitly not evidence either way.
+    return (
+      <span className="date-text date-text--old">
+        <time dateTime={date}>{civil(date, 'short')}</time>
+        <span> · {DEADLINE_STATE_LABEL.historical}</span>
+      </span>
+    );
+  }
   return (
     <>
       <span className={`date-text${overdue ? ' date-text--past' : ''}${state === 'due_soon' || state === 'due_today' ? ' date-text--soon' : ''}`}>

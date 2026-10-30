@@ -149,13 +149,13 @@ describe('funding and income', () => {
     const c = await loginAs(h, 'avery');
     const funds = (await c.get('/api/records?type=funding')).body.records as any[];
     const fx = funds.find((f) => f.data.kind === 'fx_rate');
-    if (fx) {
-      const ok = await patch(c, fx.id, fx.version, { jpy_per_usd: 151.5, as_of: '2026-10-28', source: 'Bank rate page' });
-      expect(ok.status).toBe(200);
-      expect(ok.body.record.data.jpy_per_usd).toBe(151.5);
-      for (const jpy_per_usd of [0, -3, 'abc', 100000]) expect((await patch(c, fx.id, ok.body.record.version, { jpy_per_usd })).status, String(jpy_per_usd)).toBe(422);
-      expect((await patch(c, fx.id, ok.body.record.version, { jpy_per_usd: null })).status).toBe(200);
-    }
+    expect(fx).toBeTruthy();
+    expect(fx.data.jpy_per_usd).toBeNull(); // unknown stays unknown
+    const ok = await patch(c, fx.id, fx.version, { jpy_per_usd: 151.5, as_of: '2026-10-28', source: 'Bank rate page' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.record.data.jpy_per_usd).toBe(151.5);
+    for (const jpy_per_usd of [0, -3, 'abc', 100000]) expect((await patch(c, fx.id, ok.body.record.version, { jpy_per_usd })).status, String(jpy_per_usd)).toBe(422);
+    expect((await patch(c, fx.id, ok.body.record.version, { jpy_per_usd: null })).status).toBe(200);
     const cash = funds.find((f) => f.data.kind === 'cash_snapshot');
     const c2 = await patch(c, cash.id, cash.version, { amount: { amount: 40000, currency: 'USD' }, as_of: '2026-10-28', evidence: 'Statement viewed' });
     expect(c2.status).toBe(200);
@@ -171,10 +171,9 @@ describe('funding and income', () => {
     const attempts: Record<string, unknown>[] = [
       { amount: { amount: 2000, currency: 'USD' } }, // still planning_zero
       { amount: { amount: 2000, currency: 'USD' }, income_status: 'unverified' },
-      { amount: { amount: 2000, currency: 'USD' }, income_status: 'verified_lawful' }, // source/as_of: existing source text is fine, but as_of exists too...
     ];
-    for (const data of attempts.slice(0, 2)) expect((await patch(c, l.id, l.version, data)).status, JSON.stringify(data)).toBe(422);
-    // verified_lawful but without evidence of when/where -> 422
+    for (const data of attempts) expect((await patch(c, l.id, l.version, data)).status, JSON.stringify(data)).toBe(422);
+    // verified_lawful but without a source or date -> 422 (blank them out first)
     h.db.prepare("UPDATE records SET data = json_set(data, '$.source', NULL, '$.as_of', NULL) WHERE id = 'funding:INC-JUN'").run();
     const bare = await jun(c);
     const noEvidence = await patch(c, bare.id, bare.version, { amount: { amount: 2000, currency: 'USD' }, income_status: 'verified_lawful' });
@@ -388,7 +387,7 @@ describe('household settings', () => {
 
   it('never lists internal _import.* baseline keys, in the snapshot or the settings list', async () => {
     const h = await harness();
-    const ins = h.db.prepare('INSERT INTO settings (household_id, key, value) VALUES (?, ?, ?)');
+    const ins = h.db.prepare('INSERT OR REPLACE INTO settings (household_id, key, value) VALUES (?, ?, ?)');
     ins.run(DEMO_HOUSEHOLD_ID, '_import.traveler_gates', '[{"person_id":"leak-canary"}]');
     ins.run(DEMO_HOUSEHOLD_ID, '_import.jp_holidays', '["2099-01-01"]');
     ins.run(DEMO_HOUSEHOLD_ID, '_internal_flag', '"leak-canary"');
@@ -410,7 +409,7 @@ describe('household settings', () => {
 });
 
 describe('import receipts at real-run scale', () => {
-  function insertReceipts(h: Harness, runId: string, n: number) {
+  function insertReceipts(h: Harness, runId: string, n: number, recordFor: (i: number) => string = (i) => `milestone:W${String((i % 20) + 1).padStart(2, '0')}`) {
     const stmt = h.db.prepare(
       `INSERT INTO import_changes (id, household_id, import_run_id, record_id, change, field, before, after, rationale, correction_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -418,7 +417,7 @@ describe('import receipts at real-run scale', () => {
     h.db.transaction(() => {
       for (let i = 0; i < n; i += 1) {
         const corrected = i % 7 === 0;
-        stmt.run(`bulk-${i}`, DEMO_HOUSEHOLD_ID, runId, `milestone:W${String((i % 20) + 1).padStart(2, '0')}`, corrected ? 'correction_applied' : 'source_updated', 'data.x', JSON.stringify(`b${i}`), JSON.stringify(`a${i}`), 'bulk', corrected ? (i % 14 === 0 ? 'CORR-A' : 'CORR-B') : null);
+        stmt.run(`bulk-${i}`, DEMO_HOUSEHOLD_ID, runId, recordFor(i), corrected ? 'correction_applied' : 'source_updated', 'data.x', JSON.stringify(`b${i}`), JSON.stringify(`a${i}`), 'bulk', corrected ? (i % 14 === 0 ? 'CORR-A' : 'CORR-B') : null);
       }
     })();
   }
@@ -463,7 +462,7 @@ describe('import receipts at real-run scale', () => {
     const c = await loginAs(h, 'avery');
     const runId = (await c.get('/api/import/runs')).body.runs[0].id;
     h.db.prepare("INSERT INTO import_runs (id, household_id, started_at, finished_at, source_label, files, fileset_sha256, counts, status, summary) VALUES ('run-2', ?, '2026-10-30T00:00:00.000Z', '2026-10-30T00:00:01.000Z', 'Second run', '[]', 'abc', '{}', 'completed', '')").run(DEMO_HOUSEHOLD_ID);
-    insertReceipts(h, runId, 400);
+    insertReceipts(h, runId, 400, () => 'milestone:W01');
     h.db.prepare("INSERT INTO import_changes (id, household_id, import_run_id, record_id, change, field, before, after, rationale, correction_id) VALUES ('latest-one', ?, 'run-2', 'milestone:W01', 'source_updated', 'title', NULL, NULL, 'newest', NULL)").run(DEMO_HOUSEHOLD_ID);
     const detail = (await c.get('/api/records/milestone:W01')).body;
     expect(detail.import_changes).toHaveLength(100);

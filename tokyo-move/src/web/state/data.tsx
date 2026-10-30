@@ -17,6 +17,8 @@ interface DataCtx {
   /** All deadlines from the shared engine, or the error if the engine could not run. */
   deadlines: Attempt<ComputedDeadline[]>;
   deadlinesByRecord: Map<string, ComputedDeadline[]>;
+  /** Rule-derived dates by the key of each record they date (rule.linked_records), for record pages. */
+  deadlinesByLinkedKey: Map<string, ComputedDeadline[]>;
   readiness: Attempt<TravelerReadiness[]>;
 }
 
@@ -70,6 +72,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return map;
   }, [deadlines]);
 
+  const deadlinesByLinkedKey = useMemo(() => {
+    const map = new Map<string, ComputedDeadline[]>();
+    if (deadlines.ok) {
+      for (const d of deadlines.value) {
+        if (d.source !== 'rule') continue;
+        for (const k of d.linked_record_keys ?? []) {
+          const list = map.get(k) ?? [];
+          list.push(d);
+          map.set(k, list);
+        }
+      }
+    }
+    return map;
+  }, [deadlines]);
+
   const readiness = useMemo<Attempt<TravelerReadiness[]>>(
     () =>
       snapshot
@@ -83,7 +100,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [snapshot, today],
   );
 
-  const value = useMemo(() => ({ today, zone, deadlineContext, deadlines, deadlinesByRecord, readiness }), [today, zone, deadlineContext, deadlines, deadlinesByRecord, readiness]);
+  const value = useMemo(
+    () => ({ today, zone, deadlineContext, deadlines, deadlinesByRecord, deadlinesByLinkedKey, readiness }),
+    [today, zone, deadlineContext, deadlines, deadlinesByRecord, deadlinesByLinkedKey, readiness],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

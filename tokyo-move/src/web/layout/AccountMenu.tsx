@@ -15,7 +15,7 @@ export function AccountMenu() {
   const dir = useDir();
   const [open, setOpen] = useState(false);
   const person = dir.me ?? me.person;
-  const zoneShort = ZONE_OPTIONS.find((z) => z.zone === zone)?.short ?? '';
+  const zonePlace = ZONE_OPTIONS.find((z) => z.zone === zone)?.place ?? '';
 
   return (
     <>
@@ -23,7 +23,7 @@ export function AccountMenu() {
         <PersonBadge person={person} size={28} />
         <span className="account-btn__text">
           <span className="account-btn__name">{person.display_name}</span>
-          <span className="account-btn__zone faint">{zoneShort} time</span>
+          <span className="account-btn__zone faint">{zonePlace} time</span>
         </span>
         <span className="visually-hidden">Account and display time zone</span>
       </button>

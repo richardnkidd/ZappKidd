@@ -76,3 +76,20 @@ export const KIND_PRIORITY: Record<DeadlineKind | 'task', number> = {
   task: 3,
   review_date: 4,
 };
+
+const UNIT_WORDS: Record<string, [string, string]> = {
+  calendar_days: ['day', 'days'],
+  business_days: ['business day', 'business days'],
+  calendar_months: ['month', 'months'],
+};
+const ROLE_WORDS: Record<string, string> = { arrival: 'arrival in Japan', departure: 'departure from Japan' };
+
+/** "6 months after Avery’s arrival" - how a rule counts, in words. `anchorMeaning` is the anchor's own plain description. */
+export function ruleCountSentence(rule: { offset?: number | null; unit?: string | null; direction?: string | null; anchor?: string | null; anchor_role?: string | null }, anchorMeaning?: string | null): string | null {
+  const n = rule.offset;
+  if (n === null || n === undefined) return null;
+  const what = anchorMeaning?.trim() || (rule.anchor_role ? (ROLE_WORDS[rule.anchor_role] ?? rule.anchor_role.replace(/_/g, ' ')) : 'the starting event');
+  if (n === 0) return `On the day of ${what}`;
+  const [one, many] = UNIT_WORDS[rule.unit ?? 'calendar_days'] ?? ['day', 'days'];
+  return `${n} ${n === 1 ? one : many} ${rule.direction === 'before' ? 'before' : 'after'} ${what}`;
+}

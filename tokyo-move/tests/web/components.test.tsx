@@ -49,6 +49,7 @@ const fakeSnapshot = (): SnapshotCtx =>
     refresh: async () => undefined,
     save: { kind: 'idle' },
     setDirty: () => undefined,
+    dirtyCount: 0,
     actions: {} as never,
   }) as SnapshotCtx;
 
@@ -66,7 +67,7 @@ describe('people are never shown by colour alone', () => {
     expect(text).toContain('Pip');
     expect(text).toContain('Together');
     expect(text).toContain('Unassigned');
-    expect(text).toContain('Proposed: Bo');
+    expect(text).toContain('Bo? (not agreed yet)');
     expect(el.querySelectorAll('.chip--proposed')).toHaveLength(1);
     // badges are decorative (name is in text)
     expect(el.querySelector('.pbadge')?.getAttribute('aria-hidden')).toBe('true');

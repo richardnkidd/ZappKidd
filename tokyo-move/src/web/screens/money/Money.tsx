@@ -4,6 +4,8 @@ import { anchorsFrom } from '@shared/deadlines';
 import type { BudgetView, CostLineView } from '@shared/engine-contracts';
 import type { BaseRecord, CostData, CostSection, FundingData, ScenarioSettings } from '@shared/types';
 import { Chip } from '../../components/Badges';
+import { ClampText } from '../../components/ClampText';
+import { usePlain } from '../../components/People';
 import { Button, SegmentedControl } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { Disclosure } from '../../components/Disclosure';
@@ -19,6 +21,7 @@ import {
   fmtUsd,
   knownSoFar,
   scenarioExplanation,
+  scenarioLabel,
   SECTION_INTRO,
   SECTION_ORDER,
   SECTION_TITLE,
@@ -37,18 +40,20 @@ const STAGE_TONE: Record<string, 'neutral' | 'ai' | 'matcha' | 'kin'> = {
   approved_commitment: 'ai',
   paid: 'matcha',
   partially_paid: 'matcha',
-  unknown: 'kin',
+  unknown: 'neutral',
   excluded: 'neutral',
 };
 
 function CostLine({ line, record, onEdit }: { line: CostLineView; record: BaseRecord | undefined; onEdit: () => void }) {
+  const plain = usePlain();
   const monthly = line.section !== 'one_time';
+  const note = (record?.data as { review_note?: string | null } | undefined)?.review_note;
+  // A line with no amount reads as one short row with a single way forward, not an empty amount column.
+  const unknown = line.stage === 'unknown' || (line.native === null && line.stage !== 'excluded');
   return (
-    <li className="cost-line">
+    <li className={`cost-line${unknown ? ' cost-line--unknown' : ''}`}>
       <div className="cost-line__main">
-        <p className="cost-line__title">
-          {record ? <RecordLink id={record.id}>{line.description}</RecordLink> : line.description}
-        </p>
+        <p className="cost-line__title">{record ? <RecordLink id={record.id}>{line.description}</RecordLink> : line.description}</p>
         <div className="item__meta">
           <Chip tone={STAGE_TONE[line.stage] ?? 'neutral'} small>
             {STAGE_LABEL[line.stage] ?? line.stage}
@@ -58,28 +63,37 @@ function CostLine({ line, record, onEdit }: { line: CostLineView; record: BaseRe
         </div>
         {line.missing.length > 0 && (
           <ul className="cost-line__missing small">
-            {line.missing.map((m) => (
+            {(unknown ? line.missing.slice(0, 1) : line.missing).map((m) => (
               <li key={m}>
                 <Icon name="info" size={13} /> {m}
               </li>
             ))}
           </ul>
         )}
+        {note && <ClampText lines={2} className="small muted preline">{plain(note)}</ClampText>}
       </div>
       <div className="cost-line__amount">
-        <p className="cost-line__native">
-          {fmtMoney(line.native)}
-          {monthly && line.native ? <span className="faint small"> a month</span> : null}
-        </p>
-        {line.native?.currency === 'JPY' && line.usd !== null && <p className="small muted">about {fmtUsd(line.usd)}</p>}
-        {monthly && line.horizon_usd !== null && line.months_in_horizon !== null && (
-          <p className="small muted">
-            {fmtUsd(line.horizon_usd)} over {plural(line.months_in_horizon, 'month')}
-          </p>
+        {unknown ? (
+          <Button variant="secondary" small icon="plus" onClick={onEdit} aria-label={`Add amount: ${line.description}`}>
+            Add amount
+          </Button>
+        ) : (
+          <>
+            <p className="cost-line__native">
+              {fmtMoney(line.native)}
+              {monthly && line.native ? <span className="faint small"> a month</span> : null}
+            </p>
+            {line.native?.currency === 'JPY' && line.usd !== null && <p className="small muted">about {fmtUsd(line.usd)}</p>}
+            {monthly && line.horizon_usd !== null && line.months_in_horizon !== null && (
+              <p className="small muted">
+                {fmtUsd(line.horizon_usd)} over {plural(line.months_in_horizon, 'month')}
+              </p>
+            )}
+            <Button variant="quiet" small icon="pencil" onClick={onEdit} aria-label={`Edit ${line.description}`}>
+              Edit
+            </Button>
+          </>
         )}
-        <Button variant="quiet" small icon="pencil" onClick={onEdit} aria-label={`Edit ${line.description}`}>
-          Edit
-        </Button>
       </div>
     </li>
   );
@@ -94,9 +108,8 @@ function SectionCard({ section, budget, idx, onEdit }: { section: CostSection; b
   return (
     <Disclosure
       title={SECTION_TITLE[section]}
-      meta={isReserve ? (reserve === null ? 'Not known yet' : fmtUsd(reserve)) : lines.length === 0 ? 'Nothing listed' : `${summary.primary}${summary.secondary ? ` · ${summary.secondary}` : ''}`}
+      meta={isReserve ? (reserve === null ? 'Not known yet' : fmtUsd(reserve)) : lines.length === 0 ? 'Nothing listed' : `${plural(lines.length, 'line')} · ${summary.primary}${summary.secondary ? ` · ${summary.secondary}` : ''}`}
       className="money-section"
-      defaultOpen={section === 'one_time'}
     >
       <p className="muted small">{SECTION_INTRO[section]}</p>
       {isReserve && (
@@ -122,37 +135,32 @@ function SectionCard({ section, budget, idx, onEdit }: { section: CostSection; b
 function FxPanel({ budget, scenario, fxRecord, onEdit }: { budget: BudgetView; scenario: ScenarioSettings; fxRecord: BaseRecord | null; onEdit: () => void }) {
   const fx = budget.fx;
   const effect = scenario.fx_factor !== 1 ? attempt(() => usdEffectOfFxFactor(scenario.fx_factor)) : null;
+  const rate = (n: number) => `¥${n.toLocaleString('en-US', { maximumFractionDigits: 2 })} per $1`;
   return (
-    <Card as="section" aria-labelledby="fx-title" className="fx">
+    <Card as="section" aria-labelledby="fx-title" className="fx fx--compact">
       <div className="row row--between">
         <h3 id="fx-title" className="money-h3">
           Exchange rate
         </h3>
         {fxRecord && (
           <Button variant="quiet" small icon="pencil" onClick={onEdit}>
-            Edit
+            {fx.base_jpy_per_usd ? 'Edit' : 'Add rate'}
           </Button>
         )}
       </div>
-      <dl className="facts facts--tight">
-        <div className="fact">
-          <dt>Base rate</dt>
-          <dd>{fx.base_jpy_per_usd ? `¥${fx.base_jpy_per_usd.toLocaleString('en-US', { maximumFractionDigits: 2 })} per $1` : 'Not known yet'}</dd>
-        </div>
-        <div className="fact">
-          <dt>Used in this scenario</dt>
-          <dd>{fx.active_jpy_per_usd ? `¥${fx.active_jpy_per_usd.toLocaleString('en-US', { maximumFractionDigits: 2 })} per $1` : 'Not known yet'}</dd>
-        </div>
-        <div className="fact">
-          <dt>Where it came from</dt>
-          <dd>{fx.source ?? 'Not known yet'}</dd>
-        </div>
-        <div className="fact">
-          <dt>Rate date</dt>
-          <dd>{fx.as_of ? civil(fx.as_of) : 'Not known yet'}</dd>
-        </div>
-      </dl>
-      {fx.base_jpy_per_usd === null && <p className="small muted">Amounts in yen can't be turned into dollars until a rate is added, so they count as not known yet.</p>}
+      {fx.base_jpy_per_usd ? (
+        <p>
+          <strong>{rate(fx.active_jpy_per_usd ?? fx.base_jpy_per_usd)}</strong>
+          {scenario.fx_factor !== 1 && fx.active_jpy_per_usd ? <span className="muted"> in this situation (base {rate(fx.base_jpy_per_usd)})</span> : null}
+          <span className="muted small">
+            {' '}
+            · {fx.source ?? 'source not recorded'}
+            {fx.as_of ? `, ${civil(fx.as_of)}` : ''}
+          </span>
+        </p>
+      ) : (
+        <p className="muted">No exchange rate yet. Add one so yen costs can be counted.</p>
+      )}
       {effect && effect.ok && (
         <p className="fx__effect">
           <Icon name="info" size={16} /> A {weakerYenPercent(scenario.fx_factor)}% {scenario.fx_factor < 1 ? 'weaker' : 'stronger'} yen makes fixed-yen costs {Math.abs(effect.value * 100).toFixed(2)}% {effect.value >= 0 ? 'more' : 'less'} in dollars.
@@ -259,7 +267,7 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
           label="Scenario"
           value={scenarioKey}
           onChange={setScenarioKey}
-          options={scenarios.map((s) => ({ value: s.key, label: s.label }))}
+          options={scenarios.map((s) => ({ value: s.key, label: scenarioLabel(s) }))}
         />
         <p className="muted" role="status">
           {scenarioExplanation(scenario)}
@@ -287,8 +295,8 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
             <div className="fact">
               <dt>Known need so far</dt>
               <dd>
-                {fmtUsd(model.need_usd_known)}
-                {!model.need_complete && <span className="faint small"> (not the full need)</span>}
+                {!model.need_complete && !(model.need_usd_known && model.need_usd_known > 0) ? 'No amounts yet' : fmtUsd(model.need_usd_known)}
+                {!model.need_complete && model.need_usd_known !== null && model.need_usd_known > 0 && <span className="faint small"> (not the full need)</span>}
               </dd>
             </div>
             <div className="fact">
@@ -310,10 +318,12 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
               <dt>Headroom</dt>
               <dd>{model.headroom_usd === null ? 'Not shown until everything is known' : fmtUsd(model.headroom_usd)}</dd>
             </div>
-            <div className="fact">
-              <dt>Income counted</dt>
-              <dd>{model.modeled_income_usd === null ? 'None — income is not verified' : fmtUsd(model.modeled_income_usd)}</dd>
-            </div>
+            {model.modeled_income_usd !== null && (
+              <div className="fact">
+                <dt>Income counted</dt>
+                <dd>{fmtUsd(model.modeled_income_usd)}</dd>
+              </div>
+            )}
           </dl>
           {model.missing.length > 0 && (
             <Disclosure title="What is still missing" meta={String(model.missing.length)} level={3} className="disclosure--flat">

@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { isCivilDate } from '@shared/dates';
 import type { DocumentData } from '@shared/types';
 import { Chip } from '../../components/Badges';
+import { Disclosure } from '../../components/Disclosure';
+import { RecordLink } from '../../components/RecordLink';
+import { diffDays } from '@shared/dates';
+import { isOpenWork } from '../../lib/records';
+import { whenFor } from '../../lib/when';
+import { useData } from '../../state/data';
 import { Button, Field, FilterChips, TextArea, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { Dialog } from '../../components/Dialog';
@@ -43,23 +49,15 @@ function Lifecycle({ d }: { d: Partial<DocumentData> }) {
   );
 }
 
-export function DocumentCard({ record, idx, dir, headingLevel = 3 }: { record: AnyRecord; idx: Indexes; dir: Directory; headingLevel?: 2 | 3 }) {
+export function DocumentCard({ record, idx, dir, headingLevel = 3, compact = false }: { record: AnyRecord; idx: Indexes; dir: Directory; headingLevel?: 2 | 3; compact?: boolean }) {
   const d = dataOf<DocumentData>(record);
   const [edit, setEdit] = useState(false);
   const href = safeHref(d.link);
   const scope = d.traveler_scope ?? [];
   const H = headingLevel === 2 ? 'h2' : 'h3';
-  return (
-    <Card as="article" className="doc" aria-labelledby={`doc-${record.key}`}>
-      <div className="item__meta">
-        <Chip small tone="neutral">
-          {humanizeKey(record.status)}
-        </Chip>
-        <Chip small>{scope.length ? scope.map((p) => dir.nameOf(p)).join(' and ') : d.for_whom || 'Household'}</Chip>
-      </div>
-      <H id={`doc-${record.key}`} className="doc__title">
-        {record.title}
-      </H>
+
+  const details = (
+    <>
       <Lifecycle d={d} />
       <dl className="facts facts--tight">
         <div className="fact">
@@ -103,6 +101,50 @@ export function DocumentCard({ record, idx, dir, headingLevel = 3 }: { record: A
         </p>
       )}
       <LinkedKeys keys={d.linked_records} idx={idx} label="Needed for" />
+    </>
+  );
+
+  if (compact) {
+    return (
+      <Card as="article" className="doc doc--row" aria-labelledby={`doc-${record.key}`}>
+        <div className="doc__row">
+          <div className="doc__row-main">
+            <H id={`doc-${record.key}`} className="doc__title">
+              <RecordLink id={record.id}>{record.title}</RecordLink>
+            </H>
+            <div className="item__meta">
+              <Chip small tone="neutral">
+                {humanizeKey(record.status)}
+              </Chip>
+              <Chip small>{scope.length ? scope.map((p) => dir.nameOf(p)).join(' and ') : d.for_whom || 'Household'}</Chip>
+              <span className="small muted">Held by: {d.custodian || 'not decided yet'}</span>
+              {d.needed_by && <span className="small muted">Needed by: {d.needed_by}</span>}
+            </div>
+          </div>
+          <Button variant="secondary" small icon="pencil" onClick={() => setEdit(true)} aria-label={`Update status: ${record.title}`}>
+            Update status
+          </Button>
+        </div>
+        <Disclosure title="Details" level={4} className="disclosure--flat">
+          <div className="stack">{details}</div>
+        </Disclosure>
+        {edit && <DocumentDialog record={record} onClose={() => setEdit(false)} />}
+      </Card>
+    );
+  }
+
+  return (
+    <Card as="article" className="doc" aria-labelledby={`doc-${record.key}`}>
+      <div className="item__meta">
+        <Chip small tone="neutral">
+          {humanizeKey(record.status)}
+        </Chip>
+        <Chip small>{scope.length ? scope.map((p) => dir.nameOf(p)).join(' and ') : d.for_whom || 'Household'}</Chip>
+      </div>
+      <H id={`doc-${record.key}`} className="doc__title">
+        {record.title}
+      </H>
+      {details}
       <div className="row-actions">
         <Button variant="secondary" small icon="pencil" onClick={() => setEdit(true)}>
           Update status
@@ -220,10 +262,28 @@ export function Documents() {
 }
 
 function DocumentList({ idx, dir }: { idx: Indexes; dir: Directory }) {
+  const { today, deadlinesByRecord, deadlines } = useData();
   const docs = useMemo(() => idx.all.filter((r) => r.type === 'document').sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true })), [idx]);
   const [who, setWho] = useState<string>('all');
+  const [state, setState] = useState<'all' | 'now' | 'not_started'>('all');
   const scopeOf = (r: AnyRecord) => dataOf<DocumentData>(r).traveler_scope ?? [];
-  const shown = docs.filter((r) => who === 'all' || (who === 'household' ? scopeOf(r).length === 0 : scopeOf(r).includes(who)));
+
+  /** Started but not finished, or needed by work that is under way or due within a month. */
+  const needsActionNow = (r: AnyRecord): boolean => {
+    if (!isOpenWork(r.status)) return false;
+    if (r.status === 'in_progress' || r.status === 'blocked' || r.status === 'waiting_external') return true;
+    return (dataOf<DocumentData>(r).linked_records ?? []).some((k) => {
+      const m = idx.milestoneByKey.get(k);
+      if (!m || !isOpenWork(m.status) || m.data?.optional_future_work) return false;
+      if (m.status === 'in_progress') return true;
+      const p = whenFor(m, idx, deadlines.ok ? deadlinesByRecord.get(m.id) : undefined, today).primary;
+      return Boolean(p && p.kind !== 'review_date' && diffDays(today, p.date) <= 30);
+    });
+  };
+  const notStarted = (r: AnyRecord) => r.status === 'not_started';
+
+  const byPerson = docs.filter((r) => who === 'all' || (who === 'household' ? scopeOf(r).length === 0 : scopeOf(r).includes(who)));
+  const shown = byPerson.filter((r) => (state === 'now' ? needsActionNow(r) : state === 'not_started' ? notStarted(r) : true));
   useEffect(() => {
     if (who !== 'all' && who !== 'household' && !dir.personById(who)) setWho('all');
   }, [who, dir]);
@@ -252,16 +312,27 @@ function DocumentList({ idx, dir }: { idx: Indexes; dir: Directory }) {
               { value: 'household', label: 'Household', count: docs.filter((d) => scopeOf(d).length === 0).length },
             ]}
           />
+          <FilterChips
+            label="Which documents"
+            value={state}
+            onChange={setState}
+            scroll
+            options={[
+              { value: 'all', label: 'All', count: byPerson.length },
+              { value: 'now', label: 'Needs action now', count: byPerson.filter(needsActionNow).length },
+              { value: 'not_started', label: 'Not started', count: byPerson.filter(notStarted).length },
+            ]}
+          />
           <h2 className="visually-hidden">Documents</h2>
           {shown.length === 0 ? (
             <Card>
-              <EmptyState icon="doc" title="Nothing listed for this view." />
+              <EmptyState icon="doc" title={state === 'now' ? 'Nothing needs action right now.' : 'Nothing listed for this view.'} />
             </Card>
           ) : (
-            <ul className="stack">
+            <ul className="stack stack--tight">
               {shown.map((r) => (
                 <li key={r.id}>
-                  <DocumentCard record={r} idx={idx} dir={dir} />
+                  <DocumentCard record={r} idx={idx} dir={dir} compact />
                 </li>
               ))}
             </ul>

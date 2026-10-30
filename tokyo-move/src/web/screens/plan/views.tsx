@@ -13,7 +13,7 @@ import { Card, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, plural } from '../../lib/format';
-import { groupByPhase, groupByStatus, groupByWorkstream, sortPlanItems, type PlanItemData, type SortKey } from '../../lib/plan';
+import { groupByPhase, groupByStatus, groupPlan, sortPlanItems, type PlanItemData, type SortKey } from '../../lib/plan';
 import { attempt } from '../../lib/safe';
 import { dataOf, isOpenWork, type Directory, type Indexes } from '../../lib/records';
 import type { AnchorData } from '@shared/types';
@@ -31,9 +31,7 @@ function PlanItemCard({ it, today, showStatus = true }: { it: PlanItemData; toda
       nextAction={m.data?.next_action}
       status={m.status}
       showStatus={showStatus}
-      date={it.date}
-      dateKind={it.dateKind}
-      dateState={it.dateState}
+      when={it.when}
       today={today}
       optional={m.data?.optional_future_work}
       tone={m.status === 'blocked' ? 'blocked' : 'default'}
@@ -44,21 +42,19 @@ function PlanItemCard({ it, today, showStatus = true }: { it: PlanItemData; toda
 /* ------------------------------------------------------------------ by workstream */
 
 export function WorkstreamView({ items, idx, today }: { items: PlanItemData[]; idx: Indexes; today: string }) {
-  const groups = useMemo(() => groupByWorkstream(sortPlanItems(items, 'date', (o) => o ?? ''), idx), [items, idx]);
+  const { mode, groups } = useMemo(() => {
+    const sorted = sortPlanItems(items, 'date', (o) => o ?? '');
+    return groupPlan(sorted, idx);
+  }, [items, idx]);
   return (
-    <div className="stack" aria-label="Workstreams">
+    <div className="stack" aria-label={mode === 'area' ? 'Areas of work' : 'Workstreams'}>
+      {mode === 'area' && <p className="small muted">Grouped by the kind of work. Every group starts closed; the counts say what is still to do.</p>}
       {groups.map((g) => {
         const open = g.items.filter((i) => isOpenWork(i.m.status));
         const blocked = g.items.filter((i) => i.m.status === 'blocked').length;
-        const active = g.items.some((i) => i.m.status === 'in_progress' || i.m.status === 'blocked');
         const closed = g.items.filter((i) => !isOpenWork(i.m.status));
         return (
-          <Disclosure
-            key={g.key || 'other'}
-            title={g.title}
-            meta={`${open.length} to do${blocked ? ` · ${blocked} blocked` : ''}`}
-            defaultOpen={active}
-          >
+          <Disclosure key={g.key || 'other'} title={g.title} meta={`${open.length} to do${blocked ? ` · ${blocked} blocked` : ''}`}>
             {g.related.length > 0 && (
               <p className="small muted related">
                 Related:{' '}

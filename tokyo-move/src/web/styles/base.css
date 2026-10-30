@@ -8,7 +8,15 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
-  scroll-padding-top: var(--s-5);
+  /* Phones have a sticky header and a fixed tab bar: a focused element must scroll clear of both (WCAG 2.4.11). */
+  scroll-padding-top: calc(var(--header-h) + var(--s-4));
+  scroll-padding-bottom: calc(var(--nav-h) + var(--s-6));
+}
+@media (min-width: 1024px) {
+  html {
+    scroll-padding-top: var(--s-5);
+    scroll-padding-bottom: var(--s-6);
+  }
 }
 
 body {

@@ -130,10 +130,10 @@ export function FilterChips<V extends string>({ label, value, options, onChange,
   return scroll ? <div className="chips-scroll">{chips}</div> : chips;
 }
 
-export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+export function TextInput(props: React.ComponentProps<'input'>) {
   return <input {...props} className={`input ${props.className ?? ''}`.trim()} />;
 }
-export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function TextArea(props: React.ComponentProps<'textarea'>) {
   return <textarea rows={3} {...props} className={`input input--area ${props.className ?? ''}`.trim()} />;
 }
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {

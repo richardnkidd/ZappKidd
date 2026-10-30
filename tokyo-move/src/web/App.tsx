@@ -1,5 +1,6 @@
-import { BrowserRouter, Route, Routes, useLocation, type Location } from 'react-router';
+import { createBrowserRouter, Route, RouterProvider, Routes, useLocation, type Location } from 'react-router';
 import { ButtonLink } from './components/Controls';
+import { UnsavedGuard } from './components/UnsavedGuard';
 import { EmptyState, PageTitle } from './components/Layout';
 import { AppShell } from './layout/AppShell';
 import { useIsDesktop } from './layout/useMedia';
@@ -47,6 +48,7 @@ function AppRoutes() {
   const showPanel = Boolean(bg) && desktop && location.pathname.startsWith('/r/');
   return (
     <AppShell
+      guard={<UnsavedGuard />}
       panel={
         showPanel ? (
           <Routes>
@@ -128,12 +130,18 @@ function Gate() {
   );
 }
 
-export function App() {
+function Root() {
   return (
-    <BrowserRouter>
-      <AuthProvider>
-        <Gate />
-      </AuthProvider>
-    </BrowserRouter>
+    <AuthProvider>
+      <Gate />
+    </AuthProvider>
   );
+}
+
+// A data router (one catch-all route; the screens still declare their own <Routes>) so that leaving a page with unsaved
+// text can be intercepted by useBlocker.
+const router = createBrowserRouter([{ path: '*', element: <Root /> }]);
+
+export function App() {
+  return <RouterProvider router={router} />;
 }

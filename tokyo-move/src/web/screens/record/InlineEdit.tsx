@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Button, Field, Select, TextArea, TextInput } from '../../components/Controls';
 import { ConflictBanner } from '../../components/Feedback';
+import { clearDraft, loadDraft, saveDraft } from '../../lib/drafts';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
 
@@ -22,16 +23,27 @@ interface Props {
 /** Read-mode text with an Edit button; edit-mode field with Save / Cancel, unsaved indicator and conflict choice. */
 export function InlineEdit({ label, value, display, input, options, onSave, version, dirtyKey, placeholder, canEdit = true }: Props) {
   const { setDirty } = useSnapshot();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  // A draft left in this tab (a reload, a crash) comes back as an open editor.
+  const [restored] = useState(() => {
+    const d = loadDraft(dirtyKey);
+    return d !== null && d !== value ? d : null;
+  });
+  const [editing, setEditing] = useState(restored !== null);
+  const [draft, setDraft] = useState(restored ?? value);
   const [startVersion, setStartVersion] = useState(version);
   const w = useWrite();
 
   const dirty = editing && draft !== value;
   useEffect(() => {
     setDirty(dirtyKey, dirty);
-    return () => setDirty(dirtyKey, false);
-  }, [dirty, dirtyKey, setDirty]);
+    if (dirty) saveDraft(dirtyKey, draft);
+    else clearDraft(dirtyKey);
+    // Leaving the page on purpose discards the draft; a reload (no cleanup runs) keeps it.
+    return () => {
+      setDirty(dirtyKey, false);
+      clearDraft(dirtyKey);
+    };
+  }, [dirty, draft, dirtyKey, setDirty]);
 
   const start = () => {
     setDraft(value);
@@ -88,6 +100,13 @@ export function InlineEdit({ label, value, display, input, options, onSave, vers
           }}
           onUseMine={async () => {
             if (await w.useMine()) setEditing(false);
+          }}
+          onCombine={input === 'select' ? undefined : (theirs, yours) => {
+            // Open the editor again on top of the newer version, with both texts one after the other.
+            const next = w.conflict?.serverVersion ?? w.conflict?.server?.version ?? version;
+            w.keepTheirs();
+            setStartVersion(next);
+            setDraft(theirs === yours ? yours : `${theirs}\n\n${yours}`);
           }}
         />
       ) : (

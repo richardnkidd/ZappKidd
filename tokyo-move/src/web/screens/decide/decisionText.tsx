@@ -1,5 +1,7 @@
 import type { DecisionData } from '@shared/types';
 import { Chip } from '../../components/Badges';
+import { recordedDecision } from '../../lib/home';
+import { civil } from '../../lib/format';
 import type { Decision, Directory } from '../../lib/records';
 
 export interface ApprovalSummary {
@@ -8,7 +10,7 @@ export interface ApprovalSummary {
   state: 'none' | 'partial' | 'agreed' | 'disagree' | 'closed';
 }
 
-function requiredApprovers(d: Decision, dir: Directory): string[] {
+export function requiredApproverIds(d: Decision, dir: Directory): string[] {
   const req = d.data?.required_approvers ?? [];
   return req.length > 0 ? req : dir.adults.map((a) => a.id);
 }
@@ -28,8 +30,10 @@ function listNames(names: string[]): string {
  * two different choices never read as "approved".
  */
 export function approvalSummary(d: Decision, dir: Directory): ApprovalSummary {
+  const rec = recordedDecision(d);
+  if (rec) return { text: `Decided ${rec.on ? civil(rec.on, 'short') : 'earlier'} (recorded in the plan)`, state: 'agreed' };
   const data = d.data ?? ({} as Partial<DecisionData>);
-  const required = requiredApprovers(d, dir);
+  const required = requiredApproverIds(d, dir);
   // Latest approval per person wins.
   const latest = new Map<string, { option_id: string; at: string }>();
   for (const a of data.approvals ?? []) {
@@ -64,7 +68,7 @@ export function needsMyApproval(d: Decision, dir: Directory): boolean {
   if (d.status !== 'open' && d.status !== 'proposed') return false;
   const me = dir.me?.id;
   if (!me) return false;
-  if (!requiredApprovers(d, dir).includes(me)) return false;
+  if (!requiredApproverIds(d, dir).includes(me)) return false;
   return !(d.data?.approvals ?? []).some((a) => a.person_id === me);
 }
 

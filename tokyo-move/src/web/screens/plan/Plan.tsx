@@ -19,10 +19,11 @@ import type { FilterContext } from '../../lib/home';
 import { useData } from '../../state/data';
 import { loadPref, savePref } from '../../state/prefs';
 import { PlanFilterBar } from './PlanFilterBar';
+import { WorkloadLine } from './WorkloadLine';
 import { BoardView, ListView, TimelineView, WorkstreamView } from './views';
 
 const VIEW_OPTIONS = [
-  { value: 'workstream' as const, label: 'By workstream', icon: 'rows' as const },
+  { value: 'workstream' as const, label: 'By area', icon: 'rows' as const },
   { value: 'list' as const, label: 'List', icon: 'list' as const },
   { value: 'board' as const, label: 'Board', icon: 'board' as const },
   { value: 'timeline' as const, label: 'Timeline', icon: 'timeline' as const },
@@ -64,7 +65,7 @@ export function Plan() {
       <DataGate skeleton={<Card><Skeleton lines={5} /></Card>}>
         {({ idx, dir }) => {
           const ctx: FilterContext = { meId: dir.me?.id ?? null, otherIds: dir.others.map((o) => o.id) };
-          const all = buildPlanItems(idx, deadlines.ok ? deadlinesByRecord : undefined);
+          const all = buildPlanItems(idx, deadlines.ok ? deadlinesByRecord : undefined, today);
           const shown = filterPlanItems(all, filters, ctx);
           const hiddenOptional = filters.hideOptional ? all.filter((i) => i.m.data?.optional_future_work).length : 0;
           return (
@@ -78,6 +79,7 @@ export function Plan() {
                 shown={shown.length}
                 total={all.length}
               />
+              <WorkloadLine idx={idx} dir={dir} />
               {filters.hideOptional && hiddenOptional > 0 && (
                 <p className="faint small plan-note">
                   {hiddenOptional} optional future {hiddenOptional === 1 ? 'item is' : 'items are'} hidden because they are not part of the move.{' '}

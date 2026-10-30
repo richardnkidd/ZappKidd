@@ -10,7 +10,7 @@ interface NavItem {
 
 export const MAIN_NAV: NavItem[] = [
   { to: '/', label: 'Home', icon: 'home', match: (p) => p === '/' || p.startsWith('/ready') },
-  { to: '/plan', label: 'Plan', icon: 'plan', match: (p) => p.startsWith('/plan') || p.startsWith('/r/') },
+  { to: '/plan', label: 'Plan', icon: 'plan', match: (p) => p.startsWith('/plan') },
   { to: '/decide', label: 'Decide', icon: 'decide', match: (p) => p.startsWith('/decide') },
   { to: '/money', label: 'Money', icon: 'money', match: (p) => p.startsWith('/money') },
   {
@@ -34,7 +34,9 @@ export const MORE_NAV: { to: string; label: string; icon: IconName; blurb: strin
 ];
 
 export function MainNav() {
-  const { pathname } = useLocation();
+  const { pathname, state } = useLocation();
+  // A record opened from somewhere keeps that place highlighted; one opened directly highlights nothing.
+  const from = (state as { backgroundLocation?: { pathname?: string } } | null)?.backgroundLocation?.pathname ?? null;
   return (
     <nav className="app-nav" aria-label="Main">
       <Link to="/" className="nav-brand" aria-label="Kadode home">
@@ -43,10 +45,11 @@ export function MainNav() {
       </Link>
       <ul className="app-nav__list">
         {MAIN_NAV.map((item) => {
-          const active = item.match(pathname);
+          const exact = item.match(pathname);
+          const via = !exact && pathname.startsWith('/r/') && from !== null && item.match(from);
           return (
             <li key={item.to}>
-              <Link to={item.to} className="nav-link" aria-current={active ? 'page' : undefined}>
+              <Link to={item.to} className="nav-link" aria-current={exact ? 'page' : via ? 'true' : undefined}>
                 <Icon name={item.icon} size={24} />
                 <span>{item.label}</span>
               </Link>

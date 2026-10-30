@@ -193,14 +193,23 @@ export function StateWord({ state }: { state: DeadlineState }) {
   return <span className={`state-word state-word--${state}`}>{DEADLINE_STATE_LABEL[state]}</span>;
 }
 
-/** Task-list sync state for a linked task. */
+const SYNC_SHORT: Record<string, string> = {
+  synced: 'Up to date',
+  snapshot: 'Read-only copy',
+  pending_capture: 'Waiting to be added',
+  pending_update: 'Change waiting to reach your task list',
+  error: "Couldn't reach your task list",
+  conflict: 'Changed in two places',
+};
+
+/** Task-list sync state for a linked task. A proposal that has not been added is amber "Waiting to be added". */
 export function SyncBadge({ link }: { link: TaskLink }) {
   const tone = link.sync_state === 'synced' ? 'matcha' : link.sync_state === 'error' || link.sync_state === 'conflict' ? 'kaki' : link.sync_state === 'snapshot' ? 'neutral' : 'kin';
   const icon: IconName = link.sync_state === 'synced' ? 'check' : link.sync_state === 'error' || link.sync_state === 'conflict' ? 'alert' : link.sync_state === 'snapshot' ? 'lock' : 'clock';
   return (
     <span className={`chip chip--${tone} chip--sm`}>
       <Icon name={icon} size={13} />
-      <span>{SYNC_STATE_LABEL[link.sync_state] ?? link.sync_state}</span>
+      <span>{SYNC_SHORT[link.sync_state] ?? SYNC_STATE_LABEL[link.sync_state] ?? link.sync_state}</span>
     </span>
   );
 }

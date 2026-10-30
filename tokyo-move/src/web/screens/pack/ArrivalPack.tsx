@@ -5,13 +5,14 @@ import { DataGate } from '../../components/DataGate';
 import { Icon } from '../../components/Icon';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
 import { civil } from '../../lib/format';
-import { buildPack, type Pack, type PackItem, type Sensitivity } from '../../lib/pack';
+import { buildPack, SENSITIVITY_ORDER, type Pack, type PackItem, type Sensitivity } from '../../lib/pack';
 import { useData } from '../../state/data';
 import type { Directory, Indexes } from '../../lib/records';
 
 const SENSITIVE_LABEL: Record<Sensitivity, { title: string; hint: string }> = {
-  health: { title: 'Health and medicine', hint: 'Anything about medicines, insurance or health care.' },
-  money: { title: 'Money and accounts', hint: 'Anything about banking, taxes, pensions or payments.' },
+  medical: { title: 'Health and medicine', hint: 'Marked as medical in the plan.' },
+  financial: { title: 'Money and accounts', hint: 'Marked as financial in the plan.' },
+  identity: { title: 'Identity documents', hint: 'Marked as identity papers in the plan.' },
 };
 
 function Items({ items, empty, checkbox = false }: { items: PackItem[]; empty: string; checkbox?: boolean }) {
@@ -25,6 +26,11 @@ function Items({ items, empty, checkbox = false }: { items: PackItem[]; empty: s
             <span className="pack__title">{it.title}</span>
             {it.meta && it.meta.length > 0 && <span className="pack__meta"> — {it.meta.join(' · ')}</span>}
             {it.detail && <span className="pack__detail">{it.detail}</span>}
+            {it.check && (
+              <span className="pack__detail pack__check">
+                <strong>Check:</strong> {it.check}
+              </span>
+            )}
             {it.link && <span className="pack__link">{it.link}</span>}
           </span>
         </li>
@@ -34,6 +40,11 @@ function Items({ items, empty, checkbox = false }: { items: PackItem[]; empty: s
 }
 
 function PackFor({ pack, name, person, today, include }: { pack: Pack; name: string; person: ReturnType<Directory['personById']>; today: string; include: Record<Sensitivity, boolean> }) {
+  const extra = SENSITIVITY_ORDER.filter((k) => include[k] && pack.sensitive[k].length > 0);
+  const sections = [
+    ...pack.sections.map((s) => ({ key: s.key, title: s.title, items: s.items, empty: s.empty, checkbox: s.key === 'arrival_day' || s.key === 'first_week' || s.key === 'first_30' })),
+    ...extra.map((k) => ({ key: k, title: SENSITIVE_LABEL[k].title, items: pack.sensitive[k], empty: 'Nothing listed here.', checkbox: true })),
+  ];
   return (
     <article className="pack" aria-label={`Arrival pack for ${name}`}>
       <header className="pack__head">
@@ -42,24 +53,19 @@ function PackFor({ pack, name, person, today, include }: { pack: Pack; name: str
         </h2>
         <p className="pack__date">Printed {civil(today, 'long')}</p>
       </header>
-      {pack.sections.map((s) => (
+      {sections.map((s, i) => (
         <section key={s.key} className="pack__section" aria-labelledby={`pk-${pack.personId}-${s.key}`}>
+          {i > 0 && (
+            <p className="pack__cont" aria-hidden="true">
+              {name} — arrival pack (cont.)
+            </p>
+          )}
           <h3 id={`pk-${pack.personId}-${s.key}`} className="pack__h">
             {s.title}
           </h3>
-          <Items items={s.items} empty={s.empty} checkbox={s.key === 'arrival_day' || s.key === 'first_week'} />
+          <Items items={s.items} empty={s.empty} checkbox={s.checkbox} />
         </section>
       ))}
-      {(Object.keys(include) as Sensitivity[])
-        .filter((k) => include[k])
-        .map((k) => (
-          <section key={k} className="pack__section" aria-labelledby={`pk-${pack.personId}-${k}`}>
-            <h3 id={`pk-${pack.personId}-${k}`} className="pack__h">
-              {SENSITIVE_LABEL[k].title}
-            </h3>
-            <Items items={pack.sensitive[k]} empty="Nothing listed here." checkbox />
-          </section>
-        ))}
     </article>
   );
 }
@@ -68,13 +74,13 @@ function PackBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const { deadlines, today } = useData();
   const travelers = dir.people;
   const [chosen, setChosen] = useState<Record<string, boolean>>(() => Object.fromEntries(travelers.map((p) => [p.id, true])));
-  const [include, setInclude] = useState<Record<Sensitivity, boolean>>({ health: false, money: false });
+  const [include, setInclude] = useState<Record<Sensitivity, boolean>>({ medical: false, financial: false, identity: false });
 
   const packs = useMemo(
     () => travelers.filter((p) => chosen[p.id]).map((p) => ({ person: p, pack: buildPack(idx, dir, deadlines.ok ? deadlines.value : [], p.id) })),
     [travelers, chosen, idx, dir, deadlines],
   );
-  const anySensitive = packs.some((x) => x.pack.sensitive.health.length + x.pack.sensitive.money.length > 0);
+  const present = SENSITIVITY_ORDER.filter((k) => packs.some((x) => x.pack.sensitive[k].length > 0));
 
   if (travelers.length === 0) return <EmptyState icon="plane" title="No travelers are set up yet." />;
 
@@ -83,7 +89,7 @@ function PackBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
       <div className="no-print stack">
         <Card className="stack">
           <p className="muted">
-            One page per traveler to take with you. It prints on A4 or Letter in black on white, with links written out as text. Documents show status and who holds them, never numbers or identifiers.
+            A short pack per traveler, about two pages. It prints on A4 or Letter in black on white, with links written out as text. Documents show status and who holds them, never numbers or identifiers.
           </p>
           <fieldset>
             <legend>Who to print for</legend>
@@ -98,18 +104,21 @@ function PackBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
           </fieldset>
           <fieldset>
             <legend>Sensitive sections (left out unless you tick them)</legend>
-            <div className="stack stack--tight">
-              {(Object.keys(SENSITIVE_LABEL) as Sensitivity[]).map((k) => (
-                <label key={k} className="choice">
-                  <input type="checkbox" checked={include[k]} onChange={(e) => setInclude((c) => ({ ...c, [k]: e.target.checked }))} />
-                  <span className="choice__text">
-                    <span>Include {SENSITIVE_LABEL[k].title.toLowerCase()}</span>
-                    <span className="choice__hint">{SENSITIVE_LABEL[k].hint}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-            {!anySensitive && <p className="faint small">Nothing in the plan needs these sections right now.</p>}
+            {present.length === 0 ? (
+              <p className="faint small">Nothing the pack would list is marked sensitive.</p>
+            ) : (
+              <div className="stack stack--tight">
+                {present.map((k) => (
+                  <label key={k} className="choice">
+                    <input type="checkbox" checked={include[k]} onChange={(e) => setInclude((c) => ({ ...c, [k]: e.target.checked }))} />
+                    <span className="choice__text">
+                      <span>Include {SENSITIVE_LABEL[k].title.toLowerCase()}</span>
+                      <span className="choice__hint">{SENSITIVE_LABEL[k].hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
           </fieldset>
           <div className="row-actions">
             <Button variant="primary" icon="file" disabled={packs.length === 0} onClick={() => window.print()}>

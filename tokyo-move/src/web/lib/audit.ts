@@ -1,7 +1,8 @@
 import type { AuditEntry, WorkStatus } from '@shared/types';
 import { FIELD_LABEL, WORK_STATUS_LABEL } from '@shared/labels';
 import type { Directory, Indexes } from './records';
-import { truncate } from './format';
+import { civil, truncate } from './format';
+import { dataOf } from './records';
 
 export interface AuditLine {
   id: string;
@@ -10,8 +11,12 @@ export interface AuditLine {
   /** Sentence without the person's name, e.g. 'marked "Book flights" as Done'. */
   what: string;
   recordId: string | null;
+  /** What kind of change this was (the audit action). */
+  action: string;
   /** Several import entries rolled up into one line. */
   rolledUp?: number;
+  /** Several similar changes by the same person folded into one row. */
+  count?: number;
 }
 
 function asObj(v: unknown): Record<string, unknown> | null {
@@ -35,6 +40,13 @@ export function changedFields(before: unknown, after: unknown): string[] {
     }
   }
   return [...out];
+}
+
+/** A civil date held directly on a snapshot or inside its `data`. */
+function dateIn(v: unknown): string | null {
+  const o = asObj(v);
+  const d = o?.date ?? asObj(o?.data)?.date;
+  return typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
 }
 
 function statusFrom(v: unknown): string | null {
@@ -92,9 +104,14 @@ export function describeAudit(e: AuditEntry, idx: Indexes, dir: Directory): Audi
     case 'task_sync':
       what = 'refreshed the task list copy';
       break;
-    case 'anchor_change':
-      what = 'moved a travel date';
+    case 'anchor_change': {
+      const meaning = rec ? dataOf<{ meaning?: string }>(rec).meaning : null;
+      const from = dateIn(e.before);
+      const to = dateIn(e.after);
+      const name = meaning || title || 'a travel date';
+      what = from && to ? `moved ${name} from ${civil(from)} to ${civil(to)}` : to ? `set ${name} to ${civil(to)}` : `moved ${name}`;
       break;
+    }
     case 'review_complete':
       what = 'finished a review together';
       break;
@@ -109,7 +126,7 @@ export function describeAudit(e: AuditEntry, idx: Indexes, dir: Directory): Audi
     default:
       what = `made a change to ${quoted}`;
   }
-  return { id: e.id, at: e.at, who, what, recordId: e.record_id, };
+  return { id: e.id, at: e.at, who, what, recordId: e.record_id, action: e.action };
 }
 
 const IMPORT_ACTIONS = new Set(['import_create', 'import_update', 'correction']);
@@ -122,7 +139,7 @@ export function describeAuditList(entries: AuditEntry[], idx: Indexes, dir: Dire
   for (const e of sorted) {
     if (IMPORT_ACTIONS.has(e.action)) {
       if (!importGroup) {
-        importGroup = { id: `import-${e.id}`, at: e.at, who: 'The plan import', what: 'brought in 1 change', recordId: null, rolledUp: 1 };
+        importGroup = { id: `import-${e.id}`, at: e.at, who: 'The plan import', what: 'brought in 1 change', recordId: null, action: 'import', rolledUp: 1 };
         lines.push(importGroup);
       } else {
         importGroup.rolledUp = (importGroup.rolledUp ?? 1) + 1;
@@ -132,5 +149,33 @@ export function describeAuditList(entries: AuditEntry[], idx: Indexes, dir: Dire
     }
     lines.push(describeAudit(e, idx, dir));
   }
-  return lines;
+  return groupSimilar(lines);
+}
+
+/** Folded-row wording, by kind of change. */
+const GROUP_WORDS: Record<string, (n: number) => string> = {
+  anchor_change: (n) => `moved ${n} travel dates`,
+  create: (n) => `added ${n} items`,
+  update: (n) => `edited ${n} items`,
+  status_change: (n) => `changed the status of ${n} items`,
+  approve: (n) => `approved ${n} decisions`,
+  task_propose: (n) => `proposed ${n} tasks`,
+  task_complete: (n) => `completed ${n} tasks`,
+};
+const SIX_HOURS = 6 * 3_600_000;
+
+/** Consecutive changes of the same kind by the same person (within a few hours) read as one row: "Jun moved 5 travel dates". */
+export function groupSimilar(lines: AuditLine[]): AuditLine[] {
+  const out: AuditLine[] = [];
+  for (const l of lines) {
+    const prev = out[out.length - 1];
+    const words = GROUP_WORDS[l.action];
+    if (prev && words && prev.action === l.action && prev.who === l.who && Math.abs(Date.parse(prev.at) - Date.parse(l.at)) <= SIX_HOURS) {
+      const n = (prev.count ?? 1) + 1;
+      out[out.length - 1] = { ...prev, count: n, what: words(n), recordId: null };
+    } else {
+      out.push(l);
+    }
+  }
+  return out;
 }

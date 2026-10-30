@@ -8,6 +8,8 @@ import type { ComputedDeadline, DeadlineState } from '@shared/engine-contracts';
 import type { DeadlineKind } from '@shared/types';
 import { KIND_PRIORITY } from './dateWords';
 import { compareDates } from './format';
+import { PHASE_ORDER } from '@shared/labels';
+import type { PhaseKey } from '@shared/types';
 import { isOpenWork, type Indexes, type Milestone } from './records';
 
 export type WhenKind = DeadlineKind | 'task';
@@ -28,6 +30,24 @@ export interface WhenInfo {
 }
 
 export const NO_WHEN: WhenInfo = { primary: null, others: [] };
+
+/** The earliest phase that still has open, non-optional work (kept per index so cards do not recompute it). */
+const phaseCache = new WeakMap<Indexes, PhaseKey | null>();
+function nowPhase(idx: Indexes): PhaseKey | null {
+  if (phaseCache.has(idx)) return phaseCache.get(idx) ?? null;
+  const open = new Set<PhaseKey>();
+  for (const m of idx.milestones) if (isOpenWork(m.status) && !m.data?.optional_future_work && m.data?.phase) open.add(m.data.phase);
+  const p = PHASE_ORDER.find((x) => open.has(x)) ?? null;
+  phaseCache.set(idx, p);
+  return p;
+}
+
+/** A check-in date for work in a later phase says nothing useful yet; it stays on the record's own page. */
+function laterPhase(m: Milestone, idx: Indexes): boolean {
+  const mine = m.data?.phase ? PHASE_ORDER.indexOf(m.data.phase) : -1;
+  const cur = nowPhase(idx);
+  return mine >= 0 && cur !== null && mine > PHASE_ORDER.indexOf(cur);
+}
 
 const live = (d: ComputedDeadline) => d.applies !== 'no' && d.state !== 'met' && d.state !== 'not_applicable' && d.state !== 'historical' && Boolean(d.deadline.date);
 
@@ -67,7 +87,7 @@ export function whenCandidates(m: Milestone, idx: Indexes, engine: ComputedDeadl
     if (!date || !isOpenWork(c.status) || c.data.historical || diffDays(today, date) < 0) continue;
     out.push({ date, kind: c.data.deadline_kind ?? 'user_committed', source: 'commitment', state: null, deadline: null, label: 'Recorded date' });
   }
-  return out;
+  return laterPhase(m, idx) ? out.filter((c) => c.source !== 'review') : out;
 }
 
 export function whenFor(m: Milestone, idx: Indexes, engine: ComputedDeadline[] | undefined, today: string): WhenInfo {

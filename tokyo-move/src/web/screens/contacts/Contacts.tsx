@@ -21,7 +21,7 @@ import { LinkedKeys } from '../../components/LinkedKeys';
 import { usePlain } from '../../components/People';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
 import { civil, humanizeKey, safeHref } from '../../lib/format';
-import { directCheckOf, evidenceVerification, reviewChecksOf } from '../../lib/evidence';
+import { checksOf, cleanNote, evidenceVerification, lastCheckedOf } from '../../lib/evidence';
 import { dataOf, type AnyRecord, type Directory, type Indexes } from '../../lib/records';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
@@ -34,41 +34,43 @@ const TABS = [
 
 /* ------------------------------------------------------------------ direct check (rules and evidence) */
 
-export function DirectCheck({ data }: { data: unknown }) {
-  const dc = directCheckOf(data);
-  const checks = reviewChecksOf(data);
-  if (!dc && checks.length === 0) return null;
-  const href = safeHref(dc?.url);
+export function DirectCheck({ data, showLink = true }: { data: unknown; showLink?: boolean }) {
+  const checks = checksOf(data);
+  const plain = usePlain();
+  if (checks.length === 0) return null;
+  const hrefs = showLink ? [...new Set(checks.map((c) => safeHref(c.url)).filter((h): h is string => !!h))] : [];
   return (
     <div className="direct-check">
-      {dc && (
-        <>
-          <p className="small">
-            <strong>Checked against the official page</strong>
-            {dc.on && isCivilDate(dc.on) ? ` on ${civil(dc.on, 'short')}` : ''}
-            {dc.result ? ` — ${dc.result}` : ''}
-          </p>
-          {dc.quote && <blockquote className="quote preline">{dc.quote}</blockquote>}
-          {dc.note && <p className="small muted preline">{dc.note}</p>}
-          {href && (
+      <ul className="check-lines">
+        {checks.map((c, i) => (
+          <li key={`${c.who ?? 'direct'}-${c.on ?? i}`} className="check-line">
             <p className="small">
-              <a href={href} target="_blank" rel="noopener noreferrer">
-                Open the official page<span className="visually-hidden"> (opens in a new tab)</span>
-              </a>
+              <Icon name={c.tone === 'matcha' ? 'check' : c.tone === 'kaki' ? 'alert' : 'info'} size={14} />{' '}
+              <strong>
+                {c.who ? `${c.who} checked` : 'Checked'}
+                {c.on && isCivilDate(c.on) ? ` ${civil(c.on, 'short')}` : ''}:
+              </strong>{' '}
+              {c.statusLabel}.
             </p>
-          )}
-        </>
-      )}
-      {checks.length > 0 && (
-        <dl className="facts facts--tight">
-          {checks.map((c) => (
-            <div key={c.label} className="fact">
-              <dt>{c.label}</dt>
-              <dd className="preline">{c.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+            {c.note && <p className="small muted preline">{plain(cleanNote(c.note))}</p>}
+            {c.quote && (
+              <details className="check-quote">
+                <summary className="small">What the page said</summary>
+                <blockquote className="quote preline" lang={/[\u3040-\u30ff\u4e00-\u9fff]/.test(c.quote) ? 'ja' : undefined}>
+                  {c.quote}
+                </blockquote>
+              </details>
+            )}
+          </li>
+        ))}
+      </ul>
+      {hrefs.map((href) => (
+        <p key={href} className="small">
+          <a href={href} target="_blank" rel="noopener noreferrer">
+            Open the official page<span className="visually-hidden"> (opens in a new tab)</span>
+          </a>
+        </p>
+      ))}
     </div>
   );
 }
@@ -252,7 +254,7 @@ export function EvidenceCard({ record, headingLevel = 3 }: { record: AnyRecord; 
       <dl className="facts facts--tight">
         <div className="fact">
           <dt>Last checked</dt>
-          <dd>{d.checked_on ? civil(d.checked_on, 'short') : 'Not known yet'}</dd>
+          <dd>{(lastCheckedOf(record.data) ?? d.checked_on) ? civil((lastCheckedOf(record.data) ?? d.checked_on)!, 'short') : 'Not known yet'}</dd>
         </div>
         <div className="fact">
           <dt>Supports</dt>
@@ -278,7 +280,7 @@ export function EvidenceCard({ record, headingLevel = 3 }: { record: AnyRecord; 
           </div>
         )}
       </dl>
-      <DirectCheck data={record.data} />
+      <DirectCheck data={record.data} showLink={!href} />
     </Card>
   );
 }

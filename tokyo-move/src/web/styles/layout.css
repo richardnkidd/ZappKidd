@@ -512,3 +512,54 @@ body.is-modal-open {
   font-weight: 600;
   font-size: var(--fs-3);
 }
+
+
+/* ---------- Large text ----------
+   Container queries use rem, so they react to the text size as well as the screen width: with big text the account chip
+   becomes just the avatar and the tab labels step aside, both still named for screen readers. */
+.app-header {
+  container: app-header / inline-size;
+}
+.app-nav {
+  container: app-nav / inline-size;
+}
+@container app-header (max-width: 21rem) {
+  .account-btn {
+    padding: 4px;
+    min-width: 44px;
+    justify-content: center;
+  }
+  .account-btn__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+@media (max-width: 1023.98px) {
+  @container app-nav (max-width: 15rem) {
+    .nav-link > span {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      overflow: hidden;
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+  }
+}
+.nav-link[aria-current='true'] {
+  color: var(--ai);
+  font-weight: 650;
+}
+@media (min-width: 1024px) {
+  .nav-link[aria-current='true'] {
+    background: var(--ai-soft);
+  }
+}

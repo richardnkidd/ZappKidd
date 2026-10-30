@@ -23,7 +23,7 @@ const COUNT_LABEL: Record<string, string> = {
   kept_local: 'Kept our own edit',
   corrections: 'Corrected after review',
   unchanged: 'Unchanged',
-  not_applicable: 'Corrections that did not apply',
+  not_applicable: 'Corrections not needed',
   missing_from_source: 'No longer in the source',
   task_links_created: 'Task-list entries added',
   task_links_updated: 'Task-list entries updated',
@@ -202,17 +202,14 @@ function RunCard({ run, idx, latest }: { run: ImportRun; idx: Indexes; latest: b
         )}
       </div>
       <h3 className="doc__title">{run.source_label}</h3>
-      <p className="muted small">{instant(run.finished_at ?? run.started_at, zone, 'long')}</p>
-      {run.summary && <p className="preline">{run.summary}</p>}
-      {run.files.length > 0 && (
-        <ul className="files">
-          {run.files.map((f) => (
-            <li key={f.sha256 + f.name}>
-              <Icon name="file" size={14} /> {f.name} <span className="faint small">· {kb(f.bytes)} · fingerprint <code>{f.sha256.slice(0, 8)}</code></span>
-            </li>
-          ))}
-        </ul>
-      )}
+      <p>
+        {run.status === 'failed'
+          ? `This import did not finish (${instant(run.finished_at ?? run.started_at, zone, 'long')}). The receipts below show what happened.`
+          : run.status === 'no_changes'
+            ? `Checked on ${instant(run.finished_at ?? run.started_at, zone, 'long')}: nothing new in the files. Everything is in place.`
+            : `Your plan was imported on ${instant(run.finished_at ?? run.started_at, zone, 'long')} from “${run.source_label}”. Everything is in place.`}
+      </p>
+      {run.summary && <p className="preline muted">{run.summary}</p>}
       {outcomes.length > 0 && (
         <ul className="coverage" aria-label="What the import did">
           {outcomes.map(([k, n]) => (
@@ -222,6 +219,22 @@ function RunCard({ run, idx, latest }: { run: ImportRun; idx: Indexes; latest: b
             </li>
           ))}
         </ul>
+      )}
+      {(run.counts?.not_applicable ?? 0) > 0 && (
+        <p className="small muted">
+          “Corrections not needed” usually means the record was already right, so nothing was lost. The receipts below list which ones.
+        </p>
+      )}
+      {run.files.length > 0 && (
+        <Disclosure title="Technical details" level={4} className="disclosure--flat">
+          <ul className="files">
+            {run.files.map((f) => (
+              <li key={f.sha256 + f.name}>
+                <Icon name="file" size={14} /> {f.name} <span className="faint small">· {kb(f.bytes)} · fingerprint <code>{f.sha256.slice(0, 8)}</code></span>
+              </li>
+            ))}
+          </ul>
+        </Disclosure>
       )}
       {perType.length > 0 && (
         <Disclosure title="Records read, by kind" meta={String(perType.reduce((a, [, n]) => a + n, 0))} level={4} className="disclosure--flat">
@@ -334,7 +347,7 @@ function TaskListStatus({ idx }: { idx: Indexes }) {
         <p>{adapter.note || 'Connected to a task store you can write to.'}</p>
       ) : (
         <p>
-          Your real task list is shown as a dated copy (as of {asOf}). Nothing is written to it. New actions wait as “Pending task capture”.
+          Your real task list is shown as a dated copy (as of {asOf}). Nothing is written to it. New actions wait as “Waiting to be added”.
         </p>
       )}
       {states.size > 0 && (

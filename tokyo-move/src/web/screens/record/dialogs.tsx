@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { addCalendarDays, isCivilDate } from '@shared/dates';
 import { defaultNewTaskDue } from '@shared/deadlines';
 import { WORK_STATUS_ORDER } from '@shared/labels';
@@ -53,9 +53,23 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
   const [link, setLink] = useState('');
   const [startVersion, setStartVersion] = useState(record.version);
   const [tried, setTried] = useState(false);
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const summaryRef = useRef<HTMLTextAreaElement>(null);
+  const linkRef = useRef<HTMLInputElement>(null);
+  // Choosing an option that needs a follow-up moves focus straight into it, so it is never below the fold of the sheet.
+  const chosenByUser = useRef(false);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!chosenByUser.current) return;
+    const target = status === 'completed' ? summaryRef.current : NEEDS_REASON.includes(status) || status === 'waiting_external' ? reasonRef.current : null;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest' });
+  }, [status, open]);
 
   useEffect(() => {
     if (open) {
+      chosenByUser.current = false;
       setStatus(currentStatus as WorkStatus);
       setReason('');
       setSummary('');
@@ -76,7 +90,13 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
 
   const submit = async () => {
     setTried(true);
-    if (reasonMissing || evidenceMissing || linkBad) return;
+    // Never fail silently: put the cursor in the first field that needs attention.
+    const firstInvalid = reasonMissing ? reasonRef.current : evidenceMissing ? summaryRef.current : linkBad ? linkRef.current : null;
+    if (firstInvalid) {
+      firstInvalid.focus();
+      firstInvalid.scrollIntoView({ block: 'nearest' });
+      return;
+    }
     const ok = await w.run(
       (baseVersion) =>
         actions.setStatus(record.id, {
@@ -113,47 +133,58 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
         <legend>New status</legend>
         <div className="stack stack--tight">
           {WORK_STATUS_ORDER.map((s) => (
-            <label key={s} className="choice">
-              <input type="radio" name="status" value={s} checked={status === s} onChange={() => setStatus(s)} />
-              <span className="choice__text">
-                <span>
-                  <StatusBadge status={s} small /> {s === currentStatus && <span className="faint small">(current)</span>}
+            <div key={s} className="choice-wrap">
+              <label className="choice">
+                <input
+                  type="radio"
+                  name="status"
+                  value={s}
+                  checked={status === s}
+                  onChange={() => {
+                    chosenByUser.current = true;
+                    setStatus(s);
+                  }}
+                />
+                <span className="choice__text">
+                  <span>
+                    <StatusBadge status={s} small /> {s === currentStatus && <span className="faint small">(current)</span>}
+                  </span>
+                  <span className="choice__hint">{STATUS_HELP[s]}</span>
                 </span>
-                <span className="choice__hint">{STATUS_HELP[s]}</span>
-              </span>
-            </label>
+              </label>
+              {status === s && (needsReason || s === 'waiting_external') && (
+                <div className="choice-wrap__follow">
+                  <Field
+                    label={REASON_LABEL[s] ?? 'Reason'}
+                    hint={needsReason ? 'Required. A sentence in plain words is enough.' : 'Optional, but it helps the other person.'}
+                    error={tried && reasonMissing ? 'Please say why, so it makes sense later.' : null}
+                  >
+                    <TextArea ref={reasonRef} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
+                  </Field>
+                </div>
+              )}
+              {status === s && needsEvidence && (
+                <div className="choice-wrap__follow stack">
+                  <Field
+                    label="What shows this is done?"
+                    hint="Plain text, for example “Confirmation received by email on the 3rd”."
+                    error={tried && evidenceMissing ? 'Please add a line about what shows it is done.' : null}
+                  >
+                    <TextArea ref={summaryRef} value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} />
+                  </Field>
+                  <Field
+                    label="Link to the proof (optional)"
+                    hint="Link to where the original is kept, such as a restricted folder. Kadode never stores the document itself."
+                    error={tried && linkBad ? 'That doesn’t look like a web address (it should start with https://).' : null}
+                  >
+                    <TextInput ref={linkRef} value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="https://" />
+                  </Field>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       </fieldset>
-
-      {(needsReason || status === 'waiting_external') && (
-        <Field
-          label={REASON_LABEL[status] ?? 'Reason'}
-          hint={needsReason ? 'Required. A sentence in plain words is enough.' : 'Optional, but it helps the other person.'}
-          error={tried && reasonMissing ? 'Please say why, so it makes sense later.' : null}
-        >
-          <TextArea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
-        </Field>
-      )}
-
-      {needsEvidence && (
-        <>
-          <Field
-            label="What shows this is done?"
-            hint="Plain text, for example “Confirmation received by email on the 3rd”."
-            error={tried && evidenceMissing ? 'Please add a line about what shows it is done.' : null}
-          >
-            <TextArea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} />
-          </Field>
-          <Field
-            label="Link to the proof (optional)"
-            hint="Link to where the original is kept, such as a restricted folder. Kadode never stores the document itself."
-            error={tried && linkBad ? 'That doesn’t look like a web address (it should start with https://).' : null}
-          >
-            <TextInput value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="https://" />
-          </Field>
-        </>
-      )}
 
       {w.error && <p className="field__error" role="alert">{w.error}</p>}
       {w.conflict && (
@@ -212,6 +243,7 @@ export function ProposeActionDialog({ open, onClose, record, defaultTitle = '' }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const ownerName = owner === 'together' || owner === 'unassigned' ? 'The owner' : dir.nameOf(owner);
   const titleMissing = title.trim().length === 0;
   const dateBad = dueChoice === 'explicit' && !isCivilDate(dueDate);
 
@@ -237,7 +269,7 @@ export function ProposeActionDialog({ open, onClose, record, defaultTitle = '' }
       open={open}
       onClose={onClose}
       title="Propose an action for your task list"
-      description="Kadode doesn’t add it for you. It waits as a proposal until it reaches your task list."
+      description={`Kadode won’t add this for you. ${ownerName} will see it on Home until it is added to the task list.`}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>

@@ -4,13 +4,14 @@ import { PHASE_ORDER, PRIORITY_ORDER, WORK_STATUS_ORDER } from '@shared/labels';
 import type { DeadlineKind, PhaseKey, WorkStatus } from '@shared/types';
 import { compareDates } from './format';
 import { matchesOwnerFilter, milestoneDate, type FilterContext, type OwnerFilter } from './home';
+import { whenFor, type WhenInfo } from './when';
 import { isOpenWork, unmetDependencyKeys, type Indexes, type Milestone } from './records';
 import type { DeadlineState } from '@shared/engine-contracts';
 
 export type PlanView = 'workstream' | 'list' | 'board' | 'timeline';
 export const PLAN_VIEWS: PlanView[] = ['workstream', 'list', 'board', 'timeline'];
 
-export type PlanOwnerFilter = Exclude<OwnerFilter, 'waiting'>;
+export type PlanOwnerFilter = Exclude<OwnerFilter, 'waiting' | 'needs_me'>;
 
 export interface PlanFilters {
   owner: PlanOwnerFilter;
@@ -64,13 +65,15 @@ export interface PlanItemData {
   date: string | null;
   dateKind: DeadlineKind | null;
   dateState: DeadlineState | null;
+  /** The one date a card shows (legal > contract > our target > task-list date > check-in). */
+  when: WhenInfo;
   unmet: string[];
 }
 
-export function buildPlanItems(idx: Indexes, byRecord?: Map<string, ComputedDeadline[]>): PlanItemData[] {
+export function buildPlanItems(idx: Indexes, byRecord?: Map<string, ComputedDeadline[]>, today: string = new Date().toISOString().slice(0, 10)): PlanItemData[] {
   return idx.milestones.map((m) => {
-    const when = milestoneDate(m, byRecord?.get(m.id));
-    return { m, date: when.date, dateKind: when.kind, dateState: when.state, unmet: unmetDependencyKeys(m, idx) };
+    const rank = milestoneDate(m, byRecord?.get(m.id));
+    return { m, date: rank.date, dateKind: rank.kind, dateState: rank.state, when: whenFor(m, idx, byRecord?.get(m.id), today), unmet: unmetDependencyKeys(m, idx) };
   });
 }
 
@@ -147,6 +150,42 @@ export function groupByWorkstream(items: PlanItemData[], idx: Indexes): { key: s
   });
   out.sort((a, b) => (a.key === '' ? 1 : b.key === '' ? -1 : a.key.localeCompare(b.key, undefined, { numeric: true })));
   return out;
+}
+
+/** Group by the record's own `work_area` text (used when the workstream mapping is missing for most items). */
+export function groupByArea(items: PlanItemData[]): { key: string; title: string; related: string[]; items: PlanItemData[] }[] {
+  const groups = new Map<string, PlanItemData[]>();
+  for (const it of items) {
+    const k = (it.m.data?.work_area ?? '').trim();
+    groups.set(k, [...(groups.get(k) ?? []), it]);
+  }
+  const soonest = (list: PlanItemData[]) =>
+    list
+      .filter((i) => isOpenWork(i.m.status) && i.when.primary)
+      .map((i) => i.when.primary!.date)
+      .sort()[0] ?? '9999-12-31';
+  return [...groups.entries()]
+    .map(([key, list]) => ({ key: key || '', title: key || 'Other work', related: [], items: list }))
+    .sort((a, b) => {
+      if (a.key === '') return 1;
+      if (b.key === '') return -1;
+      const oa = a.items.some((i) => isOpenWork(i.m.status));
+      const ob = b.items.some((i) => isOpenWork(i.m.status));
+      if (oa !== ob) return oa ? -1 : 1;
+      const da = soonest(a.items);
+      const db = soonest(b.items);
+      return da !== db ? (da < db ? -1 : 1) : a.title.localeCompare(b.title);
+    });
+}
+
+/**
+ * The Plan's first grouping. The importer's workstream mapping is used when it covers most items; otherwise grouping by
+ * the work area keeps one "Other work" group from swallowing the plan.
+ */
+export function groupPlan(items: PlanItemData[], idx: Indexes): { mode: 'workstream' | 'area'; groups: ReturnType<typeof groupByWorkstream> } {
+  const mapped = items.filter((i) => i.m.data?.workstream_key && idx.byKey.has(i.m.data.workstream_key)).length;
+  if (items.length > 0 && mapped / items.length >= 0.5) return { mode: 'workstream', groups: groupByWorkstream(items, idx) };
+  return { mode: 'area', groups: groupByArea(items) };
 }
 
 export function groupByStatus(items: PlanItemData[]): Map<WorkStatus, PlanItemData[]> {

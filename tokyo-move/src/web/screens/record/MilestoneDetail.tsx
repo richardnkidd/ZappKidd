@@ -12,7 +12,12 @@ import {
   WORK_STATUS_LABEL,
 } from '@shared/labels';
 import type { Deadline, DeadlineRuleData, OwnerRef, TaskLink, TravelerProgress as TravelerProgressData } from '@shared/types';
-import { DateText, DeadlineBadge, OptionalTag, PriorityTag, StatusBadge, SyncBadge, VerificationNote } from '../../components/Badges';
+import { DateText, DeadlineBadge, DeadlineWhen, OptionalTag, PriorityTag, StatusBadge, SyncBadge, VerificationNote } from '../../components/Badges';
+import { DeadlineRow } from '../../components/DeadlineRow';
+import { Prose } from '../../components/Prose';
+import { SegmentedControl } from '../../components/Controls';
+import { TaskDateLine } from '../../components/LinkedDates';
+import { AppliesToControl, currentAnswer } from './AppliesTo';
 import { Button } from '../../components/Controls';
 import { Icon } from '../../components/Icon';
 import { Fact, Section } from '../../components/Layout';
@@ -44,7 +49,10 @@ function SubHead({ level, children }: { level: Level; children: React.ReactNode 
 /* ------------------------------------------------------------------ deadline facts */
 
 function DeadlineFacts({ deadline, state, idx, dir, today, computed }: { deadline: Deadline; state?: ComputedDeadline['state']; idx: Indexes; dir: Directory; today: string; computed?: ComputedDeadline }) {
+  const plain = usePlain();
   const verification = computed ? deadlineVerification(computed, idx) : deadline.kind === 'legal' && !deadline.verified_on ? ('not_verified' as DeadlineRuleData['verification']) : null;
+  const rule = computed?.rule_id ? (idx.byKey.get(computed.rule_id) ?? null) : null;
+  const counted = rule ? dataOf<DeadlineRuleData>(rule).inclusive_note : null;
   const traveler =
     deadline.traveler === 'household' || deadline.traveler === 'each_adult' || !deadline.traveler
       ? deadline.traveler === 'each_adult'
@@ -54,12 +62,22 @@ function DeadlineFacts({ deadline, state, idx, dir, today, computed }: { deadlin
   return (
     <div className="deadline-block">
       <p className="deadline-block__head">
-        <DateText date={deadline.date} today={today} state={state} kind={deadline.kind} /> <DeadlineBadge kind={deadline.kind} />
+        {computed ? (
+          <DeadlineWhen d={computed} today={today} />
+        ) : (
+          <DateText date={deadline.date} today={today} state={state} prefix={deadline.kind === 'legal' || deadline.kind === 'contractual' ? 'Due by ' : ''} />
+        )}{' '}
+        <DeadlineBadge kind={deadline.kind} />
       </p>
       <VerificationNote verification={verification} kind={deadline.kind} />
+      {counted && (
+        <p className="small muted preline">
+          <strong>How it’s counted:</strong> {plain(counted)}
+        </p>
+      )}
       <dl className="facts facts--tight">
         <Fact label="Why this date" wide>
-          <span className="preline">{deadline.basis || NOT_KNOWN}</span>
+          <span className="preline">{plain(deadline.basis) || NOT_KNOWN}</span>
         </Fact>
         <Fact label="Applies in">{deadline.jurisdiction ? (JURISDICTION_LABEL[deadline.jurisdiction] ?? deadline.jurisdiction) : NOT_KNOWN}</Fact>
         <Fact label="Calendar date in">{zoneLabel(deadline.timezone)}</Fact>
@@ -129,24 +147,38 @@ export function TravelerProgress({ record, level }: { record: AnyRecord; level: 
 /* ------------------------------------------------------------------ dependencies */
 
 function Dependencies({ record, idx, dir, level }: { record: Milestone; idx: Indexes; dir: Directory; level: Level }) {
-  const chain = useMemo(() => attempt(() => dependencyChain(record.key, idx.all)), [record.key, idx]);
-  const downstream = useMemo(() => attempt(() => downstreamOf(record.key, idx.all)), [record.key, idx]);
+  const plain = usePlain();
+  const scopePeople = (record.data?.traveler_scope ?? []).filter((p) => dir.personById(p));
+  // A shared record has one chain per traveler: one adult's route must never appear as a step of the other adult's release.
+  // Records such as "<step>.<person>" already name their traveler; the engine infers it.
+  const named = /\.[a-z0-9_-]+$/i.test(record.key);
+  const [picked, setPicked] = useState<string | null>(null);
+  const who = named ? null : scopePeople.length > 1 ? (picked && scopePeople.includes(picked) ? picked : scopePeople.includes(dir.me?.id ?? '') ? dir.me!.id : scopePeople[0]!) : (scopePeople[0] ?? null);
+  const chain = useMemo(() => attempt(() => dependencyChain(record.key, idx.all, who)), [record.key, idx, who]);
+  const downstream = useMemo(() => attempt(() => downstreamOf(record.key, idx.all, who)), [record.key, idx, who]);
   const scope = record.data?.dependency_scope ?? {};
   const direct = record.data?.dependencies ?? [];
 
   const links = chain.ok
-    ? chain.value.map((c) => ({ key: c.key, title: c.title, met: c.met, depth: c.depth, status: c.status }))
-    : direct.map((k) => {
-        const r = idx.byKey.get(k);
-        return { key: k, title: r?.title ?? k, met: r ? ['completed', 'not_applicable', 'eliminated'].includes(r.status) : false, depth: 1, status: r?.status ?? '' };
-      });
+    ? chain.value.map((c) => ({ key: c.key, title: c.title, met: c.met, depth: c.depth, status: c.status, reason: (c as { reason?: string }).reason ?? null }))
+    : direct
+        .filter((k) => !who || !scope[k] || scope[k]!.includes(who))
+        .map((k) => {
+          const r = idx.byKey.get(k);
+          return { key: k, title: r?.title ?? k, met: r ? ['completed', 'not_applicable', 'eliminated'].includes(r.status) : false, depth: 1, status: r?.status ?? '', reason: null as string | null };
+        });
   const related = ((record.data as { related?: unknown })?.related ?? []) as unknown;
   const relatedKeys = Array.isArray(related) ? related.filter((x): x is string => typeof x === 'string') : [];
+  const whoName = who ? dir.nameOf(who) : null;
 
   return (
     <Section title="What this depends on" headingLevel={level}>
+      {scopePeople.length > 1 && !named && (
+        <SegmentedControl label="Whose steps" value={who ?? ''} onChange={setPicked} options={scopePeople.map((p) => ({ value: p, label: dir.nameOf(p) }))} />
+      )}
+      {whoName && <p className="small muted">Showing what {whoName} is waiting on. Other people’s steps are not counted here.</p>}
       {links.length === 0 ? (
-        <p className="muted">Nothing has to happen first.</p>
+        <p className="muted">{whoName ? `Nothing has to happen first for ${whoName}.` : 'Nothing has to happen first.'}</p>
       ) : (
         <ol className="dep-chain">
           {links.map((l) => {
@@ -159,13 +191,18 @@ function Dependencies({ record, idx, dir, level }: { record: Milestone; idx: Ind
                   {rec ? <RecordLink id={rec.id}>{l.title}</RecordLink> : l.title}
                   <span className="small faint"> — {l.met ? 'done' : l.status ? (WORK_STATUS_LABEL[l.status as keyof typeof WORK_STATUS_LABEL] ?? 'not done yet') : 'not done yet'}</span>
                   {only && only.length > 0 && <span className="chip chip--neutral chip--sm">Only for {only.map((p) => dir.nameOf(p)).join(' and ')}</span>}
+                  {l.reason && <span className="dep__reason small muted preline">{plain(l.reason)}</span>}
                 </span>
               </li>
             );
           })}
         </ol>
       )}
-      {record.data?.dependency_note && <p className="small muted preline">{record.data.dependency_note}</p>}
+      {record.data?.dependency_note && (
+        <p className="small muted preline">
+          <Prose text={record.data.dependency_note} />
+        </p>
+      )}
       {relatedKeys.length > 0 && (
         <p className="small muted">
           Related (nothing waits on these):{' '}
@@ -174,7 +211,7 @@ function Dependencies({ record, idx, dir, level }: { record: Milestone; idx: Ind
             return (
               <span key={k}>
                 {i > 0 && ', '}
-                {r ? <RecordLink id={r.id}>{r.title}</RecordLink> : k}
+                {r ? <RecordLink id={r.id}>{r.title}</RecordLink> : null}
               </span>
             );
           })}
@@ -186,9 +223,7 @@ function Dependencies({ record, idx, dir, level }: { record: Milestone; idx: Ind
           <ul className="plain-list">
             {downstream.value.map((k) => {
               const r = idx.byKey.get(k);
-              return (
-                <li key={k}>{r ? <RecordLink id={r.id}>{r.title}</RecordLink> : k}</li>
-              );
+              return r ? <li key={k}><RecordLink id={r.id}>{r.title}</RecordLink></li> : null;
             })}
           </ul>
         </div>
@@ -197,15 +232,41 @@ function Dependencies({ record, idx, dir, level }: { record: Milestone; idx: Ind
   );
 }
 
+/* ------------------------------------------------------------------ does this apply? */
+
+function ConditionalAnswers({ record, dir, level }: { record: Milestone; dir: Directory; level: Level }) {
+  const d = record.data;
+  const answered = Object.keys(d?.applies_to ?? {});
+  if (!d?.conditional && answered.length === 0) return null;
+  const people = (d.traveler_scope?.length ? d.traveler_scope : dir.adults.map((a) => a.id)).filter((p) => dir.personById(p));
+  return (
+    <Section title="Does this apply?" headingLevel={level} intro={d.conditional ? `Only if: ${d.conditional}` : 'Answer for each person. A step that is not needed stops counting; one that is needed holds the go-ahead.'}>
+      <div className="stack">
+        {people.map((p) => (
+          <AppliesToControl key={p} record={record} personId={p} name={dir.nameOf(p)} />
+        ))}
+        <p className="small muted">
+          {people.some((p) => currentAnswer(record, p) === 'unknown') ? 'Until it is answered, this step holds the go-ahead for that person.' : 'Answered for everyone it concerns.'}
+        </p>
+      </div>
+    </Section>
+  );
+}
+
 /* ------------------------------------------------------------------ linked tasks */
 
-function LinkedTasks({ record, idx, level }: { record: Milestone; idx: Indexes; level: Level }) {
-  const { actions } = useSnapshot();
+function LinkedTasks({ record, idx, dir, level }: { record: Milestone; idx: Indexes; dir: Directory; level: Level }) {
+  const { actions, snapshot } = useSnapshot();
   const { zone } = usePrefs();
+  const { today } = useData();
   const [propose, setPropose] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const tasks = idx.taskLinksByRecord.get(record.id) ?? [];
+  const all = idx.taskLinksByRecord.get(record.id) ?? [];
+  const proposed = all.filter((t) => t.sync_state === 'pending_capture');
+  const onList = all.filter((t) => t.sync_state !== 'pending_capture');
+  const canWrite = snapshot?.settings?.task_adapter?.can_write ?? false;
+  const asOfDay = dayIn(snapshot?.settings?.task_adapter?.as_of ?? null, zone);
 
   const retry = async (t: TaskLink) => {
     setRetrying(t.id);
@@ -220,22 +281,19 @@ function LinkedTasks({ record, idx, level }: { record: Milestone; idx: Indexes; 
   };
 
   return (
-    <Section title="Tasks on your task list" count={tasks.length || undefined} headingLevel={level}>
-      {tasks.length === 0 ? (
+    <Section title="Tasks on your task list" count={onList.length || undefined} headingLevel={level}>
+      {onList.length === 0 ? (
         <p className="muted">Nothing on your task list is linked to this yet.</p>
       ) : (
         <ul className="task-list">
-          {tasks.map((t) => (
+          {onList.map((t) => (
             <li key={t.id} className="task">
               <p className="task__title">{t.title}</p>
               <div className="item__meta">
                 <OwnerChip owner={t.owner} compact />
                 <SyncBadge link={t} />
-                {t.due ? <DateText date={t.due} /> : <span className="faint small">No due date</span>}
+                {t.due ? <TaskDateLine t={t} today={today} asOfDay={asOfDay} /> : <span className="faint small">No due date</span>}
               </div>
-              {t.sync_state === 'pending_capture' && (
-                <p className="small muted">Waiting to be added to your task list. Nothing has been created there yet.</p>
-              )}
               {t.sync_state === 'snapshot' && (
                 <p className="small muted">A read-only copy{t.last_synced_at ? ` from ${instant(t.last_synced_at, zone, 'short')}` : ''}. Changes happen in your task list.</p>
               )}
@@ -250,6 +308,32 @@ function LinkedTasks({ record, idx, level }: { record: Milestone; idx: Indexes; 
             </li>
           ))}
         </ul>
+      )}
+      {proposed.length > 0 && (
+        <div className="stack stack--tight">
+          <SubHead level={level}>Proposed for your task list · not added yet</SubHead>
+          <ul className="task-list">
+            {proposed.map((t) => (
+              <li key={t.id} className="task">
+                <p className="task__title">{t.title}</p>
+                <div className="item__meta">
+                  <OwnerChip owner={t.owner} compact />
+                  <SyncBadge link={t} />
+                  {t.due && <TaskDateLine t={t} today={today} asOfDay={asOfDay} />}
+                </div>
+                {canWrite ? (
+                  <div className="row-actions" style={{ marginTop: 0 }}>
+                    <Button variant="secondary" small busy={retrying === t.id} onClick={() => retry(t)}>
+                      Mark as added
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="small muted">Kadode can’t add this to your task list. {t.owner && t.owner !== 'together' && t.owner !== 'unassigned' ? dir.nameOf(t.owner) : 'Whoever owns it'} adds it there by hand.</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {error && <p className="field__error" role="alert">{error}</p>}
       <div>
@@ -268,7 +352,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
   const { actions } = useSnapshot();
   const plain = usePlain();
   const { zone } = usePrefs();
-  const { today, deadlinesByRecord } = useData();
+  const { today, deadlinesByRecord, deadlinesByLinkedKey } = useData();
   const d = record.data ?? ({} as Milestone['data']);
   const [statusOpen, setStatusOpen] = useState(false);
   const accept = useWrite();
@@ -276,7 +360,10 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
   // Only this milestone's own dates (record or rule). A linked task's or commitment's date is shown separately below.
   const engine = (deadlinesByRecord.get(record.id) ?? []).filter((x) => x.kind !== 'review_date' && (x.source === 'record' || x.source === 'rule'));
   const ownDeadline = d.deadline;
-  const hasDates = engine.length > 0 || Boolean(ownDeadline);
+  // Rule-derived dates that point at this record (one per traveler where the rule runs per person).
+  const shownIds = new Set(engine.map((x) => x.id));
+  const ruleDates = (deadlinesByLinkedKey.get(record.key) ?? []).filter((x) => !shownIds.has(x.id) && x.applies !== 'no' && x.state !== 'not_applicable');
+  const hasDates = engine.length > 0 || Boolean(ownDeadline) || ruleDates.length > 0;
 
   const ownerOptions = [
     ...dir.adults.map((a) => ({ value: a.id, label: a.display_name })),
@@ -300,7 +387,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
         {d.status_reason && (record.status === 'blocked' || record.status === 'eliminated' || record.status === 'not_applicable' || record.status === 'waiting_external') && (
           <p className="reason preline">
             <strong>{record.status === 'blocked' ? 'Why it’s blocked: ' : record.status === 'waiting_external' ? 'Waiting for: ' : 'Why: '}</strong>
-            {plain(d.status_reason)}
+            <Prose text={d.status_reason} />
           </p>
         )}
         {d.conditional && (
@@ -319,7 +406,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
         <InlineEdit
           label="Next action"
           value={d.next_action ?? ''}
-          display={d.next_action ? <p className="preline">{plain(d.next_action)}</p> : <p className="muted">No next action written yet.</p>}
+          display={d.next_action ? <p className="preline"><Prose text={d.next_action} /></p> : <p className="muted">No next action written yet.</p>}
           input="textarea"
           version={record.version}
           dirtyKey={`next:${record.id}`}
@@ -328,6 +415,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
       </Section>
 
       <TravelerProgress record={record} level={level} />
+      <ConditionalAnswers record={record} dir={dir} level={level} />
 
       <Section title="Who and when" headingLevel={level}>
         <dl className="facts">
@@ -406,6 +494,16 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
               </div>
             ))
           : ownDeadline && <DeadlineFacts deadline={ownDeadline} idx={idx} dir={dir} today={today} />}
+        {ruleDates.length > 0 && (
+          <div className="stack stack--tight">
+            <SubHead level={level}>Dates from rules</SubHead>
+            <ul className="item-list">
+              {ruleDates.map((r) => (
+                <DeadlineRow key={r.id} d={r} idx={idx} today={today} dir={dir} showWho linkRecord={false} />
+              ))}
+            </ul>
+          </div>
+        )}
         <LinkedDates milestoneId={record.id} today={today} />
         {d.review_date && (
           <div className="review-line">
@@ -451,7 +549,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
       </Section>
 
       <Dependencies record={record} idx={idx} dir={dir} level={level} />
-      <LinkedTasks record={record} idx={idx} level={level} />
+      <LinkedTasks record={record} idx={idx} dir={dir} level={level} />
       <Notes record={record} idx={idx} dir={dir} level={level} />
       <SourceHistory record={record} idx={idx} dir={dir} />
 

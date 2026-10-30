@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { addCalendarDays, isCivilDate } from '@shared/dates';
-import type { AuditEntry, BaseRecord } from '@shared/types';
+import { addCalendarDays, diffDays, isCivilDate } from '@shared/dates';
+import type { AuditEntry, BaseRecord, ReviewSessionData } from '@shared/types';
 import { api, describeError } from '../../net/client';
 import { Button, Field, TextArea, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
+import { ClampText } from '../../components/ClampText';
 import { ErrorBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
 import { ItemCard } from '../../components/ItemCard';
 import { Card, EmptyState, PageTitle, Section, Skeleton } from '../../components/Layout';
 import { OwnerChip } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
+import { AuditLines } from '../../components/AuditLines';
 import { describeAuditList } from '../../lib/audit';
-import { civil, dayIn, instant } from '../../lib/format';
+import { completedReviews } from '../../lib/reviews';
+import { whenFor } from '../../lib/when';
+import { civil, dayIn, instant, plural } from '../../lib/format';
 import { selectDecisions, selectNow, type FilterContext } from '../../lib/home';
 import { dataOf, firstReviewDecisionKeys, isOpenWork, type AnyRecord, type Decision, type Directory, type Indexes, type Question } from '../../lib/records';
 import { buildReviewSummary } from '../../lib/reviewSummary';
@@ -21,8 +25,9 @@ import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
 import { approvalSummary } from '../decide/decisionText';
-import { ApproveDialog, ReasonDialog } from '../decide/DecisionsTab';
+import { ApproveDialog, ReasonDialog } from '../decide/decisionDialogs';
 import { relevanceScore } from '../decide/QuestionsTab';
+import { isPlanQuestion } from '../../lib/questions';
 import { currentPhase } from '../../lib/home';
 
 const STEPS = ['What changed', 'This week and owners', 'Decisions', 'A few questions', 'Wrap-up'] as const;
@@ -93,24 +98,7 @@ function StepChanges({ idx, dir, since, onCount }: { idx: Indexes; dir: Director
           </Card>
         ) : (
           <Card>
-            <ul className="audit-list">
-              {(all ? lines : lines.slice(0, 10)).map((l) => (
-                <li key={l.id} className="audit-line">
-                  <span className="audit-line__text">
-                    <strong>{l.who}</strong> {l.what}
-                    {l.recordId && (
-                      <>
-                        {' '}
-                        <RecordLink id={l.recordId}>Open</RecordLink>
-                      </>
-                    )}
-                  </span>
-                  <time className="faint small" dateTime={l.at}>
-                    {instant(l.at, zone, 'short')}
-                  </time>
-                </li>
-              ))}
-            </ul>
+            <AuditLines lines={all ? lines : lines.slice(0, 10)} />
             {lines.length > 10 && (
               <div className="center">
                 <Button variant="quiet" onClick={() => setAll((v) => !v)}>
@@ -165,8 +153,17 @@ function StepThisWeek({ idx, dir, session, setSession }: { idx: Indexes; dir: Di
   const proposed = idx.milestones.filter((m) => m.owner_proposed && m.owner && m.owner !== 'unassigned' && isOpenWork(m.status) && !m.data?.optional_future_work);
   const acceptedIds = new Set(session.accepted.map((a) => a.id));
   const pending = proposed.filter((m) => !acceptedIds.has(m.id));
+  // Only what falls in this week or the next two is worth a conversation now; the rest can wait. Soonest first, three at most.
+  const soon = useMemo(() => {
+    const dated = pending.map((m) => ({ m, date: whenFor(m, idx, deadlines.ok ? deadlinesByRecord.get(m.id) : undefined, today).primary?.date ?? null }));
+    return dated
+      .filter((x) => x.date !== null && diffDays(today, x.date) <= 21)
+      .sort((a, b) => (a.date! < b.date! ? -1 : 1))
+      .map((x) => x.m);
+  }, [pending, idx, deadlines, deadlinesByRecord, today]);
   const [showAll, setShowAll] = useState(false);
-  const rows = showAll ? pending : pending.slice(0, 6);
+  const rows = showAll ? pending : soon.slice(0, 3);
+  const later = pending.length - rows.length;
   return (
     <div className="stack stack--loose">
       <Section title="This week" headingLevel={3} intro="The next few things worth doing.">
@@ -175,14 +172,16 @@ function StepThisWeek({ idx, dir, session, setSession }: { idx: Indexes; dir: Di
         ) : (
           <ul className="item-list">
             {now.map((it) => (
-              <ItemCard key={it.id} recordId={it.recordId} title={it.title} owner={it.owner} ownerProposed={it.ownerProposed} nextAction={it.nextAction} date={it.date} dateKind={it.dateKind} dateState={it.dateState} today={today} note={it.note} />
+              <ItemCard key={it.id} recordId={it.recordId} title={it.title} owner={it.owner} ownerProposed={it.ownerProposed} nextAction={it.nextAction} when={it.when} today={today} note={it.note} />
             ))}
           </ul>
         )}
       </Section>
-      <Section title="Owners to confirm" count={pending.length || undefined} headingLevel={3} intro="Each item has one accountable owner. A proposed owner stays provisional until someone accepts it.">
+      <Section title="Owners to confirm" count={pending.length || undefined} headingLevel={3} intro="Each item has one accountable owner. A proposed owner stays provisional until someone accepts it. Only what falls in the next three weeks is shown first.">
         {pending.length === 0 && session.accepted.length === 0 ? (
           <p className="muted">No owners are waiting to be confirmed.</p>
+        ) : rows.length === 0 && session.accepted.length === 0 ? (
+          <p className="muted">No owner needs confirming for the next three weeks. {plural(pending.length, 'other')} can wait.</p>
         ) : (
           <ul className="item-list">
             {session.accepted.map((a) => {
@@ -200,9 +199,9 @@ function StepThisWeek({ idx, dir, session, setSession }: { idx: Indexes; dir: Di
             ))}
           </ul>
         )}
-        {pending.length > rows.length && (
+        {later > 0 && !showAll && (
           <Button variant="quiet" onClick={() => setShowAll(true)}>
-            Show all {pending.length}
+            Show {later === pending.length ? `all ${pending.length}` : `${later} more that can wait`}
           </Button>
         )}
       </Section>
@@ -359,7 +358,7 @@ function StepQuestions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
     const keys = new Set<string>();
     if (phase) for (const m of idx.milestones) if (m.data?.phase === phase && isOpenWork(m.status)) keys.add(m.key);
     return idx.questions
-      .filter((q) => (q.data?.disposition ?? 'question') === 'question')
+      .filter((q) => (q.data?.disposition ?? 'question') === 'question' && isPlanQuestion(q))
       .map((q) => ({ q, score: relevanceScore(q, idx, dir, keys) }))
       .sort((a, b) => b.score - a.score || a.q.key.localeCompare(b.q.key, undefined, { numeric: true }))
       .slice(0, 5)
@@ -397,11 +396,20 @@ function StepWrapUp({ session, idx, dir, since, onSaved }: { session: Session; i
   }, [both, dir]);
 
   const nextBad = next !== '' && !isCivilDate(next);
+  // Decisions that became final since the last review, from the plan itself (so none depends on someone remembering).
+  const decidedSince = useMemo(
+    () =>
+      idx.decisions
+        .filter((d) => since !== null && d.status === 'approved' && d.data?.decided_at && d.data.decided_at > since && !session.decisions.some((o) => o.id === d.id))
+        .map((d) => ({ id: d.id, title: d.title })),
+    [idx, since, session.decisions],
+  );
   const { text, recordIds } = buildReviewSummary({
     date: today,
     names,
     hasPreviousReview: since !== null,
     changeCount: session.changeCount,
+    decidedSince,
     accepted: session.accepted,
     decisions: session.decisions,
     questions: session.questions,
@@ -473,6 +481,111 @@ function StepWrapUp({ session, idx, dir, since, onSaved }: { session: Session; i
   );
 }
 
+/* ------------------------------------------------------------------ start */
+
+function ReviewStart({
+  idx,
+  dir,
+  past,
+  since,
+  open,
+  starting,
+  error,
+  onStart,
+}: {
+  idx: Indexes;
+  dir: Directory;
+  past: AnyRecord[];
+  since: string | null;
+  open: boolean;
+  starting: boolean;
+  error: string | null;
+  onStart: () => void;
+}) {
+  const { today } = useData();
+  const { zone } = usePrefs();
+  const [showPast, setShowPast] = useState(false);
+  const last = past[0] ?? null;
+  const lastData = last ? dataOf<ReviewSessionData>(last) : null;
+  const earlier = past.slice(1);
+  return (
+    <div className="stack stack--loose">
+      <Card className="stack">
+        <p>
+          A short, calm walk through where things stand — about twenty minutes, five steps. You can skip any step. Nothing is scored, and nothing is marked done for you.
+        </p>
+        <ol className="review-outline">
+          {STEPS.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ol>
+        <p className="muted small">Today is {civil(today, 'long')}.</p>
+        {open && <p className="muted small">A review was already started. Starting again picks it up.</p>}
+        {error && <p className="field__error" role="alert">{error}</p>}
+        <div className="row-actions">
+          <Button variant="primary" busy={starting} onClick={onStart}>
+            {open ? 'Continue the review' : 'Start a review together'}
+          </Button>
+        </div>
+      </Card>
+
+      <Section title="Last review" headingLevel={2}>
+        {!last || !lastData ? (
+          <Card>
+            <p className="muted">No review has been finished yet. The first one will be kept here.</p>
+          </Card>
+        ) : (
+          <Card className="stack">
+            <p>
+              <strong>{civil(dayIn(lastData.completed_at ?? since ?? '', zone), 'long')}</strong>
+              {lastData.participants?.length ? <span className="muted"> · with {lastData.participants.map((p) => dir.nameOf(p)).join(' and ')}</span> : null}
+            </p>
+            {lastData.summary && <ClampText className="preline">{lastData.summary}</ClampText>}
+            {lastData.next_review_on && <p className="small muted">Next review planned for {civil(lastData.next_review_on, 'long')}.</p>}
+            <p>
+              <RecordLink id={last.id} className="more-link">
+                Read the whole summary
+              </RecordLink>
+            </p>
+          </Card>
+        )}
+      </Section>
+
+      {earlier.length > 0 && (
+        <Section title="Past reviews" count={earlier.length} headingLevel={2}>
+          <Card>
+            <ul className="audit-list">
+              {(showPast ? earlier : earlier.slice(0, 3)).map((r) => {
+                const d = dataOf<ReviewSessionData>(r);
+                return (
+                  <li key={r.id} className="audit-line">
+                    <span className="audit-line__text">
+                      <RecordLink id={r.id} className="audit-line__link">
+                        {r.title}
+                      </RecordLink>
+                      {d.participants?.length ? <span className="muted"> · with {d.participants.map((p) => dir.nameOf(p)).join(' and ')}</span> : null}
+                    </span>
+                    <time className="faint small" dateTime={d.completed_at ?? undefined}>
+                      {instant(d.completed_at, zone, 'short')}
+                    </time>
+                  </li>
+                );
+              })}
+            </ul>
+            {earlier.length > 3 && (
+              <div className="center">
+                <Button variant="quiet" onClick={() => setShowPast((v) => !v)}>
+                  {showPast ? 'Show fewer' : `Show all ${earlier.length}`}
+                </Button>
+              </div>
+            )}
+          </Card>
+        </Section>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ flow */
 
 function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
@@ -498,7 +611,7 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
     setStarting(true);
     setError(null);
     try {
-      const r = await api.startReview({ participants: dir.me ? [dir.me.id] : undefined });
+      const r = await api.startReview({ title: `Couple review · ${civil(today, 'weekday')}`, participants: dir.me ? [dir.me.id] : undefined });
       startedAt.current = Date.now();
       setSessionState({ record: r.record, accepted: [], decisions: [], questions: [], changeCount: 0 });
       setStep(0);
@@ -527,30 +640,8 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
   }
 
   if (!session) {
-    return (
-      <div className="stack stack--loose">
-        <Card className="stack">
-          <p>
-            A short, calm walk through where things stand — about twenty minutes, five steps. You can skip any step. Nothing is scored, and nothing is marked done for you.
-          </p>
-          <ol className="review-outline">
-            {STEPS.map((s) => (
-              <li key={s}>{s}</li>
-            ))}
-          </ol>
-          <p className="muted small">
-            {since ? `Last review finished ${civil(dayIn(since, zone), 'long')}.` : 'No review has been finished yet.'} Today is {civil(today, 'long')}.
-          </p>
-          {open && <p className="muted small">A review was already started. Starting again picks it up.</p>}
-          {error && <p className="field__error" role="alert">{error}</p>}
-          <div className="row-actions">
-            <Button variant="primary" busy={starting} onClick={start}>
-              {open ? 'Continue the review' : 'Start a review together'}
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
+    const past = completedReviews(idx);
+    return <ReviewStart idx={idx} dir={dir} past={past} since={since} open={Boolean(open)} starting={starting} error={error} onStart={start} />;
   }
 
   const stepNode =
@@ -569,10 +660,25 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
   return (
     <div className="stack stack--loose">
       <nav aria-label="Review steps">
+        <p className="review-compact" aria-hidden="true">
+          Step {step + 1} of {STEPS.length} · {STEPS[step]}
+        </p>
+        <div className="review-bar" aria-hidden="true">
+          {STEPS.map((s, i) => (
+            <span key={s} className={`review-bar__seg${i < step ? ' is-past' : ''}${i === step ? ' is-current' : ''}`} />
+          ))}
+        </div>
         <ol className="review-steps">
           {STEPS.map((s, i) => (
-            <li key={s} className={`review-steps__item${i === step ? ' is-current' : ''}${i < step ? ' is-past' : ''}`} aria-current={i === step ? 'step' : undefined}>
-              <span className="review-steps__n">{i < step ? <Icon name="check" size={14} /> : i + 1}</span>
+            <li
+              key={s}
+              className={`review-steps__item${i === step ? ' is-current' : ''}${i < step ? ' is-past' : ''}`}
+              aria-current={i === step ? 'step' : undefined}
+              aria-label={`Step ${i + 1} of ${STEPS.length}, ${s}, ${i < step ? 'done' : i === step ? 'current' : 'not started'}`}
+            >
+              <span className="review-steps__n" aria-hidden="true">
+                {i < step ? <Icon name="check" size={14} /> : i + 1}
+              </span>
               <span className="review-steps__label">{s}</span>
             </li>
           ))}

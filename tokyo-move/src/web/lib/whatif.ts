@@ -28,13 +28,16 @@ export function firstAdultArrival(records: BaseRecord[], people: Person[]): { da
   return best;
 }
 
-/** The pet's arrival date for a choice; null when it cannot be worked out yet. */
-export function petArrivalFor(choice: ArrivalChoice, firstAdult: string | null, picked: string): string | null {
+/**
+ * The pet's arrival date for a choice; null when it cannot be worked out yet. "+N months" counts from `base` (the pet's
+ * own current arrival when it is known, otherwise the first adult's), and "with the first adult" is that adult's date.
+ */
+export function petArrivalFor(choice: ArrivalChoice, firstAdult: string | null, picked: string, base: string | null = firstAdult): string | null {
   if (choice === 'date') return isCivilDate(picked) ? picked : null;
-  if (!firstAdult || !isCivilDate(firstAdult)) return null;
-  if (choice === 'with_first') return firstAdult;
+  if (choice === 'with_first') return firstAdult && isCivilDate(firstAdult) ? firstAdult : null;
+  if (!base || !isCivilDate(base)) return null;
   const n = MONTHS[choice];
-  return n ? addCalendarMonths(firstAdult, n) : null;
+  return n ? addCalendarMonths(base, n) : null;
 }
 
 /** Departure is one day before arrival by default (flights across the date line usually land the next day). */

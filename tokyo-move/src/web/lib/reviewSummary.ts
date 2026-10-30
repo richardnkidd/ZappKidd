@@ -9,6 +9,8 @@ export interface ReviewFacts {
   names: string[]; // who took part
   hasPreviousReview: boolean; // false = this is the first review
   changeCount: number;
+  /** Decisions that became final since the last review (from the plan, not typed in). */
+  decidedSince?: { id: string; title: string }[];
   accepted: { id: string; title: string; owner: string }[];
   decisions: { id: string; title: string; outcome: string }[];
   questions: { id: string; title: string; outcome: string }[];
@@ -24,11 +26,12 @@ export function buildReviewSummary(f: ReviewFacts): { text: string; recordIds: s
   const day = isCivilDate(f.date) ? formatCivil(f.date, 'long') : f.date;
   lines.push(`Couple review on ${day}${f.names.length ? `, with ${list(f.names)}` : ''}.`);
   lines.push(!f.hasPreviousReview ? `This was the first review. We looked at ${f.changeCount} recent ${f.changeCount === 1 ? 'change' : 'changes'}.` : `We looked at ${f.changeCount} ${f.changeCount === 1 ? 'change' : 'changes'} since the last review.`);
+  if (f.decidedSince && f.decidedSince.length) lines.push(`${f.hasPreviousReview ? 'Decided since the last review' : 'Decided so far'}: ${list(f.decidedSince.map((d) => q(d.title)))}.`);
   lines.push(f.accepted.length ? `Owners accepted: ${list(f.accepted.map((a) => `${q(a.title)} (${a.owner})`))}.` : 'No owners were accepted.');
   lines.push(f.decisions.length ? `Decisions: ${list(f.decisions.map((d) => `${q(d.title)} — ${d.outcome}`))}.` : 'No decisions were made.');
   lines.push(f.questions.length ? `Questions: ${list(f.questions.map((x) => `${q(x.title)} — ${x.outcome}`))}.` : 'No questions were worked on.');
   lines.push(f.nextReviewOn && isCivilDate(f.nextReviewOn) ? `Next review: ${formatCivil(f.nextReviewOn, 'long')}.` : 'No next review date was set.');
   if (f.closingNote.trim()) lines.push(f.closingNote.trim());
-  const recordIds = [...new Set([...f.accepted.map((a) => a.id), ...f.decisions.map((d) => d.id), ...f.questions.map((x) => x.id)])];
+  const recordIds = [...new Set([...(f.decidedSince ?? []).map((d) => d.id), ...f.accepted.map((a) => a.id), ...f.decisions.map((d) => d.id), ...f.questions.map((x) => x.id)])];
   return { text: lines.join('\n'), recordIds };
 }

@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router';
 import { PageTitle } from '../../components/Layout';
-import { DecisionsTab } from './DecisionsTab';
+import { DecidedTab, DecisionsTab } from './DecisionsTab';
 import { QuestionsTab } from './QuestionsTab';
 import { RisksTab } from './RisksTab';
 
 const TABS = [
   { to: '/decide', label: 'Decisions', end: true },
+  { to: '/decide/decided', label: 'Decided', end: false },
   { to: '/decide/questions', label: 'Questions', end: false },
   { to: '/decide/risks', label: 'Risks & issues', end: false },
 ];
@@ -43,6 +44,7 @@ export function Decide() {
       </nav>
       <Routes>
         <Route index element={<DecisionsTab />} />
+        <Route path="decided" element={<DecidedTab />} />
         <Route path="questions" element={<QuestionsTab />} />
         <Route path="risks" element={<RisksTab />} />
         <Route path="*" element={<DecisionsTab />} />

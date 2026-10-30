@@ -1,17 +1,16 @@
 import { Link } from 'react-router';
+import { READINESS_SHORT_LABEL, READINESS_STATE_LABEL } from '@shared/labels';
 import { ErrorBanner } from '../../components/Feedback';
-import { Icon } from '../../components/Icon';
-import { PersonBadge, usePlain } from '../../components/People';
+import { PersonBadge } from '../../components/People';
 import type { Directory } from '../../lib/records';
 import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
-import { ReadinessChip } from '../ready/readyBits';
+import { readinessTone } from '../ready/readyBits';
 
-/** Compact readiness: one tappable row per traveler, shown right under the greeting on phones. */
+/** One row of readiness chips under the greeting on phones; each opens that traveler's full page. */
 export function ReadyStrip({ dir }: { dir: Directory }) {
   const { readiness } = useData();
   const { refresh } = useSnapshot();
-  const plain = usePlain();
   if (!readiness.ok) {
     return (
       <ErrorBanner title="We couldn't work out who is ready just now." onRetry={() => void refresh()}>
@@ -21,27 +20,28 @@ export function ReadyStrip({ dir }: { dir: Directory }) {
   }
   if (readiness.value.length === 0) return null;
   return (
-    <section aria-labelledby="ready-strip-title" className="ready-strip">
-      <h2 id="ready-strip-title" className="ready-strip__title">
-        Who’s ready
-      </h2>
-      <ul className="ready-strip__list">
-        {readiness.value.map((r) => (
-          <li key={r.person_id}>
-            <Link to={`/ready/${encodeURIComponent(r.person_id)}`} className="ready-row">
-              <PersonBadge person={dir.personById(r.person_id)} size={32} />
-              <span className="ready-row__text">
-                <span className="ready-row__top">
-                  <span className="ready-row__name">{dir.nameOf(r.person_id)}</span>
-                  <ReadinessChip state={r.state} />
+    <nav aria-label="Who’s ready" className="ready-strip">
+      <ul className="ready-chips">
+        {readiness.value.map((r) => {
+          const { tone } = readinessTone(r.state);
+          const name = dir.nameOf(r.person_id);
+          return (
+            <li key={r.person_id}>
+              <Link
+                to={`/ready/${encodeURIComponent(r.person_id)}`}
+                className={`ready-chip ready-chip--${tone}`}
+                aria-label={`${name}: ${READINESS_STATE_LABEL[r.state]}. Open readiness`}
+              >
+                <PersonBadge person={dir.personById(r.person_id)} size={26} />
+                <span className="ready-chip__text">
+                  <span className="ready-chip__name">{name}</span>
+                  <span className="ready-chip__state">{READINESS_SHORT_LABEL[r.state] ?? r.state}</span>
                 </span>
-                <span className="ready-row__headline">{plain(r.headline)}</span>
-              </span>
-              <Icon name="chevron-right" size={18} className="ready-row__go" />
-            </Link>
-          </li>
-        ))}
+              </Link>
+            </li>
+          );
+        })}
       </ul>
-    </section>
+    </nav>
   );
 }

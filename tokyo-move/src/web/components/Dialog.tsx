@@ -44,11 +44,11 @@ export function Dialog({ open, onClose, title, description, children, footer, si
     document.body.classList.add('is-modal-open');
 
     const panel = panelRef.current;
-    // Prefer an explicitly marked field, then a text field; otherwise focus the dialog itself so its title is read
-    // first and the sheet does not scroll away from the top.
+    // Prefer an explicitly marked field, then a single-line text field; otherwise focus the dialog itself so its title is
+    // read first. A notes box never takes focus by itself (it would open the phone keyboard over the dialog).
     const target =
       panel?.querySelector<HTMLElement>('[data-autofocus]') ??
-      panel?.querySelector<HTMLElement>('input:not([type]), input[type="text"], input[type="email"], input[type="url"], textarea') ??
+      panel?.querySelector<HTMLElement>('input:not([type]), input[type="text"], input[type="email"], input[type="url"]') ??
       panel;
     target?.focus({ preventScroll: true });
 

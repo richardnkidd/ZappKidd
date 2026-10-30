@@ -1,3 +1,4 @@
+import { plural } from './format';
 import type { CashModel, MoneyTotal } from '@shared/engine-contracts';
 import type { CostSection, Currency, Money, ScenarioSettings } from '@shared/types';
 
@@ -59,12 +60,20 @@ export function weakerYenPercent(factor: number): string {
   return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
 }
 
-/** "$1,200 known so far · 3 not known yet", never a lone total. */
+/** True when a section has lines but not one of them has a usable amount (unknown is never shown as $0). */
+export function noAmountsYet(total: MoneyTotal, lineCount: number): boolean {
+  if (lineCount === 0) return false;
+  if (total.known_usd === null) return true;
+  const known = total.known_count ?? (total.known_usd > 0 ? 1 : 0);
+  return known === 0 && total.unknown_count > 0;
+}
+
+/** "$1,200 known so far · 3 not known yet", or "No amounts yet" while nothing is known; never a lone total. */
 export function knownSoFar(total: MoneyTotal, lineCount: number): { primary: string; secondary: string } {
   if (lineCount === 0) return { primary: 'Nothing listed yet', secondary: '' };
   const unknown = total.unknown_count;
-  const primary = total.known_usd === 0 && unknown > 0 ? 'Nothing known yet' : `Known so far ${fmtUsd(total.known_usd)}`;
-  const secondary = unknown > 0 ? `${unknown} not known yet` : 'every amount known';
+  const primary = noAmountsYet(total, lineCount) ? 'No amounts yet' : `Known so far ${fmtUsd(total.known_usd)}`;
+  const secondary = unknown > 0 ? (primary === 'No amounts yet' ? `${plural(unknown, 'line')} to price` : `${unknown} not known yet`) : 'every amount known';
   return { primary, secondary };
 }
 
@@ -102,4 +111,9 @@ export function cashStatement(model: CashModel, incomeNotCounted: number): CashS
         detail: null,
       };
   }
+}
+
+/** The shipped scenario names, in plain words. A scenario the household has renamed keeps its own name. */
+export function scenarioLabel(s: ScenarioSettings): string {
+  return s.key === 'combined_stress' && s.label === 'Combined stress' ? 'Delay + weaker yen' : s.label;
 }

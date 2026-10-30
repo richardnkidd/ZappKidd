@@ -8,7 +8,7 @@ import { PHASE_ORDER } from '@shared/labels';
 import type { BaseRecord, DeadlineKind, DeadlineRuleData, OwnerRef, PhaseKey, Priority } from '@shared/types';
 import { compareDates } from './format';
 import { NO_WHEN, whenFor, type WhenInfo } from './when';
-import { commitmentIsLinked, dataOf, isOpenWork, normalizedOwner, unmetDependencyKeys, type Commitment, type Decision, type Directory, type Indexes, type Milestone } from './records';
+import { commitmentIsLinked, dataOf, type AnyRecord, isOpenWork, normalizedOwner, unmetDependencyKeys, type Commitment, type Decision, type Directory, type Indexes, type Milestone } from './records';
 
 export type OwnerFilter = 'all' | 'needs_me' | 'mine' | 'other' | 'together' | 'unassigned' | 'waiting';
 
@@ -16,10 +16,10 @@ export interface FilterContext {
   meId: string | null;
   otherIds: string[];
   /** True when this record is waiting for the signed-in person's approval ("Needs me" includes it). */
-  awaitingMe?: (rec: BaseRecord) => boolean;
+  awaitingMe?: (rec: AnyRecord) => boolean;
 }
 
-export function matchesOwnerFilter(filter: OwnerFilter, owner: OwnerRef | null | undefined, status: string | null, ctx: FilterContext, rec?: BaseRecord): boolean {
+export function matchesOwnerFilter(filter: OwnerFilter, owner: OwnerRef | null | undefined, status: string | null, ctx: FilterContext, rec?: AnyRecord): boolean {
   const o = normalizedOwner(owner);
   switch (filter) {
     case 'all':
@@ -362,7 +362,7 @@ export function selectComingUp(
     const rec = d.record_id ? idx.byId.get(d.record_id) : undefined;
     if (rec && (rec.status === 'completed' || rec.status === 'eliminated' || rec.status === 'not_applicable')) return false;
     if (rec && dataOf<{ optional_future_work?: boolean }>(rec).optional_future_work) return false;
-    return matchesOwnerFilter(filter, deadlineOwner(d, idx, dir), rec?.status ?? null, ctx);
+    return matchesOwnerFilter(filter, deadlineOwner(d, idx, dir), rec?.status ?? null, ctx, rec);
   });
 
   const awaiting = usable.filter((d) => !d.deadline.date).sort((a, b) => a.label.localeCompare(b.label));
@@ -448,4 +448,14 @@ export function deadlineVerification(d: ComputedDeadline, idx: Indexes): Deadlin
   if (rule) return dataOf<DeadlineRuleData>(rule).verification ?? 'not_verified';
   if (d.kind === 'legal' && !d.deadline.verified_on) return 'not_verified';
   return null;
+}
+
+/* ---------- Proposals waiting to be added to the task list ---------- */
+
+/** Task proposals made in Kadode that no writer has added to the task list yet, for their proposed owner. */
+export function selectPendingTasks(idx: Indexes, filter: OwnerFilter, ctx: FilterContext): import('@shared/types').TaskLink[] {
+  return idx.taskLinks
+    .filter((t) => t.sync_state === 'pending_capture' && t.status === 'open')
+    .filter((t) => filter === 'all' || filter === 'waiting' || matchesOwnerFilter(filter, t.owner, null, ctx))
+    .sort((a, b) => compareDates(a.due, b.due) || a.created_at.localeCompare(b.created_at));
 }

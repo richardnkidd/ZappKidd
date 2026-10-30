@@ -24,6 +24,8 @@ const ANY_KEY = new RegExp(`\\b${KEY_SHAPE}\\b`, 'g');
 export function basicProse(text: string): string {
   return text
     .replace(/\bCodex\b/g, 'your assistant')
+    .replace(/\bexisting canonical task\b/gi, 'Already in your task list')
+    .replace(/\bpending task capture\b/gi, 'Waiting to be added')
     .replace(GLUED_MONTH_YEAR, '$1 $2')
     .replace(ISO_DATE, (m) => (isCivilDate(m) ? civil(m, 'short') : m));
 }

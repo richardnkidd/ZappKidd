@@ -72,8 +72,8 @@ export function OwnerChip({ owner, proposed = false, compact = false, prefix }: 
       )}
       <span>
         {prefix ? `${prefix} ` : ''}
-        {isProposed ? 'Proposed: ' : ''}
         {label}
+        {isProposed ? '? (not agreed yet)' : ''}
       </span>
     </span>
   );

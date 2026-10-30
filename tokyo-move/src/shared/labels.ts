@@ -67,9 +67,25 @@ export const QUESTION_DISPOSITION_LABEL: Record<QuestionDisposition, string> = {
   explicitly_excluded: 'Excluded on purpose',
 };
 
+/** Who a question is for. Unknown values are turned into words by `audienceLabel`. */
+export const AUDIENCE_LABEL: Record<string, string> = {
+  household: 'The household',
+  immigration_adviser: 'immigration adviser',
+  tax_adviser: 'tax adviser',
+  veterinarian: 'veterinarian',
+  vet: 'veterinarian',
+  employer: 'employer',
+  accountant: 'accountant',
+  lawyer: 'lawyer',
+};
+
+export function audienceLabel(audience: string): string {
+  return AUDIENCE_LABEL[audience] ?? audience.replace(/[_-]+/g, ' ').trim().toLowerCase();
+}
+
 export const DECISION_STATE_LABEL: Record<DecisionState, string> = {
-  open: 'Needs a decision',
-  proposed: 'Proposal',
+  open: 'Open question',
+  proposed: 'Suggested',
   approved: 'Household-approved',
   rejected: 'Rejected',
   deferred: 'Deferred',
@@ -120,6 +136,17 @@ export const READINESS_STATE_LABEL: Record<ReadinessState, string> = {
   blocked: 'Blocked',
   ready_to_release: 'Ready for your go-ahead',
   released: 'Cleared to travel',
+  arrived: 'Arrived',
+  settled: 'Settled in',
+};
+
+/** Short state words for the one-row readiness strip. */
+export const READINESS_SHORT_LABEL: Record<ReadinessState, string> = {
+  not_started: 'Not started',
+  preparing: 'Preparing',
+  blocked: 'Blocked',
+  ready_to_release: 'Ready to go',
+  released: 'Cleared',
   arrived: 'Arrived',
   settled: 'Settled in',
 };
@@ -254,10 +281,10 @@ export const MODE_BANNER: Record<string, string | null> = {
   production: null,
 };
 
-export const ZONE_OPTIONS: { zone: 'Asia/Tokyo' | 'Pacific/Honolulu' | 'America/New_York'; label: string; short: string }[] = [
-  { zone: 'Pacific/Honolulu', label: 'Honolulu (HST)', short: 'HST' },
-  { zone: 'Asia/Tokyo', label: 'Tokyo (JST)', short: 'JST' },
-  { zone: 'America/New_York', label: 'New York (EST/EDT)', short: 'EST/EDT' },
+export const ZONE_OPTIONS: { zone: 'Asia/Tokyo' | 'Pacific/Honolulu' | 'America/New_York'; label: string; short: string; place: string }[] = [
+  { zone: 'Pacific/Honolulu', label: 'Honolulu (HST)', short: 'HST', place: 'Hawaii' },
+  { zone: 'Asia/Tokyo', label: 'Tokyo (JST)', short: 'JST', place: 'Tokyo' },
+  { zone: 'America/New_York', label: 'New York (EST/EDT)', short: 'EST/EDT', place: 'New York' },
 ];
 
 export const NOT_KNOWN = 'Not known yet';
@@ -295,6 +322,39 @@ export const REVIEWER_LABEL: Record<string, string> = {
   security: 'Security review',
   functional: 'Functional review',
 };
+
+/** The result of checking a source against its official page, in plain words. */
+export const CHECK_STATUS_LABEL: Record<string, string> = {
+  confirmed: 'Read directly',
+  changed: 'Read directly — the page has changed',
+  blocked_by_site: 'Site refused — official index only',
+  indexed_only: 'Official index only',
+  not_found: 'Page gone',
+  not_checked: 'Not checked yet',
+};
+
+/** What a rule's date means, as a sentence fragment. */
+export const RULE_BOUND_LABEL: Record<string, string> = {
+  by: 'Do it on or before this date',
+  not_before: 'The earliest allowed date — nothing before it',
+  on: 'Happens on this day',
+  continuous_since: 'Has to already be true, without a break, since this date',
+  recurring: 'Repeats after an event; there is no single date',
+};
+
+/** How a rule came to be in the plan (the imported status code, not shown as-is). */
+export const PLAN_RULE_STATUS_LABEL: Record<string, string> = {
+  confirmed: 'Confirmed by a review',
+  corrected: 'Corrected by a review',
+  new: 'Added by a review',
+};
+
+/** `immigration_tax` / `immigration-tax` -> the review's display name. */
+export function reviewerLabel(key: string | null | undefined): string | null {
+  if (!key) return null;
+  const k = key.replace(/_/g, '-');
+  return REVIEWER_LABEL[k] ?? (k.charAt(0).toUpperCase() + k.slice(1).replace(/-/g, ' ') + ' review');
+}
 
 /** What a saved contact does and does not mean, used when the record has no sentence of its own. */
 export const CONTACT_BOUNDARY_DEFAULT: Record<string, string> = {

@@ -50,6 +50,8 @@ interface SnapshotCtx {
   save: SaveState;
   /** Register a form as having unsaved changes (drives the global "Unsaved changes" indicator). */
   setDirty(key: string, dirty: boolean): void;
+  /** How many forms currently hold changes that have not been saved. */
+  dirtyCount: number;
   actions: Actions;
 }
 
@@ -197,8 +199,8 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
   }, [save, dirty]);
 
   const value = useMemo<SnapshotCtx>(
-    () => ({ snapshot, idx, dir, status, loadedAt, error, refresh, save: effectiveSave, setDirty, actions }),
-    [snapshot, idx, dir, status, loadedAt, error, refresh, effectiveSave, setDirty, actions],
+    () => ({ snapshot, idx, dir, status, loadedAt, error, refresh, save: effectiveSave, setDirty, dirtyCount: dirty.size, actions }),
+    [snapshot, idx, dir, status, loadedAt, error, refresh, effectiveSave, setDirty, dirty.size, actions],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

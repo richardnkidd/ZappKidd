@@ -3,16 +3,19 @@ import { Link } from 'react-router';
 import type { ComputedDeadline } from '@shared/engine-contracts';
 import type { AuditEntry, HouseholdSettings } from '@shared/types';
 import { api, describeError } from '../../net/client';
-import { DateText, DeadlineBadge, VerificationNote } from '../../components/Badges';
+import { DateText, DeadlineBadge, DeadlineWhen, VerificationNote } from '../../components/Badges';
 import { Button } from '../../components/Controls';
 import { Disclosure } from '../../components/Disclosure';
 import { ErrorBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
+import { useIsDesktop } from '../../layout/useMedia';
 import { ItemCard } from '../../components/ItemCard';
 import { Card, EmptyState, Section, Skeleton } from '../../components/Layout';
 import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
+import { AuditLines } from '../../components/AuditLines';
 import { describeAuditList } from '../../lib/audit';
+import { lastCompletedReview } from '../../lib/reviews';
 import { civil, dayIn, instant, plural } from '../../lib/format';
 import {
   deadlineOwner,
@@ -21,12 +24,14 @@ import {
   selectComingUp,
   selectDecisions,
   selectNow,
+  selectPendingTasks,
   type ComingRow,
   type FilterContext,
   type OwnerFilter,
 } from '../../lib/home';
 import type { Directory, Indexes } from '../../lib/records';
 import { dataOf, firstReviewDecisionKeys } from '../../lib/records';
+import type { DeadlineRuleData } from '@shared/types';
 import { useData } from '../../state/data';
 import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
@@ -39,16 +44,20 @@ interface CommonProps {
   ctx: FilterContext;
 }
 
-/* ------------------------------------------------------------------ Now */
+/* ------------------------------------------------------------------ This week */
 
 export function NowSection({ idx, filter, ctx }: CommonProps) {
   const { today, deadlinesByRecord, deadlines } = useData();
-  const items = useMemo(
-    () => selectNow(idx, { today, filter, ctx, deadlinesByRecord: deadlines.ok ? deadlinesByRecord : undefined, limit: 5 }),
+  const desktop = useIsDesktop();
+  const cap = desktop ? 5 : 3;
+  const all = useMemo(
+    () => selectNow(idx, { today, filter, ctx, deadlinesByRecord: deadlines.ok ? deadlinesByRecord : undefined, limit: 50 }),
     [idx, today, filter, ctx, deadlinesByRecord, deadlines],
   );
+  const items = all.slice(0, cap);
+  const more = all.length - items.length;
   return (
-    <Section title="Now" className="sec-now" intro="The next few things worth doing, with nothing standing in the way.">
+    <Section title="This week" className="sec-now" intro={desktop ? 'The next few things worth doing, with nothing standing in the way.' : undefined}>
       {items.length === 0 ? (
         <Card>
           <EmptyState icon="check" title={filter === 'all' ? 'Nothing is waiting on you right now.' : 'Nothing here for this view.'}>
@@ -68,9 +77,7 @@ export function NowSection({ idx, filter, ctx }: CommonProps) {
               owner={it.owner}
               ownerProposed={it.ownerProposed}
               nextAction={it.nextAction}
-              date={it.date}
-              dateKind={it.dateKind}
-              dateState={it.dateState}
+              when={it.when}
               today={today}
               note={it.note}
               showStatus={it.kind === 'milestone' && it.status === 'in_progress'}
@@ -80,8 +87,68 @@ export function NowSection({ idx, filter, ctx }: CommonProps) {
         </ul>
       )}
       <p className="small">
-        <Link to="/plan" className="more-link">See the whole plan</Link>
+        <Link to="/plan?view=list" className="more-link">
+          {more > 0 ? `${more} more · see the whole plan` : 'See the whole plan'}
+        </Link>
       </p>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ Waiting to be added to the task list */
+
+export function PendingTasksSection({ idx, dir, filter, ctx }: CommonProps & { dir: Directory }) {
+  const { snapshot, actions } = useSnapshot();
+  const { today } = useData();
+  const tasks = useMemo(() => selectPendingTasks(idx, filter, ctx), [idx, filter, ctx]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const canWrite = snapshot?.settings?.task_adapter?.can_write ?? false;
+  if (tasks.length === 0) return null;
+  const add = async (id: string) => {
+    setBusy(id);
+    setError(null);
+    try {
+      await actions.retryTask(id);
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Section title="Waiting to be added to your task list" count={tasks.length} className="sec-pending" headingLevel={2}>
+      <ul className="item-list">
+        {tasks.map((t) => (
+          <li key={t.id} className="item item--flat">
+            <div className="item__main">
+              <span className="item__title">{t.title}</span>
+              <div className="item__meta">
+                <OwnerChip owner={t.owner} compact />
+                <span className="chip chip--kin chip--sm">Waiting to be added</span>
+                {t.due && (
+                  <span className="faint small">
+                    {t.due < today ? 'Date was ' : 'Proposed for '}
+                    <time dateTime={t.due}>{civil(t.due, 'weekday')}</time>
+                  </span>
+                )}
+              </div>
+              {canWrite ? (
+                <div className="row-actions" style={{ marginTop: 0 }}>
+                  <Button variant="secondary" small busy={busy === t.id} onClick={() => add(t.id)}>
+                    Mark as added
+                  </Button>
+                </div>
+              ) : (
+                <p className="small muted">
+                  Kadode can’t add this to your task list. {t.owner && t.owner !== 'unassigned' && t.owner !== 'together' ? dir.nameOf(t.owner) : 'Whoever owns it'} adds it there by hand.
+                </p>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {error && <p className="field__error" role="alert">{error}</p>}
     </Section>
   );
 }
@@ -117,7 +184,7 @@ export function DecisionsSection({ idx, dir, filter, ctx }: CommonProps & { dir:
                     {d.title}
                   </Link>
                   <p className="item__action">
-                    <span className="item__label">{d.status === 'proposed' ? 'Proposal' : 'Open'}</span> {summary.text}
+                    <span className="item__label">{d.status === 'proposed' ? 'Suggested' : 'Open question'}</span> {summary.text}
                   </p>
                   <div className="item__meta">
                     <OwnerChip owner={d.owner} proposed={d.owner_proposed} compact />
@@ -152,8 +219,27 @@ export function DecisionsSection({ idx, dir, filter, ctx }: CommonProps & { dir:
 export function BlockedSection({ idx, filter, ctx }: CommonProps) {
   const { today } = useData();
   const plain = usePlain();
+  const desktop = useIsDesktop();
   const all = useMemo(() => selectBlocked(idx, filter, ctx), [idx, filter, ctx]);
   const shown = all.slice(0, 3);
+  // On a phone: one sentence and a link. Most blocked work usually waits on the same thing, so say what.
+  if (!desktop) {
+    if (all.length === 0) return null;
+    const tally = new Map<string, { title: string; n: number }>();
+    for (const b of all) for (const w of b.waitingOn) tally.set(w.key, { title: w.title, n: (tally.get(w.key)?.n ?? 0) + 1 });
+    const top = [...tally.values()].sort((a, b) => b.n - a.n)[0];
+    return (
+      <section aria-labelledby="blocked-line" className="blocked-line sec-blocked">
+        <h2 id="blocked-line" className="blocked-line__text">
+          Blocked: {all.length}
+          <span className="blocked-line__why">{top && top.n * 2 >= all.length ? ` — most wait on “${top.title}”` : ''}</span>
+        </h2>
+        <Link to="/plan?view=board" className="more-link">
+          See what’s blocked
+        </Link>
+      </section>
+    );
+  }
   return (
     <Section title="Blocked" count={all.length || undefined} className="sec-blocked" intro="What is stuck, and what it is waiting for.">
       {shown.length === 0 ? (
@@ -200,6 +286,15 @@ function whoseDeadline(d: ComputedDeadline, idx: Indexes, dir: Directory) {
   return deadlineOwner(d, idx, dir);
 }
 
+/** The one-line "Only if…" condition under a rule-dated row, so a conditional date never looks certain. */
+function RuleCondition({ d, idx }: { d: ComputedDeadline; idx: Indexes }) {
+  const plain = usePlain();
+  const rule = d.rule_id ? (idx.byKey.get(d.rule_id) ?? null) : null;
+  const when = rule ? dataOf<DeadlineRuleData>(rule).applies_when : null;
+  if (!rule || !when || d.applies === 'yes') return null;
+  return <p className="small muted rule-condition">{plain(when)}</p>;
+}
+
 function ComingDeadline({ d, idx, dir, today }: { d: ComputedDeadline; idx: Indexes; dir: Directory; today: string }) {
   const verification = deadlineVerification(d, idx);
   const label = d.record_id ? (
@@ -212,7 +307,7 @@ function ComingDeadline({ d, idx, dir, today }: { d: ComputedDeadline; idx: Inde
   return (
     <>
       <div className="coming__date">
-        <DateText date={d.deadline.date} today={today} state={d.state} kind={d.kind} />
+        <DeadlineWhen d={d} today={today} />
       </div>
       <div className="coming__body">
         {label}
@@ -222,6 +317,7 @@ function ComingDeadline({ d, idx, dir, today }: { d: ComputedDeadline; idx: Inde
           {d.approximate && <span className="faint small">Approximate — holidays not counted</span>}
         </div>
         <VerificationNote verification={verification} kind={d.kind} />
+        <RuleCondition d={d} idx={idx} />
       </div>
     </>
   );
@@ -239,11 +335,11 @@ function ComingReview({ row, today }: { row: ComingRow; today: string }) {
           <summary>
             <Icon name="chevron-right" size={16} className="review-summary__chev" />
             <span>
-              <strong>Proposed review checkpoint</strong>
-              <span className="faint"> · {plural(reviews.length, 'item')} · not yet scheduled</span>
+              <strong>Check-in on {row.date ? civil(row.date, 'short') : 'a date to be set'}</strong>
+              <span className="faint"> ({plural(reviews.length, 'item')}, not booked)</span>
             </span>
           </summary>
-          <p className="small muted">A checkpoint to look at these again together. It is not a deadline.</p>
+          <p className="small muted">A moment to look at these again together. It is not a deadline and nothing is booked.</p>
           <ul className="review-summary__list">
             {reviews.map((r) => (
               <li key={r.id}>
@@ -349,6 +445,8 @@ export function ComingUpSection({ idx, dir, filter, ctx }: CommonProps & { dir: 
                   <DeadlineBadge kind={d.kind} />
                   <OwnerChip owner={whoseDeadline(d, idx, dir)} compact />
                 </span>
+                <VerificationNote verification={deadlineVerification(d, idx)} kind={d.kind} />
+                <RuleCondition d={d} idx={idx} />
               </li>
             ))}
           </ul>
@@ -462,7 +560,8 @@ export function SinceReviewSection({ idx, dir }: { idx: Indexes; dir: Directory 
 
   const lines = useMemo(() => (state.kind === 'ready' ? describeAuditList(state.entries, idx, dir) : []), [state, idx, dir]);
   const shown = showAll ? lines : lines.slice(0, 8);
-  const title = since ? 'Since your last review' : 'Recent changes';
+  const lastReview = useMemo(() => lastCompletedReview(idx), [idx]);
+  const title = since ? (lastReview ? <RecordLink id={lastReview.id}>Since your last review</RecordLink> : 'Since your last review') : 'Recent changes';
 
   return (
     <Section
@@ -493,26 +592,7 @@ export function SinceReviewSection({ idx, dir }: { idx: Indexes; dir: Directory 
       )}
       {state.kind === 'ready' && lines.length > 0 && (
         <Card>
-          <ul className="audit-list">
-            {shown.map((l) => (
-              <li key={l.id} className="audit-line">
-                <span className="audit-line__text">
-                  <strong>{l.who}</strong> {l.what}
-                  {l.recordId && (
-                    <>
-                      {' '}
-                      <RecordLink id={l.recordId} className="audit-line__link" ariaLabel={`Open: ${l.what}`}>
-                        Open
-                      </RecordLink>
-                    </>
-                  )}
-                </span>
-                <time className="faint small" dateTime={l.at}>
-                  {instant(l.at, zone, 'short')}
-                </time>
-              </li>
-            ))}
-          </ul>
+          <AuditLines lines={shown} />
           {lines.length > 8 && (
             <div className="center">
               <Button variant="quiet" onClick={() => setShowAll((v) => !v)}>

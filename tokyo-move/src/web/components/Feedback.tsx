@@ -128,13 +128,20 @@ interface ConflictBannerProps {
   busy?: boolean;
   onKeepTheirs: () => void;
   onUseMine: () => void;
+  /** For a single text field: open the editor with both versions together, to be tidied by hand. */
+  onCombine?: (theirs: string, yours: string) => void;
 }
 
+const NOT_TEXT = /(^|\.)(owner|status|review_date|deadline|priority|visibility)$/;
+
 /** "<Name> changed this while you were editing": show theirs vs yours and let the person choose. */
-export function ConflictBanner({ conflict, busy, onKeepTheirs, onUseMine }: ConflictBannerProps) {
+export function ConflictBanner({ conflict, busy, onKeepTheirs, onUseMine, onCombine }: ConflictBannerProps) {
   const dir = useDir();
   const who = conflict.server?.updated_by ? dir.nameOf(conflict.server.updated_by) : 'Someone';
   const diffs = conflictDiffs(conflict.yourChanges, conflict.server, dir);
+  const only = diffs.length === 1 ? diffs[0] : null;
+  const canCombine = Boolean(onCombine && only && !NOT_TEXT.test(only.path) && only.theirs !== 'Not set' && only.yours !== 'Not set');
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
   return (
     <div className="banner banner--conflict" role="alert">
       <Icon name="alert" size={20} />
@@ -142,35 +149,57 @@ export function ConflictBanner({ conflict, busy, onKeepTheirs, onUseMine }: Conf
         <p className="banner__title">{who} changed this while you were editing.</p>
         <p className="muted">Nothing was overwritten. Choose which version to keep.</p>
         {diffs.length > 0 && (
-          <div className="conflict-table-wrap">
-            <table className="conflict-table">
-              <caption className="visually-hidden">Their version beside yours</caption>
-              <thead>
-                <tr>
-                  <th scope="col">What</th>
-                  <th scope="col">{who}'s version</th>
-                  <th scope="col">Your version</th>
-                </tr>
-              </thead>
-              <tbody>
-                {diffs.map((d) => (
-                  <tr key={d.path}>
-                    <th scope="row">{d.label}</th>
-                    <td className="preline">{d.theirs}</td>
-                    <td className="preline">{d.yours}</td>
+          <>
+            <div className="conflict-table-wrap conflict-wide">
+              <table className="conflict-table">
+                <caption className="visually-hidden">Their version beside yours</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">What</th>
+                    <th scope="col">{who}'s version</th>
+                    <th scope="col">Your version</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {diffs.map((d) => (
+                    <tr key={d.path}>
+                      <th scope="row">{cap(d.label)}</th>
+                      <td className="preline">{d.theirs}</td>
+                      <td className="preline">{d.yours}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <ul className="conflict-cards">
+              {diffs.map((d) => (
+                <li key={d.path}>
+                  <p className="conflict-cards__field">{cap(d.label)}</p>
+                  <div className="conflict-card">
+                    <p className="conflict-card__who">{who}'s version</p>
+                    <p className="preline">{d.theirs}</p>
+                  </div>
+                  <div className="conflict-card">
+                    <p className="conflict-card__who">Your version</p>
+                    <p className="preline">{d.yours}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
-        <div className="row-actions">
+        <div className="row-actions conflict-actions">
           <Button variant="secondary" onClick={onKeepTheirs} disabled={busy}>
             Keep {who}'s version
           </Button>
-          <Button variant="primary" onClick={onUseMine} busy={busy}>
+          <Button variant="secondary" onClick={onUseMine} busy={busy}>
             Use mine instead
           </Button>
+          {canCombine && only && (
+            <Button variant="secondary" onClick={() => onCombine?.(only.theirs, only.yours)} disabled={busy}>
+              Combine them
+            </Button>
+          )}
         </div>
       </div>
     </div>

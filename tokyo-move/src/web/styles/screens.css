@@ -112,9 +112,7 @@ a.item__title:focus-visible::after {
 
 /* ---------- Home ---------- */
 .season {
-  margin-top: calc(var(--s-3) * -1);
   color: var(--ink-3);
-  font-size: var(--fs-1);
 }
 .season__kanji {
   font-family: var(--font-jp);
@@ -132,10 +130,11 @@ a.item__title:focus-visible::after {
 }
 @media (max-width: 1023.98px) {
   .sec-now { order: 1; }
-  .sec-decide { order: 2; }
-  .sec-blocked { order: 3; }
-  .sec-coming { order: 4; }
-  .sec-ready { order: 5; }
+  .sec-pending { order: 2; }
+  .sec-decide { order: 3; }
+  .sec-blocked { order: 4; }
+  .sec-coming { order: 5; }
+  .sec-ready { order: 6; }
 }
 @media (min-width: 1024px) {
   .home-grid {
@@ -216,7 +215,15 @@ a.coming__title {
 }
 .review-summary summary .icon {
   margin-top: 4px;
+  flex: none;
   transition: transform 150ms;
+}
+.review-summary summary > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.coming__body {
+  min-width: 0;
 }
 .review-summary[open] summary .icon {
   transform: rotate(90deg);
@@ -827,8 +834,49 @@ code {
 .decision__title {
   font-size: var(--fs-3);
 }
+.decision__sub {
+  font-family: var(--font-ui);
+  font-size: var(--fs-1);
+  font-weight: 650;
+  letter-spacing: 0;
+}
 .decision__rec {
   max-width: none;
+}
+.settled {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  max-width: none;
+  color: var(--matcha);
+}
+.settled .icon {
+  margin-top: 3px;
+}
+.decided-live:empty {
+  display: none;
+}
+.decided-banner {
+  display: flex;
+  gap: var(--s-2);
+  align-items: flex-start;
+  max-width: none;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-card);
+  background: var(--matcha-soft);
+  color: var(--matcha);
+  border: 1px solid var(--matcha);
+}
+.decided-banner:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.decided-banner a {
+  color: inherit;
+  font-weight: 650;
+}
+.decide-later > .disclosure__body {
+  padding-top: var(--s-3);
 }
 .approval {
   display: flex;
@@ -1039,4 +1087,212 @@ code {
 .item a:not(.item__title) {
   position: relative;
   z-index: 2;
+}
+
+
+/* ---------- One-row readiness chips (phone Home) ---------- */
+.ready-chips {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-2);
+}
+.ready-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 52px;
+  padding: var(--s-2);
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-card);
+  color: var(--ink);
+  text-decoration: none;
+  min-width: 0;
+}
+.ready-chip--kaki {
+  border-color: var(--kaki);
+}
+.ready-chip--matcha {
+  border-color: var(--matcha);
+}
+.ready-chip--ai {
+  border-color: var(--ai);
+}
+.ready-chip__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.ready-chip__name {
+  font-weight: 650;
+  font-size: var(--fs-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ready-chip__state {
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 359.98px) {
+  .ready-chip .pbadge {
+    display: none;
+  }
+}
+
+
+/* Phone: Blocked is one sentence and a link */
+.blocked-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--kaki);
+  border-radius: var(--r-card);
+}
+.blocked-line__text {
+  font-family: var(--font-ui);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  flex: 1 1 14rem;
+}
+.blocked-line__why {
+  font-weight: 450;
+  color: var(--ink-2);
+}
+.rule-condition {
+  max-width: 62ch;
+}
+
+
+/* ---------- "Does this apply to <name>?" ---------- */
+.applies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+.applies__q {
+  font-weight: 600;
+  max-width: none;
+}
+.applies__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.applies__btn[aria-pressed='true'] {
+  background: var(--ai-soft);
+  border-color: var(--ai);
+  color: var(--ai);
+  font-weight: 650;
+}
+
+
+/* ---------- Questions for your advisers ---------- */
+.advisers__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.advisers__list {
+  list-style: decimal;
+  padding-left: var(--s-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin: var(--s-3) 0 0;
+}
+.advisers__q {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding-left: var(--s-1);
+}
+.advisers__q::marker {
+  font-weight: 650;
+}
+.advisers__question {
+  font-weight: 600;
+  max-width: 66ch;
+}
+.print-only {
+  display: none;
+}
+.advisers__q--more {
+  display: none;
+}
+@media print {
+  .advisers__q--more {
+    display: list-item;
+  }
+  .print-only {
+    display: block;
+  }
+  html[data-print='advisers'] .decide > .page-head,
+  html[data-print='advisers'] .decide > .segmented--nav,
+  html[data-print='advisers'] .print-hide {
+    display: none !important;
+  }
+  html[data-print='advisers'] .advisers-print .section__intro {
+    display: none;
+  }
+  .advisers__q {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* A saved-and-moved message that keeps keyboard and screen-reader users in place. */
+.notice {
+  margin: 0;
+  max-width: none;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-ctl);
+  background: var(--matcha-soft);
+  color: var(--matcha);
+  font-weight: 550;
+}
+.notice:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+
+/* Decision actions on phones: the main action on its own row, the other two side by side beneath it. */
+.decision__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+@media (max-width: 599.98px) {
+  .decision__actions .row-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .decision__actions .row-actions > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+
+/* Decide's four tabs sit two by two on a phone instead of leaving one alone on a second row. */
+@media (max-width: 479.98px) {
+  .decide .segmented--nav {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
 }

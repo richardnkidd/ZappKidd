@@ -73,6 +73,8 @@
   --shadow-sheet: 0 -8px 32px rgb(30 28 25 / 0.18);
   --shadow-panel: -12px 0 40px rgb(30 28 25 / 0.14);
 
+  --header-h: 61px; /* sticky header on phones: used by scroll-padding so focus never hides under it */
+  --nav-h: calc(64px + env(safe-area-inset-bottom)); /* measured at run time; this is the fallback */
   --tab-h: 64px;
   --rail-w: 248px;
   --gutter: 16px;

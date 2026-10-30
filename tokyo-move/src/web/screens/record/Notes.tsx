@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Field, TextArea } from '../../components/Controls';
 import { Icon } from '../../components/Icon';
 import { Section } from '../../components/Layout';
+import { clearDraft, loadDraft, saveDraft } from '../../lib/drafts';
 import { instant, truncate } from '../../lib/format';
 import type { AnyRecord, Directory, Indexes } from '../../lib/records';
 import { usePrefs } from '../../state/prefs';
@@ -12,7 +13,8 @@ export function Notes({ record, idx, dir, level = 2 }: { record: AnyRecord; idx:
   const { actions, setDirty } = useSnapshot();
   const { zone } = usePrefs();
   const w = useWrite();
-  const [body, setBody] = useState('');
+  const draftKey = `note:${record.id}`;
+  const [body, setBody] = useState(() => loadDraft(draftKey) ?? '');
   const [visibility, setVisibility] = useState<'household' | 'private'>('household');
 
   const notes = useMemo(
@@ -23,10 +25,19 @@ export function Notes({ record, idx, dir, level = 2 }: { record: AnyRecord; idx:
     [idx, record.id],
   );
 
-  const onChange = (v: string) => {
-    setBody(v);
-    setDirty(`note:${record.id}`, v.trim().length > 0);
-  };
+  const onChange = (v: string) => setBody(v);
+
+  // The unsaved flag and the tab-only draft follow the text; both go when the form is left or the note is added.
+  useEffect(() => {
+    const has = body.trim().length > 0;
+    setDirty(draftKey, has);
+    if (has) saveDraft(draftKey, body);
+    else clearDraft(draftKey);
+    return () => {
+      setDirty(draftKey, false);
+      clearDraft(draftKey);
+    };
+  }, [body, draftKey, setDirty]);
 
   const add = async () => {
     const text = body.trim();
@@ -41,10 +52,7 @@ export function Notes({ record, idx, dir, level = 2 }: { record: AnyRecord; idx:
         }),
       0,
     );
-    if (ok) {
-      setBody('');
-      setDirty(`note:${record.id}`, false);
-    }
+    if (ok) setBody('');
   };
 
   return (

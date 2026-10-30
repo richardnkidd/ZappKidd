@@ -68,6 +68,11 @@ Start the demo over from scratch: `npm run seed:demo -- --reset` (only ever rese
 
 This is a **local preview**: the real plan on one computer, nobody else can reach it.
 
+If you were given a **private bundle** (the reviewed corrections, household settings, reviews and reports), unzip it
+inside this `tokyo-move` folder first so its files land in `tokyo-move/private/` (gitignored). The import then applies
+the reviewed corrections automatically and says so ("Household overrides: …/private/household-overrides.json" and
+"(N private file(s))" with N above zero). Without the bundle you get the unreviewed source plan.
+
 ```bash
 # 1. Import the Revision 2 source package (a folder holding the workbook and its sidecar files).
 npm run import -- --source "/path/to/the Revision 2 package"

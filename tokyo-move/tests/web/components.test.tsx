@@ -234,19 +234,24 @@ describe('dates are honest about what they are', () => {
   it('an old date from a copy or an old record is neutral and says it proves nothing', () => {
     const el = mount(<DateText date="2026-08-15" state="historical" today="2026-10-29" />);
     expect(el.textContent).toContain('Aug 15, 2026');
-    expect(el.textContent).toContain('Old date — not evidence either way');
+    expect(el.textContent).toContain('Date has passed · check whether it’s done');
     expect(el.textContent).not.toMatch(/past its date|ago/i);
     expect(el.querySelector('.date-text--old')).not.toBeNull();
     expect(el.querySelector('.date-text--past')).toBeNull();
   });
-  it('a legal date on a weekend shows the weekday and a calm note, but a target date does not', () => {
-    const legal = mount(<DateText date="2026-11-07" kind="legal" today="2026-10-29" />);
-    expect(legal.textContent).toContain('Sat, Nov 7');
-    expect(legal.textContent).toContain('Falls on a weekend — aim for Fri, Nov 6.');
+  it('shows the engine’s business-day advice exactly as given, and nothing of its own', () => {
+    const withAdvice = mount(<DateText date="2026-11-07" prefix="Due by " advice="Falls on a weekend — aim for Fri, Nov 6." today="2026-10-29" />);
+    expect(withAdvice.textContent).toContain('Due by Sat, Nov 7');
+    expect(withAdvice.textContent).toContain('Falls on a weekend — aim for Fri, Nov 6.');
     act(() => root.unmount());
     container.remove();
-    const target = mount(<DateText date="2026-11-07" kind="internal_target" today="2026-10-29" />);
-    expect(target.textContent).not.toContain('weekend');
+    const none = mount(<DateText date="2026-11-07" kind="legal" today="2026-10-29" />);
+    expect(none.textContent).not.toContain('weekend');
+  });
+  it('a window shows both ends and a not-before date says the window opens', () => {
+    const win = mount(<DateText date="2027-08-21" endDate="2027-08-31" prefix="Exam window: " today="2026-10-29" />);
+    expect(win.querySelectorAll('time')).toHaveLength(2);
+    expect(win.textContent).toContain('Exam window: Sat, Aug 21, 2027 – Tue, Aug 31, 2027');
   });
   it('unknown stays unknown', () => {
     expect(mount(<DateText date={null} />).textContent).toBe('Awaiting date');

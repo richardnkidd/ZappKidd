@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildDemoBundle } from '../../fixtures/demo/bundle';
 import { collectDeadlines } from '../../src/shared/deadlines';
 import type { BaseRecord, Person, TaskLink } from '../../src/shared/types';
-import { weekendNote } from '../../src/web/lib/deadlineNotes';
+import { dateParts } from '../../src/web/lib/dateWords';
 import { evidenceVerification, directCheckOf, reviewChecksOf } from '../../src/web/lib/evidence';
 import { dayIn } from '../../src/web/lib/format';
 import { selectComingUp, type FilterContext } from '../../src/web/lib/home';
@@ -23,18 +23,31 @@ const idx = buildIndexes(records, taskLinks);
 const dir = buildDirectory(people, people.find((p) => p.kind === 'adult')!.id);
 const ctx: FilterContext = { meId: dir.me!.id, otherIds: dir.others.map((o) => o.id) };
 
-describe('weekend heads-up for legal dates', () => {
-  it('suggests the business day before a legal date that falls on a weekend', () => {
-    expect(weekendNote('2026-11-07', 'legal', [])).toBe('Falls on a weekend — aim for Fri, Nov 6.'); // Saturday
-    expect(weekendNote('2026-11-08', 'legal', [])).toBe('Falls on a weekend — aim for Fri, Nov 6.'); // Sunday
+describe('what a computed date means, in words', () => {
+  it('"by" legal and contract dates read as Due by; targets stay plain', () => {
+    expect(dateParts({ bound: 'by', kind: 'legal', date: '2026-11-06' })).toMatchObject({ prefix: 'Due by ', suffix: '' });
+    expect(dateParts({ kind: 'contractual', date: '2026-11-06' }).prefix).toBe('Due by ');
+    expect(dateParts({ bound: 'by', kind: 'internal_target', date: '2026-11-06' }).prefix).toBe('');
   });
-  it('is silent for weekdays, other kinds of date and unknown dates', () => {
-    expect(weekendNote('2026-11-06', 'legal', [])).toBeNull();
-    expect(weekendNote('2026-11-07', 'internal_target', [])).toBeNull();
-    expect(weekendNote(null, 'legal', [])).toBeNull();
+  it('"not before" is a window opening, never a deadline', () => {
+    const p = dateParts({ bound: 'not_before', kind: 'legal', date: '2027-08-21' });
+    expect(p.prefix).toBe('Not before ');
+    expect(p.suffix).toBe(' (window opens)');
   });
-  it('also notices a listed public holiday and skips it going back', () => {
-    expect(weekendNote('2026-11-03', 'legal', ['2026-11-03'])).toBe('Falls on a public holiday — aim for Mon, Nov 2.');
+  it('a window pair reads as one window, earlier date first, naming an exam when it is one', () => {
+    const p = dateParts({ bound: 'not_before', kind: 'legal', date: '2027-08-21', pairDate: '2027-08-31', label: "Scout's vet exam must be within the 10 days before she is loaded" });
+    expect(p).toMatchObject({ prefix: 'Exam window: ', date: '2027-08-21', endDate: '2027-08-31' });
+    expect(dateParts({ bound: 'not_before', kind: 'legal', date: '2027-08-31', pairDate: '2027-08-21' }).date).toBe('2027-08-21');
+  });
+  it('on, continuous_since and recurring each get their own words', () => {
+    expect(dateParts({ bound: 'on', date: '2027-07-06' }).prefix).toBe('On ');
+    expect(dateParts({ bound: 'continuous_since', date: '2027-01-02' }).prefix).toBe('Must already be true since ');
+    const r = dateParts({ bound: 'recurring', date: null, trigger: 'When the address changes.' });
+    expect(r.emptyText).toBe('Repeats — when the address changes');
+    expect(r.date).toBeNull();
+  });
+  it('a date with no bound defaults to "by"', () => {
+    expect(dateParts({ kind: 'legal', date: '2026-11-06' }).prefix).toBe('Due by ');
   });
 });
 

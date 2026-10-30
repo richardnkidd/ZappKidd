@@ -81,8 +81,17 @@ function unmetDependencies(g: GateRecord, personId: string, idx: RecordIndex): B
   return out;
 }
 
-function waitingOn(deps: BaseRecord[]): string {
-  const names = deps.map((d) => d.title.trim()).filter(Boolean);
+/** "Waiting on: <title> — <reason>; <title>." The reason comes from the waiting record's own dependency_reason[dep]. */
+function waitingOn(deps: BaseRecord[], waiting?: GateRecord): string {
+  const reasons = waiting ? (dataOf(waiting).dependency_reason ?? {}) : {};
+  const names = deps
+    .map((d) => {
+      const title = d.title.trim();
+      if (!title) return '';
+      const reason = reasons[d.key];
+      return hasText(reason) ? `${title} — ${reason.trim()}` : title;
+    })
+    .filter(Boolean);
   if (names.length === 0) return 'Waiting on earlier steps.';
   return `Waiting on: ${names.join('; ')}.`;
 }
@@ -104,7 +113,7 @@ function buildGate(
   if (blockedNow) {
     const reason = reasonFor(g, personId);
     if (hasText(reason)) blocker = reason!.trim();
-    else if (unmet.length > 0) blocker = waitingOn(unmet);
+    else if (unmet.length > 0) blocker = waitingOn(unmet, g);
     else blocker = status === 'waiting_external' ? 'Waiting on someone else.' : 'Marked as blocked; no reason is recorded yet.';
   }
   return {
@@ -211,14 +220,16 @@ export function travelerReadiness(person: Person, records: BaseRecord[], gates: 
   let state: ReadinessState;
   if (arrived) state = afterArrival.length > 0 && afterArrival.every((g) => g.met) ? 'settled' : 'arrived';
   else if (departed || (releaseDone && unmet.length === 0 && pre.length > 0)) state = 'released';
-  else if (pre.length > 0 && unmet.length === 0) state = 'ready_to_release';
+  else if (pre.length > 0 && unmet.length === 0 && conditionalUnknown.length === 0) state = 'ready_to_release';
+  else if (pre.length > 0 && unmet.length === 0) state = 'preparing'; // every required step is done, but some yes/no answers are missing
   else if (pre.length === 0) state = 'not_started';
   else if (open.length === 0 && blockers.length > 0) state = 'blocked';
   else if (met.length > 0 || unmet.some((g) => g.status === 'in_progress')) state = 'preparing';
   else state = 'not_started';
 
   const name = person.display_name;
-  const extra = conditionalUnknown.length > 0 ? ` ${plural(conditionalUnknown.length, 'conditional step still needs', 'conditional steps still need')} a yes or no on whether ${conditionalUnknown.length === 1 ? 'it applies' : 'they apply'}.` : '';
+  const yesNo = conditionalUnknown.length > 0 ? `${plural(conditionalUnknown.length, 'step still needs', 'steps still need')} a yes or no` : '';
+  const extra = yesNo ? ` ${yesNo}.` : '';
   let headline: string;
   switch (state) {
     case 'settled':
@@ -234,10 +245,13 @@ export function travelerReadiness(person: Person, records: BaseRecord[], gates: 
       headline = `Every required step is done for ${name}. It is ready for your go-ahead.${extra}`;
       break;
     case 'blocked':
-      headline = `${name}'s remaining ${plural(unmet.length, 'step is', 'steps are')} all waiting on something. ${blockers[0]?.blocker ?? ''}`.trim();
+      headline = `${name}'s remaining ${plural(unmet.length, 'step is', 'steps are')} all waiting on something. ${blockers[0]?.blocker ?? ''}${extra}`.trim();
       break;
     case 'preparing':
-      headline = `${name} is preparing. ${plural(unmet.length, 'step is', 'steps are')} left${nextAction ? `; next up: ${nextAction.title}` : ''}.${extra}`;
+      headline =
+        unmet.length === 0
+          ? `Every required step is done for ${name}, but ${yesNo} before it is ready for your go-ahead.`
+          : `${name} is preparing. ${plural(unmet.length, 'step is', 'steps are')} left${nextAction ? `; next up: ${nextAction.title}` : ''}.${extra}`;
       break;
     default:
       headline = pre.length === 0 ? `No required steps are set up for ${name} yet.` : `${name} has not started yet${nextAction ? `; the first step is: ${nextAction.title}` : ''}.`;
@@ -272,15 +286,36 @@ export function householdReadiness(people: Person[], records: BaseRecord[], gate
   });
 }
 
+export interface DependencyChainEntry {
+  key: string;
+  title: string;
+  status: string;
+  met: boolean;
+  depth: number;
+  /** Why the waiting record needs this one (its dependency_reason[dep]), when recorded. */
+  reason?: string | null;
+}
+
+/** 'W64.<person>' / 'W60.<person>' style keys belong to one traveler. */
+function personFromKey(key: string): string | null {
+  const m = /^[A-Za-z]+\d+\.([A-Za-z0-9_-]+)$/.exec(key);
+  return m ? (m[1] as string) : null;
+}
+
 /**
  * Dependency chain for a record, nearest first: every direct dependency is listed (with its met flag); the walk only
  * continues through dependencies that are not yet met. Cycle-safe. Used instead of a numeric critical path.
+ *
+ * With a traveler (given, or inferred from a 'W64.<person>' style key) the chain is that traveler's: dependencies scoped
+ * to other travelers (dependency_scope) are skipped, and each dependency's status and met flag come from that traveler's
+ * own progress. Optional future work is never part of a chain.
  */
-export function dependencyChain(recordKey: string, records: BaseRecord[]): { key: string; title: string; status: string; met: boolean; depth: number }[] {
+export function dependencyChain(recordKey: string, records: BaseRecord[], personId?: string | null): DependencyChainEntry[] {
   const idx = indexRecords(records);
   const root = idx.milestone.get(recordKey);
   if (!root) return [];
-  const out: { key: string; title: string; status: string; met: boolean; depth: number }[] = [];
+  const who = personId ?? personFromKey(recordKey) ?? '';
+  const out: DependencyChainEntry[] = [];
   const visited = new Set<string>([recordKey]);
   let frontier: BaseRecord[] = [root];
   let depth = 0;
@@ -288,13 +323,17 @@ export function dependencyChain(recordKey: string, records: BaseRecord[]): { key
     depth += 1;
     const next: BaseRecord[] = [];
     for (const rec of frontier) {
-      for (const depKey of (rec.data as unknown as MilestoneData).dependencies ?? []) {
+      const data = rec.data as unknown as MilestoneData;
+      for (const depKey of data.dependencies ?? []) {
         if (visited.has(depKey)) continue;
+        const scope = data.dependency_scope?.[depKey];
+        if (who && scope && !scope.includes(who)) continue;
         const dep = idx.milestone.get(depKey);
-        if (!dep) continue;
+        if (!dep || isOptional(dep)) continue;
         visited.add(depKey);
-        const met = dep.status === 'completed' || ((dep.status === 'not_applicable' || dep.status === 'eliminated') && hasText((dep.data as unknown as MilestoneData).status_reason));
-        out.push({ key: dep.key, title: dep.title, status: dep.status, met, depth });
+        const met = isMet(dep, who);
+        const reason = data.dependency_reason?.[depKey];
+        out.push({ key: dep.key, title: dep.title, status: statusFor(dep, who), met, depth, ...(hasText(reason) ? { reason: reason.trim() } : {}) });
         if (!met) next.push(dep);
       }
     }
@@ -303,12 +342,20 @@ export function dependencyChain(recordKey: string, records: BaseRecord[]): { key
   return out;
 }
 
-/** Records that (transitively) depend on `recordKey` — used to show affected downstream work. Nearest first. */
-export function downstreamOf(recordKey: string, records: BaseRecord[]): string[] {
+/**
+ * Records that (transitively) depend on `recordKey` — used to show affected downstream work. Nearest first.
+ * With a traveler (given, or inferred from a 'W64.<person>' style key) a dependent counts only when its dependency on the
+ * record applies to that traveler (dependency_scope).
+ */
+export function downstreamOf(recordKey: string, records: BaseRecord[], personId?: string | null): string[] {
+  const who = personId ?? personFromKey(recordKey) ?? '';
   const milestones = records.filter((r) => r.type === 'milestone');
   const dependents = new Map<string, string[]>();
   for (const m of milestones) {
-    for (const dep of (m.data as unknown as MilestoneData).dependencies ?? []) {
+    const data = m.data as unknown as MilestoneData;
+    for (const dep of data.dependencies ?? []) {
+      const scope = data.dependency_scope?.[dep];
+      if (who && scope && !scope.includes(who)) continue;
       const list = dependents.get(dep) ?? [];
       list.push(m.key);
       dependents.set(dep, list);

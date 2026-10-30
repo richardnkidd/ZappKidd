@@ -80,7 +80,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --paper: #15130f;
     --surface: #1e1b16;
     --surface-2: #1a1813;
@@ -111,6 +111,46 @@
     --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.5);
     --shadow-panel: -12px 0 40px rgb(0 0 0 / 0.5);
   }
+}
+
+/* A person can force a theme in Settings (data-theme on <html>); otherwise the system setting decides. */
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --paper: #15130f;
+  --surface: #1e1b16;
+  --surface-2: #1a1813;
+  --overlay: rgb(0 0 0 / 0.6);
+
+  --ink: #f3efe6;
+  --ink-2: #d0c9bb;
+  --ink-3: #a9a193;
+
+  --line: #38332b;
+  --line-strong: #7d766a;
+
+  --ai: #9fbce3;
+  --ai-soft: #1f2c3d;
+  --on-ai: #0e1a28;
+
+  --matcha: #a9cc8c;
+  --matcha-soft: #222d1a;
+
+  --kaki: #f2a584;
+  --kaki-soft: #37211a;
+
+  --kin: #ebc67f;
+  --kin-soft: #33290f;
+
+  --stone-soft: #2a2620;
+
+  --shadow-sheet: 0 -8px 32px rgb(0 0 0 / 0.5);
+  --shadow-panel: -12px 0 40px rgb(0 0 0 / 0.5);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 
 @media (min-width: 768px) {

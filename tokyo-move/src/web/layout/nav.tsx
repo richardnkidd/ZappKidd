@@ -9,7 +9,7 @@ interface NavItem {
 }
 
 export const MAIN_NAV: NavItem[] = [
-  { to: '/', label: 'Home', icon: 'home', match: (p) => p === '/' },
+  { to: '/', label: 'Home', icon: 'home', match: (p) => p === '/' || p.startsWith('/ready') },
   { to: '/plan', label: 'Plan', icon: 'plan', match: (p) => p.startsWith('/plan') || p.startsWith('/r/') },
   { to: '/decide', label: 'Decide', icon: 'decide', match: (p) => p.startsWith('/decide') },
   { to: '/money', label: 'Money', icon: 'money', match: (p) => p.startsWith('/money') },

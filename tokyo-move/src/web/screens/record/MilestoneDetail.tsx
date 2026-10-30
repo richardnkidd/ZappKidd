@@ -53,7 +53,7 @@ function DeadlineFacts({ deadline, state, idx, dir, today, computed }: { deadlin
   return (
     <div className="deadline-block">
       <p className="deadline-block__head">
-        <DateText date={deadline.date} today={today} state={state} /> <DeadlineBadge kind={deadline.kind} />
+        <DateText date={deadline.date} today={today} state={state} kind={deadline.kind} /> <DeadlineBadge kind={deadline.kind} />
       </p>
       <VerificationNote verification={verification} kind={deadline.kind} />
       <dl className="facts facts--tight">

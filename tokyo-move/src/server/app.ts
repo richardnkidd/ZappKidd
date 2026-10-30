@@ -25,6 +25,7 @@ import { registerAnchorRoutes } from './routes/anchors';
 import { registerTaskRoutes } from './routes/tasks';
 import { registerReviewRoutes } from './routes/reviews';
 import { registerDataRoutes } from './routes/data';
+import { registerSettingsRoutes } from './routes/settings';
 import { schemaVersion } from './db/db';
 
 export interface BuildAppOptions {
@@ -167,6 +168,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
   registerTaskRoutes(app, deps);
   registerReviewRoutes(app, deps);
   registerDataRoutes(app, deps);
+  registerSettingsRoutes(app, deps);
 
   if (serveWeb && webRoot) {
     await app.register(fastifyStatic, {

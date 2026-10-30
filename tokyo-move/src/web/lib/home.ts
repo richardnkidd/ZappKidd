@@ -241,6 +241,8 @@ export interface ComingGroup {
 export interface ComingUp {
   groups: ComingGroup[];
   awaiting: ComputedDeadline[];
+  /** Dated rows that were left out because of `maxRows` (a collapsed review-checkpoint row counts as one). */
+  hidden: number;
 }
 
 export function deadlineOwner(d: ComputedDeadline, idx: Indexes, dir: Directory): OwnerRef {
@@ -271,7 +273,7 @@ export function selectComingUp(
   deadlines: ComputedDeadline[],
   idx: Indexes,
   dir: Directory,
-  opts: { today: string; filter: OwnerFilter; ctx: FilterContext; windowDays?: number; reviewCollapseMin?: number },
+  opts: { today: string; filter: OwnerFilter; ctx: FilterContext; windowDays?: number; reviewCollapseMin?: number; maxRows?: number },
 ): ComingUp {
   const { today, filter, ctx } = opts;
   const windowDays = opts.windowDays ?? 60;
@@ -334,7 +336,21 @@ export function selectComingUp(
     g.rows.push(row);
   }
   groups.sort((a, b) => (a.key === 'past' ? -1 : b.key === 'past' ? 1 : a.key < b.key ? -1 : 1));
-  return { groups, awaiting };
+  const cap = opts.maxRows ?? Infinity;
+  let left = cap;
+  let hidden = 0;
+  const capped: ComingGroup[] = [];
+  for (const g of groups) {
+    if (left <= 0) {
+      hidden += g.rows.length;
+      continue;
+    }
+    const keep = g.rows.slice(0, left);
+    hidden += g.rows.length - keep.length;
+    left -= keep.length;
+    capped.push({ ...g, rows: keep });
+  }
+  return { groups: capped, awaiting, hidden };
 }
 
 /** Which rule (if any) produced a computed deadline, so its verification can be shown. */

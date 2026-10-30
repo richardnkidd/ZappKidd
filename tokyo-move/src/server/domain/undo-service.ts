@@ -24,7 +24,10 @@ export function undoAudit(deps: Deps, ctx: AuthContext, auditId: string, rawBody
     const entry = deps.db
       .prepare('SELECT * FROM audit_log WHERE household_id = ? AND id = ?')
       .get(ctx.householdId, auditId) as AuditRow | undefined;
-    if (!entry || !entry.record_id) throw notFound('Audit entry');
+    if (!entry) throw notFound('Audit entry');
+    if (!entry.record_id) {
+      throw validationError('This kind of change cannot be undone', [{ path: '', message: `"${entry.action}" entries that are not about one record are not undoable` }]);
+    }
     const row = getRecordRow(deps.db, ctx, entry.record_id);
     if (!row) throw notFound('Audit entry'); // private records' history is private too
     if (!UNDOABLE.has(entry.action)) {

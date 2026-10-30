@@ -13,8 +13,13 @@ import { clearSessionCookie } from '../auth/routes';
 import type { RecordType } from '../../shared/types';
 
 const pageQuery = z.strictObject({
-  limit: z.coerce.number().int().min(1).max(1000).optional(),
+  limit: z.coerce.number().int().min(1).max(2000).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+});
+const changesQuery = z.strictObject({
+  limit: z.coerce.number().int().min(1).max(2000).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+  correction_id: line(200).optional(),
 });
 const exportQuery = z.strictObject({
   format: z.enum(['json', 'csv']).optional(),
@@ -32,8 +37,8 @@ export function registerDataRoutes(app: FastifyInstance, deps: Deps): void {
 
   app.get<{ Params: { id: string } }>('/api/import/runs/:id/changes', async (request) => {
     const ctx = requireAuth(request);
-    const q = parseWith(pageQuery, request.query, 'Query');
-    return listImportChanges(deps, ctx, request.params.id, q.limit ?? 200, q.offset ?? 0);
+    const q = parseWith(changesQuery, request.query, 'Query');
+    return listImportChanges(deps, ctx, request.params.id, { limit: q.limit ?? 200, offset: q.offset ?? 0, correctionId: q.correction_id });
   });
 
   app.get('/api/export', async (request, reply) => {

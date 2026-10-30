@@ -15,24 +15,33 @@ const VISIBLE_CHANGE = `(NOT EXISTS (SELECT 1 FROM records r WHERE r.household_i
                OR EXISTS (SELECT 1 FROM records r WHERE r.household_id = c.household_id AND r.id = c.record_id
                            AND (r.visibility = 'household' OR r.created_by = @actor)))`;
 
-export function listImportChanges(deps: Deps, ctx: AuthContext, runId: string, limit: number, offset: number): { run: ImportRun; changes: ImportChange[]; total: number } {
+export interface ChangesPage {
+  run: ImportRun;
+  changes: ImportChange[];
+  /** Number of receipts matching the filter (not just this page). */
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export function listImportChanges(
+  deps: Deps,
+  ctx: AuthContext,
+  runId: string,
+  opts: { limit: number; offset: number; correctionId?: string | undefined },
+): ChangesPage {
+  const { limit, offset } = opts;
   const runRow = deps.db
     .prepare('SELECT * FROM import_runs WHERE household_id = ? AND id = ?')
     .get(ctx.householdId, runId) as Parameters<typeof importRunFromRow>[0] | undefined;
   if (!runRow) throw notFound('Import run');
-  const params = { hh: ctx.householdId, run: runId, actor: ctx.personId };
-  const total = (
-    deps.db
-      .prepare(`SELECT COUNT(*) AS n FROM import_changes c WHERE c.household_id = @hh AND c.import_run_id = @run AND ${VISIBLE_CHANGE}`)
-      .get(params) as { n: number }
-  ).n;
+  const params = { hh: ctx.householdId, run: runId, actor: ctx.personId, ...(opts.correctionId ? { correction: opts.correctionId } : {}) };
+  const filter = `c.household_id = @hh AND c.import_run_id = @run ${opts.correctionId ? 'AND c.correction_id = @correction' : ''} AND ${VISIBLE_CHANGE}`;
+  const total = (deps.db.prepare(`SELECT COUNT(*) AS n FROM import_changes c WHERE ${filter}`).get(params) as { n: number }).n;
   const rows = deps.db
-    .prepare(
-      `SELECT c.* FROM import_changes c WHERE c.household_id = @hh AND c.import_run_id = @run AND ${VISIBLE_CHANGE}
-        ORDER BY c.rowid LIMIT @limit OFFSET @offset`,
-    )
+    .prepare(`SELECT c.* FROM import_changes c WHERE ${filter} ORDER BY c.rowid LIMIT @limit OFFSET @offset`)
     .all({ ...params, limit, offset }) as ChangeRow[];
-  return { run: importRunFromRow(runRow), total, changes: rows.map(changeFromRow) };
+  return { run: importRunFromRow(runRow), total, limit, offset, changes: rows.map(changeFromRow) };
 }
 
 interface ChangeRow {

@@ -9,7 +9,6 @@ import { ErrorBanner } from '../../components/Feedback';
 import { Card, EmptyState, PageTitle, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
-import { plural } from '../../lib/format';
 import type { Directory, Indexes } from '../../lib/records';
 import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
@@ -133,7 +132,6 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
           Back to Home
         </Link>
       </p>
-      <p className="faint small">{plural(met.length, 'step')} finished of {met.length + open.length + blockers.length} needed before departure. No percentages are shown on purpose.</p>
     </div>
   );
 }

@@ -5,7 +5,9 @@ import { AppShell } from './layout/AppShell';
 import { useIsDesktop } from './layout/useMedia';
 import { Decide } from './screens/decide/Decide';
 import { Home } from './screens/home/Home';
+import { Money } from './screens/money/Money';
 import { More } from './screens/More';
+import { ReadyDetail } from './screens/ready/ReadyDetail';
 import { ComingSoon } from './screens/Placeholder';
 import { Plan } from './screens/plan/Plan';
 import { RecordPage, RecordPanel } from './screens/record/RecordDetail';
@@ -49,7 +51,8 @@ function AppRoutes() {
         <Route path="/plan" element={<Plan />} />
         <Route path="/r/:id" element={<RecordPage />} />
         <Route path="/decide/*" element={<Decide />} />
-        <Route path="/money" element={<ComingSoon title="Money" icon="money">The money picture is being built.</ComingSoon>} />
+        <Route path="/money" element={<Money />} />
+        <Route path="/ready/:personId" element={<ReadyDetail />} />
         <Route path="/more" element={<More />} />
         <Route path="/documents" element={<ComingSoon title="Documents" icon="doc" />} />
         <Route path="/contacts" element={<ComingSoon title="Contacts & evidence" icon="contacts" />} />

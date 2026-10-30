@@ -32,18 +32,21 @@ export const civilOrInstant = z
   .refine((s) => INSTANT.test(s) || isCivilDate(s), 'Expected YYYY-MM-DD or an ISO instant ending in Z');
 export const slug = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,79}$/, 'Expected letters, digits and - _ . :');
 
-/** A link to a restricted external location. Only http(s) is accepted; uploads are not implemented. */
+/**
+ * A link to a restricted external location (a shared-drive file, a receipt). https only: javascript:, data:, file:,
+ * http: and links carrying embedded credentials are all refused. Uploads are not implemented.
+ */
 export const externalLink = z
   .string()
   .max(2000)
   .refine((s) => {
     try {
       const u = new URL(s);
-      return u.protocol === 'https:' || u.protocol === 'http:';
+      return u.protocol === 'https:' && u.hostname !== '' && u.username === '' && u.password === '';
     } catch {
       return false;
     }
-  }, 'Expected an http(s) link');
+  }, 'Expected an https:// link (no embedded credentials)');
 
 export const moneySchema = z.strictObject({
   amount: z.number().finite().min(0).max(1e12),
@@ -251,6 +254,7 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     relevance: text(1000),
     status_boundary: text(1000),
     relationship: z.enum(['potential', 'contacted', 'engaged', 'former']),
+    relationship_basis: text(1000).nullable(),
     linked_records: linkedList,
   },
   existing_commitment: {
@@ -385,6 +389,7 @@ export const createDataSchemas = {
     relevance: text(1000).optional(),
     status_boundary: text(1000).optional(),
     relationship: z.enum(['potential', 'contacted', 'engaged', 'former']).optional(),
+    relationship_basis: text(1000).nullable().optional(),
     source_ids: z.array(line(100)).max(50).optional(),
     linked_records: linkedList.optional(),
   }),

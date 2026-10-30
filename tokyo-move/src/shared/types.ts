@@ -536,6 +536,8 @@ export interface ExistingCommitmentData {
   meaning: string;
   deadline_kind: DeadlineKind;
   evidence_caution: string;
+  /** Old task date kept for history; never shown as overdue (it proves nothing about completion). */
+  historical?: boolean;
   linked_records: string[];
 }
 

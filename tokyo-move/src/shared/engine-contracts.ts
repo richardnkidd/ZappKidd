@@ -21,7 +21,12 @@ import type {
 
 /* ---------- deadlines ---------- */
 
-export type DeadlineState = 'awaiting_date' | 'upcoming' | 'due_soon' | 'due_today' | 'overdue' | 'met' | 'not_applicable';
+/**
+ * 'historical': a past date from a dated copy or an old record (e.g. a read-only task-list copy or an old task date).
+ * It proves nothing either way about completion, so it is shown calmly — never as overdue.
+ */
+export type DeadlineState =
+  | 'awaiting_date' | 'upcoming' | 'due_soon' | 'due_today' | 'overdue' | 'met' | 'not_applicable' | 'historical';
 
 export interface ComputedDeadline {
   id: string; // stable: `${source}:${key}` e.g. 'rule:RULE-PET-NOTICE-MIN', 'record:W24', 'commitment:EC-01'

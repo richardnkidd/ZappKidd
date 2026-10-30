@@ -25,9 +25,29 @@ export function savePref(key: string, value: string): void {
   write(`kadode.${key}`, value);
 }
 
+export type ThemePref = 'system' | 'light' | 'dark';
+
+/** Apply the stored theme to <html>. Called before first render so there is no flash. Never throws. */
+export function applyTheme(theme: ThemePref): void {
+  try {
+    const root = document.documentElement;
+    if (theme === 'system') root.removeAttribute('data-theme');
+    else root.setAttribute('data-theme', theme);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function storedTheme(): ThemePref {
+  const t = read('kadode.theme');
+  return t === 'light' || t === 'dark' ? t : 'system';
+}
+
 interface PrefsCtx {
   zone: IanaZone;
   setZone(z: IanaZone): void;
+  theme: ThemePref;
+  setTheme(t: ThemePref): void;
 }
 const Ctx = createContext<PrefsCtx | null>(null);
 
@@ -42,7 +62,13 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     setZoneState(z);
     savePref('display-zone', z);
   }, []);
-  const value = useMemo(() => ({ zone, setZone }), [zone, setZone]);
+  const [theme, setThemeState] = useState<ThemePref>(storedTheme);
+  const setTheme = useCallback((t: ThemePref) => {
+    setThemeState(t);
+    applyTheme(t);
+    savePref('theme', t);
+  }, []);
+  const value = useMemo(() => ({ zone, setZone, theme, setTheme }), [zone, setZone, theme, setTheme]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

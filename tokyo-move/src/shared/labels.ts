@@ -132,6 +132,7 @@ export const DEADLINE_STATE_LABEL: Record<DeadlineState, string> = {
   overdue: 'Past its date',
   met: 'Met',
   not_applicable: 'Not needed',
+  historical: 'Old date — not evidence either way',
 };
 
 export const SYNC_STATE_LABEL: Record<TaskSyncState, string> = {

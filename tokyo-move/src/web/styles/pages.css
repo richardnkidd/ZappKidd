@@ -1,0 +1,132 @@
+/* Phase 2 screens: Money, Documents, Contacts, Arrival, Future, Data, Settings, Review, What-if, Arrival pack. */
+
+.money-h3 {
+  font-family: var(--font-ui);
+  font-size: var(--fs-2);
+  font-weight: 650;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-3);
+}
+@media (min-width: 520px) {
+  .form-row {
+    grid-template-columns: 11rem minmax(0, 1fr);
+  }
+}
+
+/* Money */
+.fx__effect {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  max-width: none;
+  padding: var(--s-2) var(--s-3);
+  background: var(--ai-soft);
+  color: var(--ink);
+  border-radius: var(--r-ctl);
+}
+.fx__effect .icon {
+  margin-top: 3px;
+  color: var(--ai);
+}
+.cash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.cash__headline {
+  font-weight: 650;
+  font-size: var(--fs-2);
+  max-width: none;
+}
+.cash__headline .icon {
+  margin-right: 4px;
+}
+.money-section > .disclosure__summary {
+  flex-wrap: wrap;
+}
+.money-section .disclosure__meta {
+  flex: 1 0 100%;
+  padding-left: 26px;
+  font-size: var(--fs-1);
+  color: var(--ink-2);
+}
+@media (min-width: 640px) {
+  .money-section .disclosure__meta {
+    flex: 0 1 auto;
+    padding-left: 0;
+    text-align: right;
+  }
+}
+.money-reserve {
+  margin: var(--s-2) 0;
+}
+.cost-lines {
+  display: flex;
+  flex-direction: column;
+}
+.cost-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  border-top: 1px solid var(--line);
+}
+.cost-line:first-child {
+  border-top: 0;
+}
+.cost-line__title {
+  font-weight: 600;
+  max-width: none;
+}
+.cost-line__native {
+  font-weight: 650;
+  font-size: var(--fs-2);
+}
+.cost-line__missing {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ink-2);
+}
+.cost-line__missing .icon {
+  color: var(--kin);
+  margin-right: 2px;
+}
+@media (min-width: 640px) {
+  .cost-line {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: var(--s-5);
+  }
+  .cost-line__main {
+    flex: 1;
+    min-width: 0;
+  }
+  .cost-line__amount {
+    flex: 0 0 15rem;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+}
+.income-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.income {
+  padding: var(--s-3) var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.income__who {
+  font-weight: 650;
+}
+.not-counted .plain-list {
+  margin-top: var(--s-2);
+}

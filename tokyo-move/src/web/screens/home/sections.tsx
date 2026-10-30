@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { ComputedDeadline } from '@shared/engine-contracts';
-import { READINESS_STATE_LABEL } from '@shared/labels';
 import type { AuditEntry, HouseholdSettings } from '@shared/types';
 import { api, describeError } from '../../net/client';
 import { DateText, DeadlineBadge, VerificationNote } from '../../components/Badges';
@@ -32,6 +31,7 @@ import { useData } from '../../state/data';
 import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
 import { approvalSummary, YourTurnTag } from '../decide/decisionText';
+import { notOptional, ReadinessChip } from '../ready/readyBits';
 
 interface CommonProps {
   idx: Indexes;
@@ -151,7 +151,7 @@ export function BlockedSection({ idx, filter, ctx }: CommonProps) {
   const { today } = useData();
   const plain = usePlain();
   const all = useMemo(() => selectBlocked(idx, filter, ctx), [idx, filter, ctx]);
-  const shown = all.slice(0, 5);
+  const shown = all.slice(0, 3);
   return (
     <Section title="Blocked" count={all.length || undefined} className="sec-blocked" intro="What is stuck, and what it is waiting for.">
       {shown.length === 0 ? (
@@ -185,7 +185,7 @@ export function BlockedSection({ idx, filter, ctx }: CommonProps) {
       )}
       {all.length > shown.length && (
         <p className="small">
-          <Link to="/plan?view=board" className="more-link">{all.length - shown.length} more in the plan board</Link>
+          <Link to="/plan?view=board" className="more-link">See all {all.length}</Link>
         </p>
       )}
     </Section>
@@ -210,7 +210,7 @@ function ComingDeadline({ d, idx, dir, today }: { d: ComputedDeadline; idx: Inde
   return (
     <>
       <div className="coming__date">
-        <DateText date={d.deadline.date} today={today} state={d.state} />
+        <DateText date={d.deadline.date} today={today} state={d.state} kind={d.kind} />
       </div>
       <div className="coming__body">
         {label}
@@ -258,9 +258,14 @@ function ComingReview({ row, today }: { row: ComingRow; today: string }) {
 export function ComingUpSection({ idx, dir, filter, ctx }: CommonProps & { dir: Directory }) {
   const { today, deadlines } = useData();
   const { refresh } = useSnapshot();
+  const [more, setMore] = useState(false);
+  // First look: the next four weeks, at most eight rows. One tap widens it to twelve weeks, uncapped.
   const coming = useMemo(
-    () => (deadlines.ok ? selectComingUp(deadlines.value, idx, dir, { today, filter, ctx, windowDays: 60 }) : null),
-    [deadlines, idx, dir, today, filter, ctx],
+    () =>
+      deadlines.ok
+        ? selectComingUp(deadlines.value, idx, dir, { today, filter, ctx, windowDays: more ? 84 : 28, maxRows: more ? undefined : 8 })
+        : null,
+    [deadlines, idx, dir, today, filter, ctx, more],
   );
 
   if (!deadlines.ok || !coming) {
@@ -274,10 +279,10 @@ export function ComingUpSection({ idx, dir, filter, ctx }: CommonProps & { dir: 
   }
   const total = coming.groups.reduce((n, g) => n + g.rows.length, 0);
   return (
-    <Section title="Coming up" className="sec-coming" intro="The next two months, week by week.">
+    <Section title="Coming up" className="sec-coming" intro={more ? 'The next twelve weeks, week by week.' : 'The next four weeks, week by week.'}>
       {total === 0 ? (
         <Card>
-          <EmptyState icon="calendar" title="Nothing dated in the next two months for this view." />
+          <EmptyState icon="calendar" title={`Nothing dated in the next ${more ? 'twelve' : 'four'} weeks for this view.`} />
         </Card>
       ) : (
         <div className="stack">
@@ -297,6 +302,20 @@ export function ComingUpSection({ idx, dir, filter, ctx }: CommonProps & { dir: 
               </ul>
             </Card>
           ))}
+        </div>
+      )}
+      {(!more || coming.hidden > 0) && (
+        <div>
+          <Button variant="secondary" onClick={() => setMore(true)}>
+            Show the next 8 weeks
+          </Button>
+        </div>
+      )}
+      {more && (
+        <div>
+          <Button variant="quiet" onClick={() => setMore(false)}>
+            Show fewer
+          </Button>
         </div>
       )}
       {coming.awaiting.length > 0 && (
@@ -325,6 +344,7 @@ export function ReadySection({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const { readiness } = useData();
   const plain = usePlain();
   const { refresh } = useSnapshot();
+  const ok = notOptional(idx);
   return (
     <Section title="Who’s ready" className="sec-ready" intro="Each traveler on their own. Optional future work never holds anyone back.">
       {!readiness.ok ? (
@@ -339,11 +359,9 @@ export function ReadySection({ idx, dir }: { idx: Indexes; dir: Directory }) {
         <ul className="ready-list">
           {readiness.value.map((r) => {
             const person = dir.personById(r.person_id);
-            const gates = (list: typeof r.blockers) => list.filter((g) => !dataOf<{ optional_future_work?: boolean }>(idx.byId.get(g.record_id) ?? ({} as never)).optional_future_work);
-            const blockers = gates(r.blockers).slice(0, 3);
-            const next = r.next_action && !dataOf<{ optional_future_work?: boolean }>(idx.byId.get(r.next_action.record_id) ?? ({} as never)).optional_future_work ? r.next_action : null;
-            const tone = r.state === 'blocked' ? 'kaki' : r.state === 'preparing' ? 'ai' : r.state === 'not_started' ? 'neutral' : 'matcha';
-            const stateIcon = r.state === 'blocked' ? 'stop' : r.state === 'not_started' ? 'circle' : r.state === 'preparing' ? 'half' : 'check';
+            const allBlockers = r.blockers.filter(ok);
+            const blockers = allBlockers.slice(0, 2);
+            const next = ok(r.next_action) ? r.next_action : null;
             return (
               <li key={r.person_id}>
                 <Card as="article" className="ready" tone={r.state === 'blocked' ? 'blocked' : 'default'}>
@@ -352,10 +370,7 @@ export function ReadySection({ idx, dir }: { idx: Indexes; dir: Directory }) {
                       <PersonBadge person={person} size={32} />
                       <h3 className="ready__name">{dir.nameOf(r.person_id)}</h3>
                     </span>
-                    <span className={`chip chip--${tone}`}>
-                      <Icon name={stateIcon} size={15} />
-                      <span>{READINESS_STATE_LABEL[r.state] ?? r.state}</span>
-                    </span>
+                    <ReadinessChip state={r.state} />
                   </header>
                   <p className="ready__headline">{plain(r.headline)}</p>
                   {blockers.length > 0 && (
@@ -369,6 +384,7 @@ export function ReadySection({ idx, dir }: { idx: Indexes; dir: Directory }) {
                           </li>
                         ))}
                       </ul>
+                      {allBlockers.length > blockers.length && <p className="small faint">and {allBlockers.length - blockers.length} more</p>}
                     </div>
                   )}
                   {next && (
@@ -385,6 +401,11 @@ export function ReadySection({ idx, dir }: { idx: Indexes; dir: Directory }) {
                       </p>
                     </div>
                   )}
+                  <p className="ready__more">
+                    <Link to={`/ready/${encodeURIComponent(r.person_id)}`} className="more-link">
+                      See everything for {dir.nameOf(r.person_id)}
+                    </Link>
+                  </p>
                 </Card>
               </li>
             );

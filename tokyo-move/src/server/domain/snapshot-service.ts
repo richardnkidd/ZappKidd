@@ -57,7 +57,7 @@ export function lastImport(deps: Deps, householdId: string): ImportRun | null {
   return row ? importRunFromRow(row) : null;
 }
 
-function mergeScenarios(stored: unknown): ScenarioSettings[] {
+export function mergeScenarios(stored: unknown): ScenarioSettings[] {
   const out = DEFAULT_SCENARIOS.map((s) => ({ ...s }));
   if (!Array.isArray(stored)) return out;
   for (const item of stored) {

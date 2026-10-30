@@ -824,3 +824,45 @@ legend {
   align-items: center;
   min-height: 44px;
 }
+
+.date-note {
+  display: block;
+  flex: 0 0 100%;
+  font-size: var(--fs-0);
+  font-weight: 400;
+  color: var(--ink-2);
+  line-height: 1.35;
+}
+
+/* Filter chips that scroll sideways on phones (inside their own box, never the page) */
+.chips-scroll {
+  position: relative;
+  margin-inline: calc(var(--gutter) * -1);
+}
+.filter-chips--scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  padding: 5px var(--gutter);
+  -webkit-overflow-scrolling: touch;
+}
+.filter-chips--scroll::-webkit-scrollbar {
+  display: none;
+}
+.filter-chips--scroll .fchip {
+  flex: none;
+  scroll-snap-align: start;
+  white-space: nowrap;
+}
+@media (min-width: 768px) {
+  .chips-scroll {
+    margin-inline: 0;
+  }
+  .filter-chips--scroll {
+    flex-wrap: wrap;
+    overflow: visible;
+    padding: 0;
+  }
+}

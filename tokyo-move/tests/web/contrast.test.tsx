@@ -17,13 +17,16 @@ function parseBlock(block: string): Record<string, string> {
   return out;
 }
 
-function themes(): { light: Record<string, string>; dark: Record<string, string> } {
+function themes(): { light: Record<string, string>; dark: Record<string, string>; forcedDark: Record<string, string> } {
   const darkStart = css.indexOf('@media (prefers-color-scheme: dark)');
   expect(darkStart).toBeGreaterThan(0);
+  const forcedStart = css.indexOf(":root[data-theme='dark']");
+  expect(forcedStart).toBeGreaterThan(darkStart);
+  const forcedEnd = css.indexOf(":root[data-theme='light']");
   const light = parseBlock(css.slice(0, darkStart));
-  const darkEnd = css.indexOf('@media (min-width', darkStart);
-  const dark = { ...light, ...parseBlock(css.slice(darkStart, darkEnd > 0 ? darkEnd : undefined)) };
-  return { light, dark };
+  const dark = { ...light, ...parseBlock(css.slice(darkStart, forcedStart)) };
+  const forcedDark = { ...light, ...parseBlock(css.slice(forcedStart, forcedEnd)) };
+  return { light, dark, forcedDark };
 }
 
 function channel(v: number): number {
@@ -62,6 +65,13 @@ describe('contrast helper', () => {
     expect(contrast('#000000', '#ffffff')).toBeCloseTo(21, 1);
     expect(contrast('#777777', '#ffffff')).toBeCloseTo(4.48, 1);
     expect(contrast('#ffffff', '#ffffff')).toBeCloseTo(1, 5);
+  });
+});
+
+describe('theme blocks', () => {
+  it('a theme forced to dark in Settings uses exactly the same values as the system dark theme', () => {
+    const t = themes();
+    expect(t.forcedDark).toEqual(t.dark);
   });
 });
 

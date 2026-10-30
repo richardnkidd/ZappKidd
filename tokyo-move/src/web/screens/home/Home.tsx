@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { formatCivil } from '@shared/dates';
 import { ZONE_OPTIONS } from '@shared/labels';
 import { DataGate } from '../../components/DataGate';
+import { useIsDesktop } from '../../layout/useMedia';
 import { FilterChips } from '../../components/Controls';
 import { PageTitle } from '../../components/Layout';
 import { greetingFor, hourIn } from '../../lib/format';
@@ -12,11 +13,13 @@ import { useMe } from '../../state/auth';
 import { useData } from '../../state/data';
 import { loadPref, savePref } from '../../state/prefs';
 import { BlockedSection, ComingUpSection, DecisionsSection, FreshnessFooter, NowSection, ReadySection, SinceReviewSection } from './sections';
+import { ReadyStrip } from './ReadyStrip';
 
 const FILTERS: OwnerFilter[] = ['all', 'mine', 'other', 'together', 'unassigned', 'waiting'];
 
 export function Home() {
   const me = useMe();
+  const desktop = useIsDesktop();
   const { today, zone } = useData();
   const [filter, setFilter] = useState<OwnerFilter>(() => {
     const stored = loadPref('home-filter');
@@ -54,7 +57,8 @@ export function Home() {
           ];
           return (
             <>
-              <FilterChips label="Show items for" value={filter} options={options} onChange={changeFilter} />
+              {!desktop && <ReadyStrip dir={dir} />}
+              <FilterChips label="Show items for" value={filter} options={options} onChange={changeFilter} scroll />
               <div className="home-grid">
                 <div className="home-col home-col--main">
                   <NowSection idx={idx} filter={filter} ctx={ctx} />
@@ -62,7 +66,7 @@ export function Home() {
                   <BlockedSection idx={idx} filter={filter} ctx={ctx} />
                 </div>
                 <div className="home-col home-col--side">
-                  <ReadySection idx={idx} dir={dir} />
+                  {desktop && <ReadySection idx={idx} dir={dir} />}
                   <ComingUpSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
                 </div>
               </div>

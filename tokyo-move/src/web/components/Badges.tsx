@@ -9,7 +9,9 @@ import {
   VERIFICATION_LABEL,
   WORK_STATUS_LABEL,
 } from '@shared/labels';
+import { weekendNote } from '../lib/deadlineNotes';
 import { civil, relative } from '../lib/format';
+import { useOptionalSnapshot } from '../state/snapshot';
 import { Icon, type IconName } from './Icon';
 
 export function Chip({ children, tone = 'neutral', small = false, className = '' }: { children: ReactNode; tone?: 'neutral' | 'ai' | 'matcha' | 'kaki' | 'kin'; small?: boolean; className?: string }) {
@@ -94,17 +96,22 @@ export function VerificationNote({ verification, kind }: { verification: Deadlin
   );
 }
 
-/** The date line used in lists: "Thu, Nov 20 · in 22 days" or "Awaiting date". */
-export function DateText({ date, today, state }: { date: string | null | undefined; today?: string; state?: DeadlineState }) {
+/** The date line used in lists: "Thu, Nov 20 · in 22 days" or "Awaiting date". Legal dates add a weekend heads-up. */
+export function DateText({ date, today, state, kind }: { date: string | null | undefined; today?: string; state?: DeadlineState; kind?: DeadlineKind | null }) {
+  const holidays = useOptionalSnapshot()?.snapshot?.settings?.jp_holidays;
   if (!date) return <span className="date-text date-text--awaiting">Awaiting date</span>;
   const rel = today ? relative(date, today) : null;
   const overdue = state === 'overdue';
+  const note = weekendNote(date, kind, holidays);
   return (
-    <span className={`date-text${overdue ? ' date-text--past' : ''}${state === 'due_soon' || state === 'due_today' ? ' date-text--soon' : ''}`}>
-      <time dateTime={date}>{civil(date, 'weekday')}</time>
-      {rel && <span className="faint"> · {rel}</span>}
-      {overdue && <span className="date-flag"> · past its date</span>}
-    </span>
+    <>
+      <span className={`date-text${overdue ? ' date-text--past' : ''}${state === 'due_soon' || state === 'due_today' ? ' date-text--soon' : ''}`}>
+        <time dateTime={date}>{civil(date, 'weekday')}</time>
+        {rel && <span className="faint"> · {rel}</span>}
+        {overdue && <span className="date-flag"> · past its date</span>}
+      </span>
+      {note && <span className="date-note">{note}</span>}
+    </>
   );
 }
 
@@ -112,7 +119,7 @@ export function DeadlineLine({ deadline, today, state }: { deadline: Deadline | 
   if (!deadline) return <span className="faint">No date yet</span>;
   return (
     <span className="deadline-line">
-      <DateText date={deadline.date} today={today} state={state} />
+      <DateText date={deadline.date} today={today} state={state} kind={deadline.kind} />
       <DeadlineBadge kind={deadline.kind} />
     </span>
   );

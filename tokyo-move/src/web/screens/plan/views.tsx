@@ -171,7 +171,7 @@ export function ListView({ items, dir, today }: { items: PlanItemData[]; dir: Di
                   <StatusBadge status={m.status} small />
                 </td>
                 <td>
-                  <DateText date={date} today={today} state={dateState ?? undefined} />
+                  <DateText date={date} today={today} state={dateState ?? undefined} kind={dateKind} />
                   {dateKind && (
                     <div>
                       <DeadlineBadge kind={dateKind} />
@@ -381,7 +381,7 @@ export function TimelineView({ items, idx, dir, today }: { items: PlanItemData[]
                           <StatusBadge status={it.m.status} small />
                           {it.date ? (
                             <span className="item__when">
-                              <DateText date={it.date} today={today} state={it.dateState ?? undefined} />
+                              <DateText date={it.date} today={today} state={it.dateState ?? undefined} kind={it.dateKind} />
                               {it.dateKind && <DeadlineBadge kind={it.dateKind} />}
                             </span>
                           ) : (

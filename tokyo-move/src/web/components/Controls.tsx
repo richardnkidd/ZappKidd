@@ -87,6 +87,8 @@ interface GroupProps<V extends string> {
   options: Option<V>[];
   onChange: (v: V) => void;
   className?: string;
+  /** On phones, keep the chips in one row that scrolls sideways inside its own box (never the page). */
+  scroll?: boolean;
 }
 
 /** Single-choice view switcher (e.g. Plan views). A group of toggle buttons with aria-pressed. */
@@ -104,11 +106,20 @@ export function SegmentedControl<V extends string>({ label, value, options, onCh
 }
 
 /** Single-choice filter chips (e.g. Mine · <name>'s · Together). */
-export function FilterChips<V extends string>({ label, value, options, onChange, className = '' }: GroupProps<V>) {
-  return (
-    <div role="group" aria-label={label} className={`filter-chips ${className}`.trim()}>
+export function FilterChips<V extends string>({ label, value, options, onChange, className = '', scroll = false }: GroupProps<V>) {
+  const chips = (
+    <div role="group" aria-label={label} className={`filter-chips${scroll ? ' filter-chips--scroll' : ''} ${className}`.trim()}>
       {options.map((o) => (
-        <button key={o.value} type="button" className="fchip" aria-pressed={o.value === value} onClick={() => onChange(o.value)}>
+        <button
+          key={o.value}
+          type="button"
+          className="fchip"
+          aria-pressed={o.value === value}
+          onClick={(e) => {
+            onChange(o.value);
+            if (scroll) e.currentTarget.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+          }}
+        >
           {o.value === value && <Icon name="check" size={14} />}
           <span>{o.label}</span>
           {o.count !== undefined && <span className="fchip__count">{o.count}</span>}
@@ -116,6 +127,7 @@ export function FilterChips<V extends string>({ label, value, options, onChange,
       ))}
     </div>
   );
+  return scroll ? <div className="chips-scroll">{chips}</div> : chips;
 }
 
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {

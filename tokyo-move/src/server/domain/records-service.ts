@@ -230,16 +230,25 @@ function buildCreateData(
         duplication_check: v('duplication_check', null),
       };
     }
-    case 'contact':
+    case 'contact': {
+      const relationship = v<string>('relationship', 'potential');
+      const basis = v<string | null>('relationship_basis', null);
+      if (relationship !== 'potential' && !String(basis ?? '').trim()) {
+        throw validation('A relationship beyond "potential" needs a basis', [
+          issue('data.relationship_basis', 'Say what happened or what already exists (a recorded interaction or an existing relationship)'),
+        ]);
+      }
       return {
         name: d.name,
         role: v('role', ''),
         relevance: v('relevance', ''),
         status_boundary: v('status_boundary', 'Saved name only. Nothing booked or contacted.'),
-        relationship: v('relationship', 'potential'),
+        relationship,
+        relationship_basis: basis,
         source_ids: v('source_ids', []),
         linked_records: v('linked_records', []),
       };
+    }
   }
 }
 
@@ -314,7 +323,14 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
         if (!deepEqual(cur.data[key], merged[key])) edited.add(`data.${key}`);
       }
       next.data = merged;
-      postValidate(row.type, next.data, people);
+      postValidate(row.type, next.data, people, cur.data, Object.keys(incoming));
+      if (row.type === 'funding') {
+        // Once a planning-zero income line leaves that status it stays guarded, so a two-step edit cannot dodge the rule.
+        if (cur.data.income_status === 'planning_zero' && merged.income_status !== 'planning_zero') {
+          merged.planning_zero_origin = true;
+          edited.add('data.planning_zero_origin');
+        }
+      }
       if (row.type === 'decision' && (row.status === 'approved' || row.status === 'proposed')) {
         applyDecisionEvaluation(next, people, deps.now());
       }
@@ -333,7 +349,31 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
 }
 
 /** Cross-field rules that single-field schemas cannot express. */
-function postValidate(type: RecordType, data: Record<string, unknown>, people: Person[]): void {
+function postValidate(type: RecordType, data: Record<string, unknown>, people: Person[], before: Record<string, unknown>, changed: string[]): void {
+  if (type === 'contact' && (changed.includes('relationship') || changed.includes('relationship_basis'))) {
+    if (data.relationship !== 'potential' && !String(data.relationship_basis ?? '').trim()) {
+      throw validation('A relationship beyond "potential" needs a basis', [
+        issue('data.relationship_basis', 'Say what happened or what already exists (a recorded interaction or an existing relationship)'),
+      ]);
+    }
+  }
+  if (type === 'funding' && data.kind === 'income' && changed.some((k) => ['amount', 'income_status', 'source', 'as_of'].includes(k))) {
+    const amount = data.amount as { amount: number } | null | undefined;
+    const nonZero = amount !== null && amount !== undefined && amount.amount > 0;
+    const status = data.income_status;
+    const issues: ValidationIssue[] = [];
+    if ((status === 'planning_zero' || status === 'confirmed_none') && nonZero) {
+      issues.push(issue('data.amount', `An income line marked "${String(status)}" cannot carry an amount`));
+    }
+    const guarded = before.income_status === 'planning_zero' || before.planning_zero_origin === true;
+    const needsEvidence = status === 'verified_lawful' && changed.includes('income_status');
+    if ((guarded && nonZero) || needsEvidence) {
+      if (status !== 'verified_lawful') issues.push(issue('data.income_status', 'A non-zero amount here needs income_status "verified_lawful"'));
+      if (!String(data.source ?? '').trim()) issues.push(issue('data.source', 'Required: where the verification comes from'));
+      if (!data.as_of) issues.push(issue('data.as_of', 'Required: the date the income was verified'));
+    }
+    if (issues.length) throw validation('Income can only be counted once it is verified', issues);
+  }
   if (type === 'cost') {
     if (data.applicability === 'exclude' && !String(data.exclusion_reason ?? '').trim()) {
       throw validation('Excluding a cost line needs a reason', [issue('data.exclusion_reason', 'Required when applicability is exclude')]);
@@ -482,7 +522,7 @@ export interface RecordDetail {
   audit: AuditEntry[];
   linked_notes: ApiRecord[];
   task_links: TaskLink[];
-  /** Import receipts for this record, newest first. */
+  /** Import receipts for this record across all runs, newest first (at most 100). */
   import_changes: ImportChange[];
   decision?: { awaiting: string[]; awaiting_text: string | null; disagreement: boolean };
 }
@@ -506,7 +546,7 @@ export function getRecordDetail(deps: Deps, ctx: AuthContext, id: string): Recor
     audit: listAudit(deps.db, ctx, { recordId: row.id, limit: 200 }),
     linked_notes: notes.map((n) => rowToRecord(n, false)),
     task_links: links.map(taskLinkFromRow),
-    import_changes: importChangesForRecord(deps, ctx.householdId, row.id),
+    import_changes: importChangesForRecord(deps, ctx.householdId, row.id, 100),
   };
   if (row.type === 'decision') {
     const people = listPeople(deps.db, ctx.householdId);

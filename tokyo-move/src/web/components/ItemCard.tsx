@@ -47,7 +47,7 @@ export function ItemCard(p: ItemCardProps) {
           {p.showStatus && p.status && <StatusBadge status={p.status} small />}
           {(p.date !== undefined || p.dateKind) && (
             <span className="item__when">
-              <DateText date={p.date} today={p.today} state={p.dateState ?? undefined} />
+              <DateText date={p.date} today={p.today} state={p.dateState ?? undefined} kind={p.dateKind} />
               {p.dateKind && <DeadlineBadge kind={p.dateKind} />}
             </span>
           )}

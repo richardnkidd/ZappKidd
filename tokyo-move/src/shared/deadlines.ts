@@ -348,7 +348,11 @@ export function collectDeadlines(ctx: DeadlineContext): ComputedDeadline[] {
   for (const rec of ofType<'existing_commitment', ExistingCommitmentData>(ctx.records, 'existing_commitment')) {
     const c = rec.data;
     const date = c.recorded_date && isCivilDate(c.recorded_date) ? c.recorded_date : null;
-    const st = applyRecordState(stateFor(date, ctx.today, soon), rec as unknown as BaseRecord);
+    let st = applyRecordState(stateFor(date, ctx.today, soon), rec as unknown as BaseRecord);
+    // Old task dates recorded as history are not evidence of (non)completion: never show them as overdue.
+    if (c.historical && st.state === 'overdue') {
+      st = { state: 'historical', days_until: st.days_until };
+    }
     out.push({
       id: `commitment:${rec.key}`,
       source: 'commitment',
@@ -413,6 +417,8 @@ export function collectDeadlines(ctx: DeadlineContext): ComputedDeadline[] {
     let st = stateFor(link.due, ctx.today, soon);
     if (link.status === 'done') st = { state: 'met', days_until: st.days_until };
     else if (link.status === 'cancelled') st = { state: 'not_applicable', days_until: st.days_until };
+    // A past date in a read-only, dated copy of the task list says nothing about whether the task was done.
+    else if (link.sync_state === 'snapshot' && st.state === 'overdue') st = { state: 'historical', days_until: st.days_until };
     const person = link.owner && link.owner !== 'together' && link.owner !== 'unassigned' ? link.owner : 'household';
     out.push({
       id: `task:${link.id}`,
@@ -426,7 +432,13 @@ export function collectDeadlines(ctx: DeadlineContext): ComputedDeadline[] {
       deadline: {
         date: link.due,
         kind: link.due_basis === 'explicit' ? 'user_committed' : 'internal_target',
-        basis: link.due_basis === 'default_14_days' ? 'Default: 14 days after the task was created.' : link.due_basis === 'source' ? 'Date held by the task list (read-only copy).' : 'Date set on the task.',
+        basis: link.due_basis === 'default_14_days'
+          ? 'Default: 14 days after the task was created.'
+          : link.due_basis === 'source'
+            ? (st.state === 'historical'
+              ? 'Date in the read-only task-list copy has passed. This does not show whether the task was done — check the task list.'
+              : 'Date held by the task list (read-only copy).')
+            : 'Date set on the task.',
         source_ids: [],
         jurisdiction: 'household',
         timezone: DEFAULT_ZONE,

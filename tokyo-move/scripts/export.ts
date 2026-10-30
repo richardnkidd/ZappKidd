@@ -5,13 +5,13 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { openDb } from '../src/server/db/db';
 import { exportCsv, exportJson } from '../src/server/domain/export-service';
 import { RECORD_TYPES } from '../src/server/domain/schemas';
-import { cliContext, dbPathFromEnv, flagString, parseArgs } from './_cli';
+import { cliContext, cliMain, flagString, openExistingDb, parseArgs } from './_cli';
 
+await cliMain(async () => {
 const { flags } = parseArgs(process.argv.slice(2));
-const db = openDb(dbPathFromEnv());
+const { db } = openExistingDb();
 try {
   const households = db.prepare('SELECT id FROM households ORDER BY id').all() as { id: string }[];
   const householdId = flagString(flags, 'household') ?? households[0]?.id;
@@ -33,3 +33,4 @@ try {
 } finally {
   db.close();
 }
+});

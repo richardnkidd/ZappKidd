@@ -8,19 +8,19 @@ import { buildMe } from '../domain/snapshot-service';
 import { contextForUserId, requireAuth } from './context';
 import { LoginRateLimiter } from './rate-limit';
 import { verifyAgainstDummy, verifyPassword } from './password';
-import { SESSION_COOKIE, SESSION_TTL_MS, createSession, destroySession } from './sessions';
+import { SESSION_ABSOLUTE_TTL_MS, SESSION_COOKIE, createSession, destroySession } from './sessions';
 import { findUserByUsername, listDevIdentities } from './users';
 
 const devLoginBody = z.strictObject({ person_id: line(100), household_id: line(100).optional() });
 const loginBody = z.strictObject({ username: line(100), password: z.string().min(1).max(1000) });
 
-export function setSessionCookie(deps: Deps, reply: FastifyReply, token: string): void {
+export function setSessionCookie(deps: Deps, reply: FastifyReply, token: string, maxAgeSeconds = Math.floor(SESSION_ABSOLUTE_TTL_MS / 1000)): void {
   reply.setCookie(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
     secure: deps.config.cookieSecure,
-    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    maxAge: maxAgeSeconds,
   });
 }
 
@@ -68,34 +68,43 @@ export function registerAuthRoutes(app: FastifyInstance, deps: Deps): void {
   app.post('/api/auth/login', async (request, reply) => {
     const body = parseWith(loginBody, request.body);
     const nowMs = deps.now().getTime();
-    const decision = limiter.check(body.username, request.ip, nowMs);
-    if (!decision.allowed) {
-      throw new HttpError(429, 'rate_limited', 'Too many failed sign-in attempts. Try again later.', { retry_after_seconds: decision.retryAfterSeconds }, {
-        'Retry-After': String(decision.retryAfterSeconds),
+    // Admission is decided and recorded synchronously, before any await, so concurrent guesses cannot all pass.
+    const admission = limiter.admit(body.username, request.ip, nowMs);
+    if (!admission.allowed || !admission.ticket) {
+      const minutes = Math.max(1, Math.ceil(admission.retryAfterSeconds / 60));
+      throw new HttpError(429, 'rate_limited', `Too many sign-in attempts. Try again in about ${minutes} minute${minutes === 1 ? '' : 's'}.`, { retry_after_seconds: admission.retryAfterSeconds }, {
+        'Retry-After': String(admission.retryAfterSeconds),
       });
     }
-    const user = findUserByUsername(deps.db, body.username);
-    let ok = false;
-    if (user && user.password_hash) {
-      ok = await verifyPassword(body.password, user.password_hash);
-    } else {
-      await verifyAgainstDummy(body.password);
+    const ticket = admission.ticket;
+    try {
+      const user = findUserByUsername(deps.db, body.username);
+      let ok = false;
+      if (user && user.password_hash) {
+        ok = await verifyPassword(body.password, user.password_hash);
+      } else {
+        await verifyAgainstDummy(body.password);
+      }
+      // Development identities can never sign in with a password where they are disabled; disabled users never can.
+      if (ok && user && (user.disabled === 1 || (user.is_dev_identity === 1 && !deps.config.devIdentitiesEnabled))) ok = false;
+      if (!ok || !user) {
+        limiter.fail(ticket, deps.now().getTime());
+        throw new HttpError(401, 'unauthenticated', 'Invalid username or password');
+      }
+      const session = createSession(deps.db, user.id, deps.now(), request.headers['user-agent'] ?? null);
+      const ctx = contextForUserId(deps, user.id, session.tokenHash);
+      if (!ctx) {
+        destroySession(deps.db, session.token);
+        limiter.fail(ticket, deps.now().getTime());
+        throw new HttpError(401, 'unauthenticated', 'Invalid username or password');
+      }
+      limiter.succeed(ticket);
+      setSessionCookie(deps, reply, session.token);
+      return { me: buildMe(deps, ctx) };
+    } catch (e) {
+      limiter.fail(ticket, deps.now().getTime()); // no-op if already settled
+      throw e;
     }
-    // Development identities can never sign in with a password where they are disabled; disabled users never can.
-    if (ok && user && (user.disabled === 1 || (user.is_dev_identity === 1 && !deps.config.devIdentitiesEnabled))) ok = false;
-    if (!ok || !user) {
-      limiter.recordFailure(body.username, request.ip, nowMs);
-      throw new HttpError(401, 'unauthenticated', 'Invalid username or password');
-    }
-    limiter.recordSuccess(body.username, request.ip);
-    const session = createSession(deps.db, user.id, deps.now(), request.headers['user-agent'] ?? null);
-    const ctx = contextForUserId(deps, user.id, session.tokenHash);
-    if (!ctx) {
-      destroySession(deps.db, session.token);
-      throw new HttpError(401, 'unauthenticated', 'Invalid username or password');
-    }
-    setSessionCookie(deps, reply, session.token);
-    return { me: buildMe(deps, ctx) };
   });
 
   app.post('/api/auth/logout', async (request, reply) => {

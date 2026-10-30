@@ -9,15 +9,18 @@ import { ConflictBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
 import { LinkedKeys } from '../../components/LinkedKeys';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
-import { civil, humanizeKey, safeHref } from '../../lib/format';
+import { civil, dayIn, humanizeKey, safeHref } from '../../lib/format';
+import { usePrefs } from '../../state/prefs';
 import { dataOf, type AnyRecord, type Directory, type Indexes } from '../../lib/records';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
 
-const DATE_PART = (v: string | null | undefined) => (v ? v.slice(0, 10) : null);
+
 
 /** Four separate lifecycle facts, never collapsed into one percentage. */
 function Lifecycle({ d }: { d: Partial<DocumentData> }) {
+  const { zone } = usePrefs();
+  const DATE_PART = (v: string | null | undefined) => dayIn(v, zone);
   const steps: { label: string; date: string | null; extra?: string | null }[] = [
     { label: 'Requested', date: DATE_PART(d.requested_at) },
     { label: 'Received', date: DATE_PART(d.received_at) },
@@ -112,6 +115,8 @@ export function DocumentCard({ record, idx, dir, headingLevel = 3 }: { record: A
 
 function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () => void }) {
   const { actions } = useSnapshot();
+  const { zone } = usePrefs();
+  const DATE_PART = (v: string | null | undefined) => dayIn(v, zone);
   const w = useWrite();
   const d = dataOf<DocumentData>(record);
   const [f, setF] = useState({
@@ -247,6 +252,7 @@ function DocumentList({ idx, dir }: { idx: Indexes; dir: Directory }) {
               { value: 'household', label: 'Household', count: docs.filter((d) => scopeOf(d).length === 0).length },
             ]}
           />
+          <h2 className="visually-hidden">Documents</h2>
           {shown.length === 0 ? (
             <Card>
               <EmptyState icon="doc" title="Nothing listed for this view." />

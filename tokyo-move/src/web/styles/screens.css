@@ -1029,3 +1029,14 @@ code {
 .gate__title {
   font-weight: 600;
 }
+
+/* The whole card is a link (the title's overlay), so real controls inside a card must sit above it. */
+.item .btn,
+.item .row-actions,
+.item .choice,
+.item .field,
+.item details,
+.item a:not(.item__title) {
+  position: relative;
+  z-index: 2;
+}

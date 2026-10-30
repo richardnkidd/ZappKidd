@@ -55,7 +55,7 @@ export function scenarioExplanation(s: ScenarioSettings): string {
 }
 
 export function weakerYenPercent(factor: number): string {
-  const pct = Math.abs(1 - factor) * 100;
+  const pct = Math.round(Math.abs(1 - factor) * 1000) / 10; // one decimal, no floating-point noise
   return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
 }
 

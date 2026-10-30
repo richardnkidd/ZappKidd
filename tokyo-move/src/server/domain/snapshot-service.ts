@@ -102,7 +102,7 @@ export function buildSnapshot(deps: Deps, ctx: AuthContext): Snapshot {
     me: buildMe(deps, ctx),
     people: listPeople(deps.db, ctx.householdId),
     records: listRecordRows(deps.db, ctx).map((r) => rowToRecord(r, false)),
-    task_links: listTaskLinkRows(deps.db, ctx.householdId).map(taskLinkFromRow),
+    task_links: listTaskLinkRows(deps.db, ctx.householdId, ctx.personId).map(taskLinkFromRow),
     last_import: lastImport(deps, ctx.householdId),
     last_review_completed_at: lastCompletedReviewAt(deps, ctx.householdId),
     scenarios: mergeScenarios(getSetting<unknown>(deps.db, ctx.householdId, 'scenarios', [])),

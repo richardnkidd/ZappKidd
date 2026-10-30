@@ -78,6 +78,8 @@ export async function makeHarness(opts: HarnessOptions = {}): Promise<Harness> {
     now: () => new Date(clock.now),
     taskAdapter: adapter,
     allowMissingOrigin: false,
+    // app.inject requests carry Host: kadode.test; it is a configured public origin, exactly like production behind a proxy.
+    publicOrigin: ORIGIN,
     ...rest,
   });
   return {
@@ -108,7 +110,7 @@ export class Client {
   cookie: string | null = null;
   constructor(
     readonly app: FastifyInstance,
-    readonly opts: { origin?: string | null; host?: string } = {},
+    readonly opts: { origin?: string | null; host?: string; remoteAddress?: string } = {},
   ) {}
 
   async request<T = any>(method: InjectOptions['method'], url: string, body?: unknown, extra: Record<string, string> = {}): Promise<Reply<T>> {
@@ -121,6 +123,7 @@ export class Client {
       method,
       url,
       headers,
+      ...(this.opts.remoteAddress ? { remoteAddress: this.opts.remoteAddress } : {}),
       ...(body === undefined ? {} : { payload: typeof body === 'string' ? body : JSON.stringify(body) }),
     });
     for (const c of res.cookies) {

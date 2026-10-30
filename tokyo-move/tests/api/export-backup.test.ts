@@ -148,7 +148,7 @@ describe('backup and restore', () => {
     expect(list.map((x: any) => x.name).sort()).toEqual([b.name, second.name].sort());
   });
 
-  it('restores an earlier state, takes a pre-restore backup and keeps the session', async () => {
+  it('restores an earlier state, takes a pre-restore backup and ends every session', async () => {
     const h = await harness();
     const c = await loginAs(h, 'avery');
     const m0 = recordRow(h.db, 'milestone:W06');
@@ -164,7 +164,7 @@ describe('backup and restore', () => {
     expect((await c.post('/api/admin/restore', { backup: backup.name, confirm: 'restore' })).status).toBe(422);
     const res = await c.post('/api/admin/restore', { backup: backup.name, confirm: 'RESTORE' });
     expect(res.status).toBe(200);
-    expect(res.body.restore).toMatchObject({ restored_from: backup.name, schema_migrated: false, session_invalidated: false });
+    expect(res.body.restore).toMatchObject({ restored_from: backup.name, schema_migrated: false, session_invalidated: true, users_replaced: false });
     expect(res.body.restore.pre_restore_backup).toMatch(/-pre-restore\.db$/);
     expect(existsSync(join(h.dir, 'backups', res.body.restore.pre_restore_backup))).toBe(true);
 
@@ -172,11 +172,16 @@ describe('backup and restore', () => {
     expect(recordRow(h.db, 'milestone:W06').version).toBe(m0.version);
     expect(recordRow(h.db, note.id)).toBeUndefined();
     expect(countRows(h.db, 'task_links')).toBe(3);
-    // Still signed in (the same users exist), and the restore itself is audited.
-    const audit = (await c.get('/api/audit?limit=5')).body.entries;
+    // Every session ended, the caller's included; the cookie is cleared.
+    expect(countRows(h.db, 'sessions')).toBe(0);
+    expect(c.cookie).toBeNull();
+    expect((await c.get('/api/me')).status).toBe(401);
+    // Signing in again works, and the restore itself is audited.
+    const again = await loginAs(h, 'avery');
+    const audit = (await again.get('/api/audit?limit=5')).body.entries;
     expect(audit[0]).toMatchObject({ action: 'restore', actor: 'avery' });
     expect(audit[0].after.restored_from).toBe(backup.name);
-    expect((await c.get('/api/records/milestone:W06')).body.record.title).toBe(m0.title);
+    expect((await again.get('/api/records/milestone:W06')).body.record.title).toBe(m0.title);
     // The pre-restore backup holds the later state, so the restore itself is reversible.
     const pre = new Database(join(h.dir, 'backups', res.body.restore.pre_restore_backup), { readonly: true });
     expect((pre.prepare("SELECT title FROM records WHERE id = 'milestone:W06'").get() as any).title).toBe('Edited later');
@@ -235,29 +240,81 @@ describe('backup and restore', () => {
     expect(res.body.restore.schema_migrated).toBe(true);
     expect(countRows(h.db, 'records', "type = 'note'")).toBe(0);
     expect(h.db.prepare("SELECT MAX(version) AS v FROM schema_migrations").get()).toEqual({ v: latestMigrationVersion() });
-    // The live database still works with the restored data and new-column code paths.
-    const t = await c.post('/api/tasks', { title: 'After migrate', due_mode: 'blank' });
+    // The live database still works with the restored data and new-column code paths (sessions ended: sign in again).
+    const c2 = await loginAs(h, 'avery');
+    const t = await c2.post('/api/tasks', { title: 'After migrate', due_mode: 'blank' });
     expect(t.body.outcome).toBe('synced');
   });
 
-  it('requires re-login when the restored users differ', async () => {
+  it('a plain RESTORE keeps the current users and passwords; a rotated password is not undone', async () => {
+    const h = await harness();
+    h.db.prepare("UPDATE users SET is_dev_identity = 0 WHERE username = 'dev-jun'").run();
+    await givePassword(h.db, 'dev-jun', 'the old password 1234');
+    const admin = await loginAs(h, 'avery');
+    const backup = (await admin.post('/api/admin/backup', {})).body.backup;
+    await givePassword(h.db, 'dev-jun', 'a rotated password 5678'); // e.g. after a leak
+    const res = await admin.post('/api/admin/restore', { backup: backup.name, confirm: 'RESTORE' });
+    expect(res.status).toBe(200);
+    expect(res.body.restore.users_replaced).toBe(false);
+    const c = new Client(h.app);
+    expect((await c.passwordLogin('dev-jun', 'the old password 1234')).status).toBe(401);
+    expect((await c.passwordLogin('dev-jun', 'a rotated password 5678')).status).toBe(200);
+  });
+
+  it('refuses a backup that would bring back users or enable development identities, unless RESTORE-INCLUDING-USERS', async () => {
+    const h = await harness({ mode: 'production' });
+    // The "current" database: dev identities already disabled (as production requires), plus one real user.
+    h.db.prepare('UPDATE users SET disabled = 1 WHERE is_dev_identity = 1').run();
+    h.db.prepare("INSERT INTO users (id, household_id, person_id, username, password_hash, is_dev_identity, disabled, created_at) VALUES ('user:avery', 'demo-household', 'avery', 'avery-login', NULL, 0, 0, '2026-10-29T00:00:00.000Z')").run();
+    await givePassword(h.db, 'avery-login', 'current password 1234');
+    // An older backup: has an enabled dev identity and a user that no longer exists.
+    const dir = join(h.dir, 'backups');
+    const admin = new Client(h.app);
+    expect((await admin.passwordLogin('avery-login', 'current password 1234')).status).toBe(200);
+    const made = (await admin.post('/api/admin/backup', {})).body.backup;
+    const old = join(dir, 'kadode-20260104T000000Z.db');
+    copyFileSync(join(dir, made.name), old);
+    const conn = new Database(old);
+    conn.prepare("UPDATE users SET disabled = 0 WHERE username = 'dev-jun'").run();
+    conn.prepare("INSERT INTO users (id, household_id, person_id, username, password_hash, is_dev_identity, disabled, created_at) VALUES ('user:ghost', 'demo-household', 'jun', 'former-user', NULL, 0, 0, '2026-01-01T00:00:00.000Z')").run();
+    conn.close();
+
+    const before = JSON.stringify(h.db.prepare('SELECT id, username, disabled, is_dev_identity, password_hash FROM users ORDER BY id').all());
+    const refused = await admin.post('/api/admin/restore', { backup: 'kadode-20260104T000000Z.db', confirm: 'RESTORE' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.details).toMatchObject({
+      reason: 'users_differ',
+      confirm_with: 'RESTORE-INCLUDING-USERS',
+      would_bring_back_users: ['former-user'],
+      would_enable_development_identities: ['dev-jun'],
+    });
+    expect(JSON.stringify(h.db.prepare('SELECT id, username, disabled, is_dev_identity, password_hash FROM users ORDER BY id').all())).toBe(before);
+    expect(readdirSync(dir).filter((f) => f.includes('pre-restore'))).toEqual([]); // nothing was started
+    expect((await admin.get('/api/me')).status).toBe(200); // session untouched by a refused restore
+
+    const ok = await admin.post('/api/admin/restore', { backup: 'kadode-20260104T000000Z.db', confirm: 'RESTORE-INCLUDING-USERS' });
+    expect(ok.status).toBe(200);
+    expect(ok.body.restore).toMatchObject({ users_replaced: true, session_invalidated: true });
+    expect(h.db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'former-user'").get()).toEqual({ n: 1 });
+    // Development identities are switched off again in production even though the backup had them on.
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM users WHERE is_dev_identity = 1 AND disabled = 0').get()).toEqual({ n: 0 });
+    expect(countRows(h.db, 'sessions')).toBe(0);
+  });
+
+  it('a backup missing the people of current users is refused unless the users are restored too', async () => {
     const h = await harness();
     const admin = await loginAs(h, 'avery');
     const backup = (await admin.post('/api/admin/backup', {})).body.backup;
-    // A user created after the backup signs in, then the backup is restored.
-    h.db.prepare("INSERT INTO users (id, household_id, person_id, username, password_hash, is_dev_identity, disabled, created_at) VALUES ('user:later', 'demo-household', 'jun', 'jun-later', NULL, 0, 0, '2026-10-29T00:00:00.000Z')").run();
-    await givePassword(h.db, 'jun-later');
-    const later = new Client(h.app);
-    expect((await later.passwordLogin('jun-later')).status).toBe(200);
-    expect((await later.get('/api/me')).status).toBe(200);
-    const res = await later.post('/api/admin/restore', { backup: backup.name, confirm: 'RESTORE' });
-    expect(res.status).toBe(200);
-    expect(res.body.restore.session_invalidated).toBe(true);
-    expect(later.cookie).toBeNull(); // cookie cleared
-    expect((await later.get('/api/me')).status).toBe(401);
-    expect(h.db.prepare("SELECT COUNT(*) AS n FROM users WHERE username = 'jun-later'").get()).toEqual({ n: 0 });
-    // The other session survives because its user still exists.
-    expect((await admin.get('/api/me')).status).toBe(200);
+    const dir = join(h.dir, 'backups');
+    const odd = join(dir, 'kadode-20260105T000000Z.db');
+    copyFileSync(join(dir, backup.name), odd);
+    const conn = new Database(odd);
+    conn.prepare("DELETE FROM users WHERE username = 'dev-jun'").run();
+    conn.prepare("DELETE FROM people WHERE id = 'jun'").run();
+    conn.close();
+    const refused = await admin.post('/api/admin/restore', { backup: 'kadode-20260105T000000Z.db', confirm: 'RESTORE' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.details.current_users_without_a_person_in_the_backup).toEqual(['dev-jun']);
   });
 
   it('admin restore is refused when the database holds several households', async () => {

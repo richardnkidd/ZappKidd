@@ -12,7 +12,7 @@ import type { AppMode } from '../shared/types';
 import { devIdentitiesAllowed, isStrictMode, type AppConfig } from './config';
 import type { Deps } from './context';
 import { HttpError } from './http/errors';
-import { BODY_LIMIT_BYTES, csrfGuard, loggerOptions, registerHelmet } from './http/security';
+import { BODY_LIMIT_BYTES, buildAllowlists, csrfGuard, loggerOptions, registerHelmet, requestGuard } from './http/security';
 import { buildAuthContext } from './auth/context';
 import { registerAuthRoutes, setSessionCookie, clearSessionCookie } from './auth/routes';
 import { SESSION_COOKIE, lookupSession } from './auth/sessions';
@@ -40,10 +40,18 @@ export interface BuildAppOptions {
   cookieSecure?: boolean;
   /** Development identities. Honoured only in local-demo (always on) and local (explicit); refused elsewhere. */
   devIdentities?: boolean;
-  /** Extra allowed browser origins, e.g. the Vite dev server. */
+  /** Extra allowed browser origins, e.g. the Vite dev server. Their hosts are added to the Host allowlist. */
   allowedOrigins?: string[];
+  /**
+   * The origin the browser uses when it is not the loopback address (e.g. https://machine.tailnet.ts.net behind a TLS
+   * proxy). Its host joins the Host allowlist and it is the Origin accepted on mutating requests.
+   */
+  publicOrigin?: string;
+  /** The port the server listens on: loopback Hosts (127.0.0.1, localhost, [::1]) are allowed on this port only. */
+  port?: number;
   /** TEST ONLY: accept mutating requests without an Origin header. Not allowed in staging/production. */
   allowMissingOrigin?: boolean;
+  /** Trust X-Forwarded-For from a reverse proxy on loopback (one hop). Never from other peers. */
   trustProxy?: boolean;
   /** Directory of the built web app. Default: <project>/dist/web when it exists. null disables static serving. */
   webRoot?: string | null;
@@ -63,12 +71,14 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
   const cookieSecure = opts.cookieSecure ?? strict;
   if (strict && !cookieSecure) throw new Error(`${opts.mode} mode requires secure cookies`);
 
+  const allow = buildAllowlists({ port: opts.port, publicOrigin: opts.publicOrigin, extraOrigins: opts.allowedOrigins });
   const config: AppConfig = {
     mode: opts.mode,
     dataDir: opts.dataDir,
     cookieSecure,
     devIdentitiesEnabled: devIdentitiesAllowed(opts.mode, opts.devIdentities ?? false),
-    allowedOrigins: opts.allowedOrigins ?? [],
+    allowedHosts: allow.hosts,
+    allowedOrigins: allow.origins,
     allowMissingOrigin: opts.allowMissingOrigin ?? false,
     trustProxy: opts.trustProxy ?? false,
   };
@@ -78,10 +88,16 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
 
   const fastifyOpts: FastifyServerOptions = {
     bodyLimit: BODY_LIMIT_BYTES,
-    trustProxy: config.trustProxy,
+    // Exactly one hop, and only from loopback (tailscale serve / a local TLS proxy): a client on the network cannot
+    // forge X-Forwarded-For, so per-address limits cannot be sidestepped.
+    trustProxy: config.trustProxy ? ['127.0.0.1', '::1'] : false,
     logger: opts.logger ? loggerOptions(typeof opts.logger === 'object' ? opts.logger : {}) : false,
   };
   const app = Fastify(fastifyOpts);
+
+  // Registered before everything else so it runs first on every request (static files included).
+  const requestGate = requestGuard(config);
+  app.addHook('onRequest', async (request) => requestGate(request));
 
   await registerHelmet(app, config);
   await app.register(cookie);
@@ -115,7 +131,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<FastifyInstance> 
       throw new HttpError(401, 'unauthenticated', 'Sign in required');
     }
     request.auth = ctx;
-    if (session?.slid) setSessionCookie(deps, reply, token);
+    if (session?.slid) setSessionCookie(deps, reply, token, session.maxAgeSeconds);
   });
 
   app.addHook('onSend', async (request, reply) => {

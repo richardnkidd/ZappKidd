@@ -316,7 +316,7 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
             </div>
           </dl>
           {model.missing.length > 0 && (
-            <Disclosure title="What is still missing" meta={String(model.missing.length)} level={4} className="disclosure--flat">
+            <Disclosure title="What is still missing" meta={String(model.missing.length)} level={3} className="disclosure--flat">
               <ul className="plain-list">
                 {model.missing.map((m) => (
                   <li key={m}>{m}</li>

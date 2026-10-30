@@ -14,7 +14,7 @@ export const EXPORT_FORMAT_VERSION = 1;
 export function exportJson(deps: Deps, ctx: AuthContext): Record<string, unknown> {
   const records = listRecordRows(deps.db, ctx).map((r) => rowToRecord(r, true));
   const people = listPeople(deps.db, ctx.householdId);
-  const taskLinks = listTaskLinkRows(deps.db, ctx.householdId).map(taskLinkFromRow);
+  const taskLinks = listTaskLinkRows(deps.db, ctx.householdId, ctx.personId).map(taskLinkFromRow);
   const runs = (deps.db
     .prepare('SELECT * FROM import_runs WHERE household_id = ? ORDER BY started_at, rowid')
     .all(ctx.householdId) as Parameters<typeof importRunFromRow>[0][]).map(importRunFromRow);
@@ -53,15 +53,22 @@ const BASE_COLUMNS = [
 ] as const;
 
 /**
- * Spreadsheet formula injection guard: a text cell starting with = + - @ (or a tab/CR) is prefixed with a single
- * quote so spreadsheet software shows it as text rather than evaluating it.
+ * Spreadsheet formula injection guard: a text cell that a spreadsheet could read as a formula is prefixed with a single
+ * quote so it shows as text. "Could read as a formula" includes cells that start with = + - @ after leading whitespace
+ * (including no-break and zero-width spaces) and their fullwidth look-alikes (＝ ＋ － ＠, matched through NFKC), and cells
+ * that start with a tab or carriage return.
  */
+export function needsFormulaGuard(s: string): boolean {
+  if (/^[\t\r]/.test(s)) return true;
+  const probe = s.replace(/^[\s\u00a0\u180e\u200b-\u200d\u2060\ufeff]+/u, '').normalize('NFKC');
+  return /^[=+\-@\t\r]/.test(probe);
+}
+
 export function csvCell(value: unknown): string {
   let s: string;
   if (value === null || value === undefined) s = '';
-  else if (typeof value === 'number' || typeof value === 'boolean') s = String(value);
   else s = String(value);
-  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  if (typeof value === 'string' && needsFormulaGuard(s)) s = `'${s}`;
   if (/[",\r\n]/.test(s)) s = `"${s.replaceAll('"', '""')}"`;
   return s;
 }

@@ -18,6 +18,7 @@ import { Dialog } from '../../components/Dialog';
 import { ConflictBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
 import { LinkedKeys } from '../../components/LinkedKeys';
+import { usePlain } from '../../components/People';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
 import { civil, humanizeKey, safeHref } from '../../lib/format';
 import { directCheckOf, evidenceVerification, reviewChecksOf } from '../../lib/evidence';
@@ -79,6 +80,11 @@ export function ContactCard({ record, idx, headingLevel = 3 }: { record: AnyReco
   const [edit, setEdit] = useState(false);
   const rel = (d.relationship ?? 'potential') as ContactRelationship;
   const H = headingLevel === 2 ? 'h2' : 'h3';
+  const plain = usePlain();
+  // A saved sentence like "Candidate only" stops being true once someone has actually been in touch.
+  const saved = d.status_boundary?.trim() ?? '';
+  const stale = rel !== 'potential' && /candidate only|nobody has been contacted|saved name only/i.test(saved);
+  const boundary = !saved || stale ? CONTACT_BOUNDARY_DEFAULT[rel] : saved;
   return (
     <Card as="article" className="contact" aria-labelledby={`ct-${record.key}`}>
       <div className="item__meta">
@@ -91,10 +97,10 @@ export function ContactCard({ record, idx, headingLevel = 3 }: { record: AnyReco
       </H>
       {d.role && <p className="muted">{d.role}</p>}
       <p className="boundary">
-        <Icon name="info" size={15} /> {d.status_boundary?.trim() || CONTACT_BOUNDARY_DEFAULT[rel]}
+        <Icon name="info" size={15} /> {boundary}
       </p>
       {rel !== 'potential' && d.relationship_basis && <p className="small muted preline">Because: {d.relationship_basis}</p>}
-      {d.relevance && <p className="preline">{d.relevance}</p>}
+      {d.relevance && <p className="preline">{plain(d.relevance)}</p>}
       <LinkedKeys keys={d.linked_records} idx={idx} label="Relevant to" />
       <div className="row-actions">
         <Button variant="secondary" small icon="pencil" onClick={() => setEdit(true)}>
@@ -178,6 +184,7 @@ function ContactList({ idx }: { idx: Indexes }) {
   const count = (r: string) => contacts.filter((c) => (dataOf<ContactData>(c).relationship ?? 'potential') === r).length;
   return (
     <div className="stack">
+      <h2 className="visually-hidden">Contacts</h2>
       <p className="muted">People and firms who might help. A saved name is only a candidate: nothing here means anyone has been contacted, hired or booked.</p>
       {contacts.length === 0 ? (
         <Card>
@@ -287,6 +294,7 @@ function EvidenceList({ idx }: { idx: Indexes }) {
   const shown = only === 'all' ? items : items.filter(needsCheck);
   return (
     <div className="stack">
+      <h2 className="visually-hidden">Evidence</h2>
       <p className="muted">The sources behind the plan, how recently each was checked, and how well. Rules and dates are only as certain as their source.</p>
       {items.length === 0 ? (
         <Card>
@@ -466,6 +474,7 @@ function FindingList({ idx }: { idx: Indexes }) {
   const shown = items.filter((r) => disp === 'all' || (dataOf<FindingData>(r).disposition ?? 'open') === disp);
   return (
     <div className="stack">
+      <h2 className="visually-hidden">Plan review findings</h2>
       <p className="muted">What the plan reviews found, and what the household decided to do about each one. Nothing here changes the plan by itself.</p>
       {items.length === 0 ? (
         <Card>

@@ -19,7 +19,7 @@ import { Fact, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge, useDir, usePlain } from '../../components/People';
 import { LinkedDates } from '../../components/LinkedDates';
 import { RecordLink } from '../../components/RecordLink';
-import { civil, instant, safeHref } from '../../lib/format';
+import { civil, dayIn, instant, safeHref } from '../../lib/format';
 import { deadlineVerification } from '../../lib/home';
 import { dataOf, type AnyRecord, type Directory, type Indexes, type Milestone } from '../../lib/records';
 import { attempt } from '../../lib/safe';
@@ -267,6 +267,7 @@ function LinkedTasks({ record, idx, level }: { record: Milestone; idx: Indexes; 
 export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone; idx: Indexes; dir: Directory; level: Level }) {
   const { actions } = useSnapshot();
   const plain = usePlain();
+  const { zone } = usePrefs();
   const { today, deadlinesByRecord } = useData();
   const d = record.data ?? ({} as Milestone['data']);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -432,7 +433,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
                 return (
                   <li key={i}>
                     <span className="preline">{e.summary}</span>
-                    <span className="small faint"> — {dir.nameOf(e.by)}, {civil(e.at.slice(0, 10), 'short')}</span>
+                    <span className="small faint"> — {dir.nameOf(e.by)}, {civil(dayIn(e.at, zone), 'short')}</span>
                     {href && (
                       <>
                         {' '}

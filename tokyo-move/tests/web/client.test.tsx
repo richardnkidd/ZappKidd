@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError, ConflictError, NetworkError, onUnauthenticated, UnauthenticatedError } from '../../src/web/net/client';
+import { api, ApiError, ConflictError, isMisdirected, MisdirectedError, NetworkError, onUnauthenticated, UnauthenticatedError } from '../../src/web/net/client';
 
 type Call = { url: string; init: RequestInit };
 const calls: Call[] = [];
@@ -118,5 +118,41 @@ describe('api client errors', () => {
     const err = (await api.snapshot().catch((e) => e)) as ApiError;
     expect(err.status).toBe(403);
     expect(err.message).toBe('Not allowed here');
+  });
+});
+
+
+describe('restore and misdirected addresses', () => {
+  it('restore sends the plain confirmation, or the explicit one that also brings back logins', async () => {
+    stubFetch(200, { restore: { restored_from: 'a.db', pre_restore_backup: 'b.db', session_invalidated: true } });
+    await api.restoreBackup('kadode-20261029T120000Z.db');
+    expect(sentBody()).toEqual({ backup: 'kadode-20261029T120000Z.db', confirm: 'RESTORE' });
+    await api.restoreBackup('kadode-20261029T120000Z.db', 'RESTORE-INCLUDING-USERS');
+    expect(sentBody()).toEqual({ backup: 'kadode-20261029T120000Z.db', confirm: 'RESTORE-INCLUDING-USERS' });
+  });
+
+  it('a 409 users_differ keeps its reason so the screen can ask a second, explicit question', async () => {
+    stubFetch(409, { error: 'conflict', message: 'differs', details: { reason: 'users_differ', confirm_with: 'RESTORE-INCLUDING-USERS' } }, false);
+    const err = await api.restoreBackup('kadode-20261029T120000Z.db').catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictError);
+    expect((err as ConflictError).details).toMatchObject({ reason: 'users_differ' });
+  });
+
+  it('any 421 is one calm message and is recognised everywhere', async () => {
+    stubFetch(421, { error: 'forbidden', message: 'This address is not served here' }, false);
+    const err = await api.snapshot().catch((e) => e);
+    expect(err).toBeInstanceOf(MisdirectedError);
+    expect((err as ApiError).message).toBe("This address isn't allowed for Kadode.");
+    expect(isMisdirected(err)).toBe(true);
+    expect(isMisdirected(new ApiError(403, 'forbidden', 'x'))).toBe(false);
+  });
+
+  it('a 421 does not trigger the sign-in redirect', async () => {
+    stubFetch(421, {}, false);
+    const seen = vi.fn();
+    const off = onUnauthenticated(seen);
+    await api.me().catch(() => undefined);
+    off();
+    expect(seen).not.toHaveBeenCalled();
   });
 });

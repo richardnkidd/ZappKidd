@@ -123,7 +123,7 @@ test.describe('Time zones', () => {
   });
 
   test('the computer’s own time zone makes no difference either', async ({ browser, baseURL }, testInfo) => {
-    const results: Record<string, Record<string, string[]>> = {};
+    const results: Record<string, Record<string, string>> = {};
     // Far ahead of Tokyo (UTC+14), far behind Honolulu (UTC-11), and the default.
     for (const tz of [undefined, 'Pacific/Kiritimati', 'Pacific/Pago_Pago']) {
       const context = await newContext(browser, testInfo, baseURL!, tz ? { timezoneId: tz } : {});

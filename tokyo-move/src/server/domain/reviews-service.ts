@@ -111,7 +111,7 @@ function loadReview(deps: Deps, ctx: AuthContext, id: string, baseVersion: numbe
 function applyFields(deps: Deps, ctx: AuthContext, state: RecordState, f: Fields): void {
   const data = state.data as unknown as ReviewSessionData;
   const people = listPeople(deps.db, ctx.householdId);
-  const visible = (id: string) => getRecordRow(deps.db, ctx, id) !== undefined;
+  const previous = new Set([...data.reviewed_record_ids, ...data.decisions.map((d) => d.record_id)]);
   if (f.participants) {
     const adults = people.filter((p) => p.kind === 'adult').map((p) => p.id);
     for (const p of f.participants) {
@@ -127,9 +127,21 @@ function applyFields(deps: Deps, ctx: AuthContext, state: RecordState, f: Fields
   for (const d of data.decisions) {
     if (!data.reviewed_record_ids.includes(d.record_id)) data.reviewed_record_ids.push(d.record_id);
   }
-  const missing = [...data.reviewed_record_ids, ...data.decisions.map((d) => d.record_id)].filter((id) => !visible(id));
+  // A review is shared by both adults, so it may only name shared records. Only ids being ADDED are checked, so a record
+  // that was shared when it was added never blocks the other person from editing the review later.
+  const added = [...new Set([...data.reviewed_record_ids, ...data.decisions.map((d) => d.record_id)])].filter((id) => !previous.has(id));
+  const missing: string[] = [];
+  const privateOnes: string[] = [];
+  for (const id of added) {
+    const rec = getRecordRow(deps.db, ctx, id);
+    if (!rec) missing.push(id);
+    else if (rec.visibility === 'private') privateOnes.push(id);
+  }
   if (missing.length) {
     throw validationError('Some records in this review do not exist', [{ path: 'reviewed_record_ids', message: `${missing.length} unknown record id(s)` }]);
+  }
+  if (privateOnes.length) {
+    throw validationError('A shared review cannot include private records', [{ path: 'reviewed_record_ids', message: `${privateOnes.length} private record(s): make them shared or leave them out` }]);
   }
 }
 

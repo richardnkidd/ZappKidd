@@ -8,7 +8,7 @@
  * reconciliation report. Heuristic fields (traveler_scope, phase, workstream_key, provisional gates) are provisional:
  * reviewed values replace them through corrections.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { addCalendarDays, compareCivil, diffDays, isCivilDate } from '../shared/dates';
 import type { TravelerGateConfig } from '../shared/engine-contracts';
@@ -49,7 +49,7 @@ import { clean, findIds, PeopleIndex, parseDependencies, parseOwner, splitList, 
 import { fileEntry, mapDisposition, readCoverage, readCrosswalk, readOverrides, sidecarPaths, type CoverageRow, type CrosswalkRow, type FileEntry, type Overrides } from './sidecars';
 import { slugify } from './util';
 import { table, type Raw, type TableRow } from './workbook';
-import { civilAt, readWorkbook } from './xlsx';
+import { civilAt, DEFAULT_WORKBOOK_LIMITS, readWorkbook, WorkbookLimitError } from './xlsx';
 
 type BundleRecord = ImportBundle['records'][number];
 
@@ -145,6 +145,10 @@ export function parseSourcePackage(dir: string, opts: ParseOptions = {}): Import
     if (!existsSync(path)) {
       if (required) throw new Error(`Required source file is missing: ${basename(path)} (looked in ${dirname(path)})`);
       return null;
+    }
+    // Refuse an absurd workbook BEFORE it is read into memory and hashed.
+    if (path === paths.workbook && statSync(path).size > DEFAULT_WORKBOOK_LIMITS.maxFileBytes) {
+      throw new WorkbookLimitError(`${basename(path)} is larger than ${DEFAULT_WORKBOOK_LIMITS.maxFileBytes / (1024 * 1024)} MB`);
     }
     const entry = fileEntry(path, name);
     files.push(entry);

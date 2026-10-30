@@ -27,6 +27,7 @@ import { SnapshotProvider } from './state/snapshot';
 import { Button } from './components/Controls';
 import { Skeleton } from './components/Layout';
 import { ErrorBanner } from './components/Feedback';
+import { isMisdirected } from './net/client';
 
 function NotFound() {
   return (
@@ -99,10 +100,18 @@ function Gate() {
       <div className="signin">
         <main className="signin__card" id="main">
           <h1 className="signin__title">We can't reach Kadode</h1>
-          <ErrorBanner title="The connection didn't work." onRetry={() => void reload()}>
-            {error?.message ?? 'Try again in a moment.'} Your plan is safe.
-          </ErrorBanner>
-          <Button variant="primary" onClick={() => void reload()}>Try again</Button>
+          {isMisdirected(error) ? (
+            <ErrorBanner title="This address isn't allowed for Kadode.">
+              Open Kadode from the address it was set up with. Nothing has been lost, and trying again here won't help.
+            </ErrorBanner>
+          ) : (
+            <>
+              <ErrorBanner title="The connection didn't work." onRetry={() => void reload()}>
+                {error?.message ?? 'Try again in a moment.'} Your plan is safe.
+              </ErrorBanner>
+              <Button variant="primary" onClick={() => void reload()}>Try again</Button>
+            </>
+          )}
         </main>
       </div>
     );

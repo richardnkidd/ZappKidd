@@ -11,12 +11,13 @@ import { Icon } from '../../components/Icon';
 import { Card, EmptyState, Section } from '../../components/Layout';
 import { OwnerChip } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
-import { civil, plural } from '../../lib/format';
+import { civil, dayIn, plural } from '../../lib/format';
 import { compareDates } from '../../lib/format';
 import type { BaseRecord } from '@shared/types';
 import { selectDecisions } from '../../lib/home';
 import { firstReviewDecisionKeys, type Decision, type Directory, type Indexes } from '../../lib/records';
 import { useData } from '../../state/data';
+import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
 import { approvalSummary, YourTurnTag } from './decisionText';
@@ -180,6 +181,7 @@ export function ReasonDialog({ decision, mode, onClose, onDone }: { decision: De
 /* ------------------------------------------------------------------ card */
 
 export function DecisionCard({ d, idx, dir, today }: { d: Decision; idx: Indexes; dir: Directory; today: string }) {
+  const { zone } = usePrefs();
   const data = d.data ?? ({} as Decision['data']);
   const summary = approvalSummary(d, dir);
   const open = d.status === 'open' || d.status === 'proposed';
@@ -316,11 +318,11 @@ export function DecisionCard({ d, idx, dir, today }: { d: Decision; idx: Indexes
                     .sort((a, b) => (a.at < b.at ? 1 : -1))
                     .map((a) => (
                       <li key={`${a.person_id}-${a.at}`}>
-                        {civil(a.at.slice(0, 10), 'short')}: {dir.nameOf(a.person_id)} approved “{options.find((o) => o.id === a.option_id)?.label ?? 'an option'}”
+                        {civil(dayIn(a.at, zone), 'short')}: {dir.nameOf(a.person_id)} approved “{options.find((o) => o.id === a.option_id)?.label ?? 'an option'}”
                         {a.note ? ` — ${a.note}` : ''}
                       </li>
                     ))}
-                  {data.decided_at && <li>{civil(data.decided_at.slice(0, 10), 'short')}: decided.</li>}
+                  {data.decided_at && <li>{civil(dayIn(data.decided_at, zone), 'short')}: decided.</li>}
                   {data.history_note && <li className="preline">{data.history_note}</li>}
                 </ul>
               )}

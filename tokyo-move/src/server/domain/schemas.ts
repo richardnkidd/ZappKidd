@@ -164,7 +164,7 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     consequence_of_delay: text(2000).nullable(),
     acceptance_evidence: text(2000),
     required_approvers: z.array(line(100)).min(1).max(10),
-    history_note: text(5000).nullable(),
+    // history_note is append-only (reject/defer/option changes write to it); it is not editable here.
   },
   risk: {
     raid_kind: z.enum(['risk', 'assumption', 'issue', 'dependency']),

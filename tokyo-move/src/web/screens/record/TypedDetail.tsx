@@ -195,8 +195,10 @@ export function TypedDetail({ record, idx, dir, level }: { record: AnyRecord; id
     default:
       body = null;
   }
+  const needsHeading = level === 2 && (record.type === 'decision' || record.type === 'risk' || record.type === 'question');
   return (
     <div className="record stack stack--loose">
+      {needsHeading && <h2 className="visually-hidden">Details</h2>}
       {body}
       {record.type !== 'note' && <Notes record={record} idx={idx} dir={dir} level={level} />}
       <SourceHistory record={record} idx={idx} dir={dir} />

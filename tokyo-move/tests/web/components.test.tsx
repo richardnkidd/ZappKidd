@@ -2,7 +2,7 @@
 import { act, createElement, useState, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { DeadlineBadge, StatusBadge, VerificationNote } from '../../src/web/components/Badges';
+import { DateText, DeadlineBadge, StatusBadge, VerificationNote } from '../../src/web/components/Badges';
 import { FilterChips, SegmentedControl, Field, TextInput } from '../../src/web/components/Controls';
 import { Dialog } from '../../src/web/components/Dialog';
 import { Disclosure } from '../../src/web/components/Disclosure';
@@ -11,6 +11,7 @@ import { EmptyState } from '../../src/web/components/Layout';
 import { OwnerChip, PersonBadge } from '../../src/web/components/People';
 import { SnapshotContext, type SnapshotCtx } from '../../src/web/state/snapshot';
 import { buildDirectory, buildIndexes } from '../../src/web/lib/records';
+import { applyTheme } from '../../src/web/state/prefs';
 import { PEOPLE } from './helpers';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -225,5 +226,45 @@ describe('dialog', () => {
     expect(document.body.querySelector('[role=dialog]')).toBeNull();
     expect(document.getElementById('root')?.hasAttribute('inert')).toBe(false);
     expect(document.activeElement?.id).toBe('opener'); // focus returns to what opened it
+  });
+});
+
+
+describe('dates are honest about what they are', () => {
+  it('an old date from a copy or an old record is neutral and says it proves nothing', () => {
+    const el = mount(<DateText date="2026-08-15" state="historical" today="2026-10-29" />);
+    expect(el.textContent).toContain('Aug 15, 2026');
+    expect(el.textContent).toContain('Old date — not evidence either way');
+    expect(el.textContent).not.toMatch(/past its date|ago/i);
+    expect(el.querySelector('.date-text--old')).not.toBeNull();
+    expect(el.querySelector('.date-text--past')).toBeNull();
+  });
+  it('a legal date on a weekend shows the weekday and a calm note, but a target date does not', () => {
+    const legal = mount(<DateText date="2026-11-07" kind="legal" today="2026-10-29" />);
+    expect(legal.textContent).toContain('Sat, Nov 7');
+    expect(legal.textContent).toContain('Falls on a weekend — aim for Fri, Nov 6.');
+    act(() => root.unmount());
+    container.remove();
+    const target = mount(<DateText date="2026-11-07" kind="internal_target" today="2026-10-29" />);
+    expect(target.textContent).not.toContain('weekend');
+  });
+  it('unknown stays unknown', () => {
+    expect(mount(<DateText date={null} />).textContent).toBe('Awaiting date');
+  });
+});
+
+describe('phone filter chips and theme', () => {
+  it('chips can sit in their own sideways-scrolling box', () => {
+    const el = mount(<FilterChips label="Show" value="a" scroll options={[{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }]} onChange={() => undefined} />);
+    expect(el.querySelector('.chips-scroll .filter-chips--scroll')).not.toBeNull();
+    expect(el.querySelectorAll('button')).toHaveLength(2);
+  });
+  it('a chosen theme is a data-theme on <html>; "like my device" removes it', () => {
+    applyTheme('dark');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    applyTheme('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    applyTheme('system');
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
   });
 });

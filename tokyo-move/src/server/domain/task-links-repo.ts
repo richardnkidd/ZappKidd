@@ -54,12 +54,25 @@ export function taskLinkFromRow(row: Record<string, unknown> | TaskLinkRow): Api
   };
 }
 
-export function getTaskLinkRow(db: Db, householdId: string, id: string): TaskLinkRow | undefined {
-  return db.prepare('SELECT * FROM task_links WHERE household_id = ? AND id = ?').get(householdId, id) as TaskLinkRow | undefined;
+/**
+ * A task link inherits the visibility of the record it is linked to: a link to somebody's private record is visible
+ * to that person only. Links with no record, or whose record no longer exists, are household-visible.
+ */
+const VISIBLE_LINK = `(t.record_id IS NULL OR NOT EXISTS (
+    SELECT 1 FROM records r
+     WHERE r.household_id = t.household_id AND r.id = t.record_id
+       AND r.visibility = 'private' AND COALESCE(r.created_by, '') <> @actor))`;
+
+export function getTaskLinkRow(db: Db, householdId: string, id: string, actor?: string): TaskLinkRow | undefined {
+  if (actor === undefined) return db.prepare('SELECT * FROM task_links WHERE household_id = ? AND id = ?').get(householdId, id) as TaskLinkRow | undefined;
+  return db
+    .prepare(`SELECT t.* FROM task_links t WHERE t.household_id = @hh AND t.id = @id AND ${VISIBLE_LINK}`)
+    .get({ hh: householdId, id, actor }) as TaskLinkRow | undefined;
 }
 
-export function listTaskLinkRows(db: Db, householdId: string): TaskLinkRow[] {
+/** Links the given person may see. */
+export function listTaskLinkRows(db: Db, householdId: string, actor: string): TaskLinkRow[] {
   return db
-    .prepare('SELECT * FROM task_links WHERE household_id = ? ORDER BY COALESCE(due, \'9999-12-31\'), created_at, id')
-    .all(householdId) as TaskLinkRow[];
+    .prepare(`SELECT t.* FROM task_links t WHERE t.household_id = @hh AND ${VISIBLE_LINK} ORDER BY COALESCE(t.due, '9999-12-31'), t.created_at, t.id`)
+    .all({ hh: householdId, actor }) as TaskLinkRow[];
 }

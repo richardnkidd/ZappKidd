@@ -90,7 +90,7 @@ describe('development identities are mode-gated', () => {
     const h = await harness();
     const c = await loginAs(h, 'avery');
     expect((await c.get('/api/me')).status).toBe(200);
-    const sameDb = await buildApp({ db: h.db, mode: 'production', dataDir: h.dir, taskAdapter: h.adapter });
+    const sameDb = await buildApp({ db: h.db, mode: 'production', dataDir: h.dir, taskAdapter: h.adapter, publicOrigin: ORIGIN });
     try {
       const res = await sameDb.inject({ method: 'GET', url: '/api/me', headers: { host: HOST, cookie: c.cookie! } });
       expect(res.statusCode).toBe(401);
@@ -205,16 +205,45 @@ describe('sessions', () => {
     expect(res.cookies.find((x) => x.name === 'kadode_session')!.secure).toBe(true);
   });
 
-  it('expires after 30 days but slides while in use', async () => {
+  it('slides while in use (14 days idle) but never lives past 30 days from creation', async () => {
     const h = await harness();
     const c = await loginAs(h, 'avery');
     const day = 24 * 60 * 60 * 1000;
-    h.clock.now = new Date(h.clock.now.getTime() + 20 * day);
-    expect((await c.get('/api/me')).status).toBe(200); // slides expiry to +30d from here
-    h.clock.now = new Date(h.clock.now.getTime() + 20 * day);
+    const at = (days: number) => {
+      h.clock.now = new Date(new Date('2026-10-29T20:00:00.000Z').getTime() + days * day);
+    };
+    for (const d of [10, 20, 28]) {
+      at(d);
+      expect((await c.get('/api/me')).status, `day ${d}`).toBe(200); // each use extends the idle window
+    }
+    at(29.9);
     expect((await c.get('/api/me')).status).toBe(200);
-    h.clock.now = new Date(h.clock.now.getTime() + 31 * day);
+    at(30.1);
+    expect((await c.get('/api/me')).status).toBe(401); // absolute lifetime reached although it was used the day before
+    expect(countRows(h.db, 'sessions')).toBe(0);
+  });
+
+  it('expires after 14 idle days', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    const day = 24 * 60 * 60 * 1000;
+    h.clock.now = new Date(h.clock.now.getTime() + 13 * day);
+    expect((await c.get('/api/me')).status).toBe(200);
+    h.clock.now = new Date(h.clock.now.getTime() + 14.1 * day);
     expect((await c.get('/api/me')).status).toBe(401);
+  });
+
+  it('the cookie lifetime follows the remaining session time', async () => {
+    const h = await harness();
+    const c = new Client(h.app);
+    const login = await c.post('/api/auth/dev-login', { person_id: 'avery' });
+    expect(login.cookies[0]!.maxAge).toBe(30 * 24 * 60 * 60);
+    const day = 24 * 60 * 60 * 1000;
+    const t0 = h.clock.now.getTime();
+    h.clock.now = new Date(t0 + 12 * day);
+    expect((await c.get('/api/me')).cookies[0]!.maxAge).toBe(14 * 24 * 60 * 60); // idle window
+    h.clock.now = new Date(t0 + 20 * day);
+    expect((await c.get('/api/me')).cookies[0]!.maxAge).toBe(10 * 24 * 60 * 60); // capped by the 30-day lifetime
   });
 
   it('logout ends the session on the server', async () => {

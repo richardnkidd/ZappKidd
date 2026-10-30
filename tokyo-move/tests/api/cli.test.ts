@@ -9,7 +9,7 @@ import { join, resolve } from 'node:path';
 import Database from 'better-sqlite3';
 import { buildApp } from '../../src/server/app';
 import { openDb } from '../../src/server/db/db';
-import { Client, PASSWORD } from './helpers';
+import { Client, ORIGIN, PASSWORD } from './helpers';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
 const TSX = join(ROOT, 'node_modules', '.bin', 'tsx');
@@ -32,6 +32,47 @@ beforeAll(() => {
   dbPath = join(dir, 'kadode-demo.db');
 });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+describe('SEC-011 CLI scripts never invent a database', () => {
+  it('SEC-011 backup, export, restore and set-password fail clearly when the database does not exist, and create nothing', () => {
+    const empty = mkdtempSync(join(tmpdir(), 'kadode-cli-missing-'));
+    try {
+      const env = { KADODE_DATA_DIR: empty, KADODE_DB: join(empty, 'kadode.db'), KADODE_MODE: 'local' };
+      const cases: [string, string[]][] = [
+        ['backup.ts', []],
+        ['export.ts', ['--out', join(empty, 'out')]],
+        ['restore.ts', ['kadode-20260101T000000Z.db', '--confirm', 'RESTORE']],
+        ['set-password.ts', ['--username', 'someone']],
+      ];
+      for (const [script, args] of cases) {
+        const res = run(script, args, { env, input: 'irrelevant password here\n' });
+        expect(res.status, `${script}: ${res.out}`).toBe(1);
+        expect(res.out, script).toMatch(/No database at .*kadode\.db/);
+      }
+      expect(readdirSync(empty)).toEqual([]); // no database, no backups folder, no output
+    } finally {
+      rmSync(empty, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('SEC-011 backup refuses a database that holds no household instead of reporting a healthy empty backup', () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), 'kadode-cli-empty-'));
+    try {
+      const dbFile = join(emptyDir, 'kadode.db');
+      openDb(dbFile).close(); // migrated but empty
+      const env = { KADODE_DATA_DIR: emptyDir, KADODE_DB: dbFile, KADODE_MODE: 'local' };
+      const res = run('backup.ts', [], { env });
+      expect(res.status).toBe(1);
+      expect(res.out).toMatch(/no household/i);
+      expect(existsSync(join(emptyDir, 'backups'))).toBe(false);
+      const exp = run('export.ts', ['--out', join(emptyDir, 'out')], { env });
+      expect(exp.status).toBe(1);
+      expect(existsSync(join(emptyDir, 'out'))).toBe(false);
+    } finally {
+      rmSync(emptyDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
 
 describe('scripts', () => {
   it('seed-demo creates a fresh demo database and refuses to overwrite without --reset', () => {
@@ -72,7 +113,7 @@ describe('scripts', () => {
     expect(ok.out).not.toContain(PASSWORD);
 
     const db = openDb(dbPath);
-    const app = await buildApp({ db, mode: 'production', dataDir: dir, webRoot: null });
+    const app = await buildApp({ db, mode: 'production', dataDir: dir, webRoot: null, publicOrigin: ORIGIN });
     try {
       const c = new Client(app);
       const res = await c.passwordLogin('avery-login');
@@ -100,6 +141,7 @@ describe('scripts', () => {
     db.close();
     const backup = run('backup.ts');
     expect(backup.status, backup.out).toBe(0);
+    expect(backup.out).toMatch(/Backed up .*kadode-demo\.db \(1 household\(s\), \d+ record\(s\)\)/); // says what it backed up
     const name = readdirSync(join(dir, 'backups')).find((f) => f.endsWith('.db'))!;
     expect(name).toMatch(/^kadode-\d{8}T\d{6}Z\.db$/);
     expect(run('backup.ts', ['--list']).out).toContain(name);

@@ -1,7 +1,10 @@
 /** Shared helpers for the command-line scripts (not an entry point). */
+// Everything these scripts create (database, backups, exports) is private to the current user.
+process.umask(0o077);
+
 import { isAbsolute, join, resolve } from 'node:path';
 import type { AuthContext, Deps } from '../src/server/context';
-import type { Db } from '../src/server/db/db';
+import { describeDb, openDb, type Db } from '../src/server/db/db';
 import { listPeople } from '../src/server/auth/users';
 import { parseMode } from '../src/server/config';
 import { SnapshotTaskAdapter } from '../src/server/tasks';
@@ -58,6 +61,7 @@ export function cliContext(db: Db, householdId: string, personId: string | null)
       dataDir: dataDirFromEnv(),
       cookieSecure: false,
       devIdentitiesEnabled: false,
+      allowedHosts: [],
       allowedOrigins: [],
       allowMissingOrigin: false,
       trustProxy: false,
@@ -74,4 +78,30 @@ export function cliContext(db: Db, householdId: string, personId: string | null)
     tokenHash: 'cli',
   };
   return { deps, ctx };
+}
+
+/**
+ * Open the EXISTING database named by KADODE_DB / KADODE_MODE / KADODE_DATA_DIR. A missing file is an error (a new empty
+ * database is never created), and unless `allowEmpty` an empty one is refused, so a backup or export of "nothing" can
+ * never be mistaken for a healthy one.
+ */
+export function openExistingDb(opts: { allowEmpty?: boolean } = {}): { db: Db; path: string; households: number; records: number } {
+  const path = dbPathFromEnv();
+  const db = openDb(path, { mustExist: true });
+  const info = describeDb(db);
+  if (info.households === 0 && !opts.allowEmpty) {
+    db.close();
+    throw new Error(`The database at ${path} holds no household. Check KADODE_DB and KADODE_MODE; nothing was done.`);
+  }
+  return { db, path, ...info };
+}
+
+/** Run a CLI body; print only the message of an error and exit 1 (no stack traces, no secrets). */
+export async function cliMain(fn: () => Promise<void> | void): Promise<void> {
+  try {
+    await fn();
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    process.exit(1);
+  }
 }

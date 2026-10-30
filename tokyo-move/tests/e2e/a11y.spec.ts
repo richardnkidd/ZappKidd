@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
-import { expect, loaded, openAccount, openRecord, test, type Api } from './support/fixtures';
+import { expect, loaded, openAccount, openRecord, test } from './support/fixtures';
+import { FIXED_ROUTES, recordRoutes } from './support/routes';
 
 /**
  * Accessibility smoke test on every route, written as small DOM checks (no axe dependency is installed).
@@ -187,39 +188,6 @@ async function settle(page: Page) {
   await page.waitForLoadState('networkidle');
 }
 
-/** A representative record of every type, so each record screen is covered. */
-async function recordRoutes(avery: Api): Promise<{ label: string; path: string }[]> {
-  const snap = await avery.snapshot();
-  const firstOfType = new Map<string, string>();
-  for (const r of snap.records as { id: string; type: string; visibility: string }[]) {
-    if (r.visibility === 'private') continue;
-    if (!firstOfType.has(r.type)) firstOfType.set(r.type, r.id);
-  }
-  return [...firstOfType.entries()].map(([type, id]) => ({ label: `record (${type})`, path: `/r/${encodeURIComponent(id)}` }));
-}
-
-const FIXED_ROUTES: { label: string; path: string }[] = [
-  { label: 'Home', path: '/' },
-  { label: 'Plan: by workstream', path: '/plan?view=workstream' },
-  { label: 'Plan: list', path: '/plan?view=list' },
-  { label: 'Plan: board', path: '/plan?view=board' },
-  { label: 'Plan: timeline', path: '/plan?view=timeline' },
-  { label: 'Decide: decisions', path: '/decide' },
-  { label: 'Decide: questions', path: '/decide/questions' },
-  { label: 'Decide: risks', path: '/decide/risks' },
-  { label: 'Money', path: '/money' },
-  { label: 'More', path: '/more' },
-  { label: 'Documents', path: '/documents' },
-  { label: 'Contacts', path: '/contacts' },
-  { label: 'Arrival', path: '/arrival' },
-  { label: 'Future work', path: '/future' },
-  { label: 'Data', path: '/data' },
-  { label: 'Settings', path: '/settings' },
-  { label: 'Ready: Avery', path: '/ready/avery' },
-  { label: 'Ready: Mochi', path: '/ready/mochi' },
-  { label: 'Not found', path: '/no-such-page' },
-];
-
 test.describe('Accessibility smoke', () => {
   for (const mode of ['required', 'best practice'] as const) {
   test(`every route (${mode}): ${mode === 'required' ? 'no sideways scroll, labelled inputs, named buttons, one h1' : 'heading order and comfortable touch targets'}`, async ({ page, signIn, api }) => {
@@ -301,6 +269,8 @@ test.describe('Accessibility smoke', () => {
   });
 
   test('text can be enlarged to 200% without losing content or scrolling sideways', async ({ page, signIn }) => {
+    // At 320px the 400%-zoom reflow rule applies instead (covered by the sideways-scroll checks above).
+    test.skip((page.viewportSize()?.width ?? 0) < 380, 'Reflow at 320px is covered by the per-route checks.');
     await signIn(page, 'avery', '/');
     // WCAG "resize text": a larger root font size must still fit the width.
     for (const path of ['/plan?view=list', '/', '/decide']) {
@@ -310,8 +280,19 @@ test.describe('Accessibility smoke', () => {
       await page.evaluate(() => {
         document.documentElement.style.fontSize = '200%';
       });
-      const wide = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-      expect(wide, `${path} at 200% text`).toBeLessThanOrEqual(1);
+      const result = await page.evaluate(() => {
+        const doc = document.documentElement;
+        const wide = doc.scrollWidth - doc.clientWidth;
+        const offenders = Array.from(document.body.querySelectorAll('*'))
+          .filter((el) => (el as HTMLElement).getClientRects().length > 0)
+          .map((el) => ({ el, right: el.getBoundingClientRect().right }))
+          .filter((x) => x.right > doc.clientWidth + 1)
+          .sort((a, b) => b.right - a.right)
+          .slice(0, 4)
+          .map((x) => `<${x.el.tagName.toLowerCase()}> "${(x.el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 30)}" reaches ${Math.round(x.right)}px of ${doc.clientWidth}px`);
+        return { wide, offenders };
+      });
+      expect.soft(result.wide, `${path} at 200% text: ${result.offenders.join('; ')}`).toBeLessThanOrEqual(1);
     }
   });
 });

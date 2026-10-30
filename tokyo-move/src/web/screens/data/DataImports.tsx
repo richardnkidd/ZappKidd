@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ImportChange, ImportRun } from '@shared/types';
 import { RECORD_TYPES, RECORD_TYPE_LABEL } from '../../lib/recordTypes';
-import { api, describeError, type BackupInfo } from '../../net/client';
+import { api, ConflictError, describeError, isMisdirected, type BackupInfo } from '../../net/client';
 import { Chip } from '../../components/Badges';
 import { Button, Field, Select, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
@@ -13,6 +13,7 @@ import { Card, EmptyState, PageTitle, Section, Skeleton } from '../../components
 import { RecordLink } from '../../components/RecordLink';
 import { instant, plural } from '../../lib/format';
 import type { Indexes } from '../../lib/records';
+import { useAuth } from '../../state/auth';
 import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
 
@@ -367,7 +368,7 @@ function Export({ idx }: { idx: Indexes }) {
           <Icon name="file" size={18} /> Everything (JSON)
         </a>
       </div>
-      <Disclosure title="One list at a time (CSV, opens in a spreadsheet)" level={4} className="disclosure--flat">
+      <Disclosure title="One list at a time (CSV, opens in a spreadsheet)" level={3} className="disclosure--flat">
         <ul className="csv-list">
           {types.map((t) => (
             <li key={t.type}>
@@ -387,10 +388,13 @@ function Export({ idx }: { idx: Indexes }) {
 function Backups() {
   const { zone } = usePrefs();
   const { refresh } = useSnapshot();
-  const [state, setState] = useState<{ kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; backups: BackupInfo[] }>({ kind: 'loading' });
+  const { forceSignOut } = useAuth();
+  const [state, setState] = useState<{ kind: 'loading' } | { kind: 'error'; message: string; retry: boolean } | { kind: 'ready'; backups: BackupInfo[] }>({ kind: 'loading' });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<BackupInfo | null>(null);
+  /** Step 1 keeps today's logins; step 2 appears only when the backup has different logins. */
+  const [step, setStep] = useState<'plain' | 'users'>('plain');
   const [typed, setTyped] = useState('');
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
@@ -399,7 +403,7 @@ function Backups() {
     api
       .listBackups()
       .then((r) => setState({ kind: 'ready', backups: [...r.backups].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)) }))
-      .catch((e) => setState({ kind: 'error', message: describeError(e) }));
+      .catch((e) => setState({ kind: 'error', message: describeError(e), retry: !isMisdirected(e) }));
   }, []);
   useEffect(load, [load]);
 
@@ -417,31 +421,52 @@ function Backups() {
     }
   };
 
+  const open = (b: BackupInfo) => {
+    setRestoring(b);
+    setStep('plain');
+    setTyped('');
+    setRestoreError(null);
+  };
+  const close = () => {
+    setRestoring(null);
+    setStep('plain');
+    setTyped('');
+  };
+
   const restore = async () => {
     if (!restoring) return;
     setRestoreBusy(true);
     setRestoreError(null);
     try {
-      const r = await api.restoreBackup(restoring.name);
-      setRestoring(null);
-      setTyped('');
-      setMsg(`Restored from ${r.restore.restored_from}. The state just before was saved as ${r.restore.pre_restore_backup}.`);
-      if (r.restore.session_invalidated) window.location.assign('/');
-      else {
-        await refresh();
-        load();
+      const r = await api.restoreBackup(restoring.name, step === 'users' ? 'RESTORE-INCLUDING-USERS' : 'RESTORE');
+      close();
+      if (r.restore.session_invalidated) {
+        // The server has ended every session, this one included. Go to sign-in with a plain note.
+        forceSignOut('Restored. Everyone has been signed out; sign in again.');
+        return;
       }
+      setMsg(`Restored from ${r.restore.restored_from}. The state just before was saved as ${r.restore.pre_restore_backup}.`);
+      await refresh();
+      load();
     } catch (e) {
-      setRestoreError(describeError(e));
+      if (e instanceof ConflictError && (e.details as { reason?: string } | undefined)?.reason === 'users_differ') {
+        // Different logins: nothing changed yet. Ask again, explicitly, before bringing the backup's logins back.
+        setStep('users');
+        setTyped('');
+      } else {
+        setRestoreError(describeError(e));
+      }
     } finally {
       setRestoreBusy(false);
     }
   };
 
+  const needed = step === 'users' ? 'RESTORE-INCLUDING-USERS' : 'RESTORE';
+
   return (
     <div className="stack">
       <Card>
-        <p className="muted">A backup is a safe copy of the whole plan. Restoring replaces everything with the copy you pick, after saving the current state first.</p>
+        <p className="muted">A backup is a safe copy of the whole plan. Restoring replaces everything with the copy you pick, after saving the current state first. Everyone is signed out afterwards.</p>
         <div className="row-actions">
           <Button variant="primary" busy={busy} icon="database" onClick={backup}>
             Back up now
@@ -451,7 +476,7 @@ function Backups() {
       </Card>
       {state.kind === 'loading' && <Skeleton lines={3} />}
       {state.kind === 'error' && (
-        <ErrorBanner title="We couldn't load the backups." onRetry={load}>
+        <ErrorBanner title="We couldn't load the backups." onRetry={state.retry ? load : undefined}>
           {state.message}
         </ErrorBanner>
       )}
@@ -469,7 +494,7 @@ function Backups() {
                     {b.name.includes('pre-restore') ? ' · saved automatically before a restore' : ''}
                   </p>
                 </div>
-                <Button variant="secondary" small onClick={() => { setRestoring(b); setTyped(''); setRestoreError(null); }}>
+                <Button variant="secondary" small onClick={() => open(b)}>
                   Restore…
                 </Button>
               </li>
@@ -479,21 +504,31 @@ function Backups() {
       {restoring && (
         <Dialog
           open
-          onClose={() => setRestoring(null)}
-          title="Restore this backup?"
-          description={`This replaces everything with the copy from ${instant(restoring.created_at, zone, 'long')}. Anything changed since then will be gone from the app, though the current state is saved first.`}
+          onClose={close}
+          title={step === 'users' ? 'This backup has different logins' : 'Restore this backup?'}
+          description={
+            step === 'users'
+              ? 'The backup was made when different people could sign in than can now. Nothing has been changed yet.'
+              : `This replaces everything with the copy from ${instant(restoring.created_at, zone, 'long')}. Anything changed since then will be gone from the app, though the current state is saved first. Everyone will be signed out.`
+          }
           footer={
             <>
-              <Button variant="quiet" onClick={() => setRestoring(null)}>
+              <Button variant="quiet" onClick={close}>
                 Cancel
               </Button>
-              <Button variant="danger" busy={restoreBusy} disabled={typed !== 'RESTORE'} onClick={restore}>
-                Restore
+              <Button variant="danger" busy={restoreBusy} disabled={typed !== needed} onClick={restore}>
+                {step === 'users' ? 'Restore and bring back its logins' : 'Restore'}
               </Button>
             </>
           }
         >
-          <Field label="Type RESTORE to confirm" error={restoreError}>
+          {step === 'users' && (
+            <p className="preline">
+              To go ahead, the backup’s own list of logins would replace today’s, as well as the plan. That changes who can sign in. If you only want the plan back, cancel and
+              ask whoever looks after this copy to bring the plan across without the logins.
+            </p>
+          )}
+          <Field label={`Type ${needed} to confirm`} error={restoreError}>
             <TextInput value={typed} onChange={(e) => setTyped(e.target.value)} autoCapitalize="characters" autoComplete="off" spellCheck={false} />
           </Field>
         </Dialog>

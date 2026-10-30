@@ -13,7 +13,7 @@ import { Card, EmptyState, Section, Skeleton } from '../../components/Layout';
 import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { describeAuditList } from '../../lib/audit';
-import { civil, instant, plural } from '../../lib/format';
+import { civil, dayIn, instant, plural } from '../../lib/format';
 import {
   deadlineOwner,
   deadlineVerification,
@@ -553,7 +553,7 @@ export function FreshnessFooter() {
               <>Task list {newestSync ? `synced ${instant(newestSync, zone, 'short')}` : 'connected'}.</>
             ) : (
               <>
-                Task list copy as of {adapter.as_of ? civil(adapter.as_of.slice(0, 10), 'short') : 'an unknown date'} — read-only
+                Task list copy as of {adapter.as_of ? civil(dayIn(adapter.as_of, zone), 'short') : 'an unknown date'} — read-only
                 {newestSync ? `, last refreshed ${instant(newestSync, zone, 'short')}` : ''}.
               </>
             )

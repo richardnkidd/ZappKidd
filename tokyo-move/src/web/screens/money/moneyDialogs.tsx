@@ -166,7 +166,7 @@ export function CostLineDialog({ open, onClose, record }: { open: boolean; onClo
       <Field label="Notes on timing" hint="For monthly costs: who it follows and for how long, in plain words.">
         <TextArea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
       </Field>
-      <Field label="Counts toward the plan?">
+      <Field label="Counts toward the plan?" hint={applicability === 'review' && hasAmount ? 'While this says “Not decided yet”, the amount is not counted. Choose Yes to count it.' : undefined}>
         <Select value={applicability} onChange={(e) => setApplicability(e.target.value as CostData['applicability'])}>
           <option value="include">Yes, include it</option>
           <option value="review">Not decided yet</option>

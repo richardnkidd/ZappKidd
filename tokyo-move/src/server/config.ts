@@ -11,6 +11,9 @@ export function parseMode(value: string | undefined): AppMode {
   throw new Error(`KADODE_MODE must be one of ${APP_MODES.join(', ')} (got "${value}")`);
 }
 
+/** The only household id the fictional demo uses (fixtures/demo/bundle.ts keeps this in sync; a test asserts it). */
+export const DEMO_HOUSEHOLD_ID = 'demo-household';
+
 export function isStrictMode(mode: AppMode): boolean {
   return mode === 'staging' || mode === 'production';
 }
@@ -33,10 +36,15 @@ export interface AppConfig {
   cookieSecure: boolean;
   /** Whether development identities may sign in (see devIdentitiesAllowed). */
   devIdentitiesEnabled: boolean;
-  /** Extra allowed browser origins (e.g. the Vite dev server origin). Same-host origins are always allowed. */
+  /**
+   * Host header values (lowercase, with port) this server answers to: loopback with the bound port, the public host
+   * from KADODE_PUBLIC_ORIGIN, and the hosts of any extra allowed origins. Anything else gets 421 (DNS-rebinding guard).
+   */
+  allowedHosts: string[];
+  /** Browser origins allowed on mutating requests (normalized). Origin is compared with THIS list, never with the Host header. */
   allowedOrigins: string[];
   /** TEST ONLY: accept mutating requests that carry no Origin header (app.inject). Refused in staging/production. */
   allowMissingOrigin: boolean;
-  /** Trust X-Forwarded-* headers (reverse proxy). */
+  /** Trust X-Forwarded-For from a reverse proxy on loopback (exactly one hop). */
   trustProxy: boolean;
 }

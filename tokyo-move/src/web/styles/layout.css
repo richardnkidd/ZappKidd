@@ -227,16 +227,21 @@
     grid-area: rail;
     position: sticky;
     top: 0;
+    /* The phone rules pin the bar to the bottom edge; release them here or sticky pulls the rail up over the banner. */
+    right: auto;
+    bottom: auto;
+    left: auto;
     align-self: start;
-    height: 100vh;
-    height: 100dvh;
+    height: auto;
+    max-height: 100vh;
+    max-height: 100dvh;
     overflow-y: auto;
     border-top: 0;
     background: transparent;
-    padding: var(--s-5) var(--s-4);
+    padding: var(--s-4) var(--s-4);
     display: flex;
     flex-direction: column;
-    gap: var(--s-4);
+    gap: var(--s-3);
   }
   .nav-brand {
     display: inline-flex;
@@ -275,7 +280,7 @@
     display: flex;
     align-items: center;
     gap: var(--s-3);
-    min-height: 44px;
+    min-height: 40px;
     padding: 0 var(--s-3);
     border-radius: var(--r-ctl);
     color: var(--ink-2);

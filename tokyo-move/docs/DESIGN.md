@@ -117,3 +117,39 @@ is untouched in Source & history. Old commitment dates never appear in "Now" and
 
 **Why `src/web/net/` and not `src/web/api/`.** Vite's `/api` dev proxy would swallow requests for any source file under a
 top-level `api/` folder (`/api/client.ts`), so the client lives in `src/web/net/client.ts`.
+
+### Phase 2 additions (web)
+
+**Home on a phone.** A compact "Who's ready" strip (one tappable row per traveler) sits directly under the greeting and
+opens `/ready/:personId` (holding things up, what unlocks it, still to do, done, after arrival). On wide screens the
+right-hand cards stay, trimmed to two blockers plus "See everything for <name>". Filter chips scroll sideways inside their
+own box on phones. Blocked shows three then "See all N"; Coming up shows four weeks / eight rows, then "Show the next 8 weeks".
+
+**Dates, honestly.**
+- A legal date on a weekend (or a listed public holiday) keeps its weekday and adds "Falls on a weekend — aim for <prior business day>".
+- State `historical` (an old date in a read-only task-list copy, or a commitment flagged `historical`) is neutral grey text
+  "Old date — not evidence either way". It never appears in Now or Blocked; it is listed once under "Old dates to check".
+- A milestone shows only its own deadline or review date. Linked task dates appear as "In your task list: <date> (copy as of <date>)";
+  a commitment that links to a milestone shows as "Recorded date" on that milestone and nowhere else. Done tasks never appear.
+- "Needs a decision" order: dated needed-by within 30 days, then `settings.first_review.decision_keys` in order, then the rest.
+- Instants are shown as the calendar day in the display zone (`dayIn`), never by slicing the UTC date.
+
+**Screens.** Money (scenario switch, exchange-rate panel, cash picture for 90 days or three years, one card per section with
+"known so far · N not known yet", edit one amount in one currency), Documents (four separate lifecycle facts, https link only,
+originals never stored), Contacts & evidence & plan review findings (relationship needs a basis beyond "potential resource";
+evidence shows verification from `direct_check` / `review_check_*`), Arrival & living in Tokyo (per traveler windows and dates,
+continuing obligations with no date, renewals register, property, return planning), Future work (calm, optional, interest
+selector), Data & imports (runs, receipts grouped by correction, task-list connection, export, backup/restore with RESTORE),
+Settings (display zone, household default, appearance, scenarios). Every record type has a plain detail view (`TypedDetail`).
+
+**Creative.** `/review` guided couple review (5 steps, optional gentle timer, saves a plain-text summary that names and links
+every record it mentions and never marks work done); `/what-if` compares moving the pet's arrival using `previewAnchorChange`
+and `computeBudget` without saving anything; `/arrival-pack` prints one page per traveler (A4 or Letter, black on white, links as
+text, contacts by role only, health and money sections off unless ticked).
+
+**Theme.** `data-theme="light|dark"` on `<html>` forces a theme; absent means follow the device. The forced-dark block is checked
+against the system dark block in `tests/web/contrast.test.tsx`.
+
+**Settings keys read defensively (not in the shared type yet).** `settings.first_review.decision_keys: string[]`;
+`settings.staging_analysis` (text, lists or labelled groups; `pet_specific` shown separately); `data.direct_check { on, url, result, quote, note }`
+and any `data.review_check_*` on rules and evidence.

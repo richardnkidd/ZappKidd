@@ -3,7 +3,7 @@ import { instant } from '../lib/format';
 import { useDir } from './People';
 import { usePrefs } from '../state/prefs';
 import { useSnapshot } from '../state/snapshot';
-import { ConflictError } from '../net/client';
+import { ConflictError, isMisdirected } from '../net/client';
 import { conflictDiffs } from '../lib/changes';
 import { Button } from './Controls';
 import { Icon } from './Icon';
@@ -84,10 +84,21 @@ export function ErrorBanner({ title, children, onRetry, retryLabel = 'Try again'
 
 /** Shown when a refresh failed but older data is still on screen. */
 export function StaleBanner() {
-  const { status, loadedAt, refresh } = useSnapshot();
+  const { status, loadedAt, refresh, error } = useSnapshot();
   const { zone } = usePrefs();
   const [busy, setBusy] = useState(false);
   if (status !== 'stale' || !loadedAt) return null;
+  if (isMisdirected(error)) {
+    return (
+      <div className="banner banner--stale" role="status">
+        <Icon name="info" size={20} />
+        <div className="banner__text">
+          <p className="banner__title">This address isn't allowed for Kadode.</p>
+          <p className="muted">You are looking at data loaded {instant(loadedAt.toISOString(), zone, 'time')}. Open Kadode from the address it was set up with.</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="banner banner--stale" role="status">
       <Icon name="clock" size={20} />

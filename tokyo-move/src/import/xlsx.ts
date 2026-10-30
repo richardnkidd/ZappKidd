@@ -6,7 +6,7 @@
  * cached values, sheet names resolved through workbook.xml + relationships, and date detection from cell styles.
  * Not supported (not needed): merged-cell semantics, comments, drawings, external links.
  */
-import { unzipSync } from 'fflate';
+import { inflateRawSync } from 'node:zlib';
 import { XMLParser } from 'fast-xml-parser';
 import { fromDayNumber } from '../shared/dates';
 
@@ -38,7 +38,102 @@ export interface Workbook {
   sheet(name: string): Sheet;
 }
 
-const MAX_PART_BYTES = 64 * 1024 * 1024;
+/**
+ * Size budget for reading a workbook. A hostile or corrupted .xlsx (zip amplification, one enormous shared string,
+ * millions of cells) must fail with a clear message instead of exhausting memory. The household workbook is a few
+ * hundred KB, so these are generous.
+ */
+export interface WorkbookLimits {
+  /** Largest .xlsx file accepted. */
+  maxFileBytes: number;
+  /** Total bytes ACTUALLY inflated across all parts that are read (declared sizes are not trusted). */
+  maxTotalBytes: number;
+  /** Largest single part once inflated. */
+  maxPartBytes: number;
+  /** Cells per worksheet. */
+  maxCellsPerSheet: number;
+  /** Characters in one shared or inline string (Excel itself caps a cell at 32,767). */
+  maxStringChars: number;
+}
+
+export const DEFAULT_WORKBOOK_LIMITS: WorkbookLimits = {
+  maxFileBytes: 25 * 1024 * 1024,
+  maxTotalBytes: 100 * 1024 * 1024,
+  maxPartBytes: 32 * 1024 * 1024,
+  maxCellsPerSheet: 250_000,
+  maxStringChars: 65_536,
+};
+
+export class WorkbookLimitError extends Error {
+  constructor(message: string) {
+    super(`The workbook is too large or unusual to import safely: ${message}`);
+    this.name = 'WorkbookLimitError';
+  }
+}
+
+const mb = (n: number): string => `${Math.round((n / (1024 * 1024)) * 10) / 10} MB`;
+
+interface ZipEntry {
+  name: string;
+  method: number;
+  compSize: number;
+  localOffset: number;
+}
+
+const u16 = (b: Uint8Array, o: number): number => (b[o] ?? 0) | ((b[o + 1] ?? 0) << 8);
+const u32 = (b: Uint8Array, o: number): number => (u16(b, o) | (u16(b, o + 2) << 16)) >>> 0;
+
+/** Read the zip central directory (sizes there are only used to locate data, never trusted as output sizes). */
+function readZipDirectory(buf: Uint8Array): Map<string, ZipEntry> {
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 65535); i -= 1) {
+    if (u32(buf, i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error('Not a readable XLSX workbook (no zip directory).');
+  const count = u16(buf, eocd + 10);
+  const cdOffset = u32(buf, eocd + 16);
+  if (count === 0xffff || cdOffset === 0xffffffff) throw new WorkbookLimitError('zip64 archives are not supported');
+  const entries = new Map<string, ZipEntry>();
+  let p = cdOffset;
+  for (let i = 0; i < count; i += 1) {
+    if (p + 46 > buf.length || u32(buf, p) !== 0x02014b50) throw new Error('Not a readable XLSX workbook (damaged zip directory).');
+    const method = u16(buf, p + 10);
+    const compSize = u32(buf, p + 20);
+    const nameLen = u16(buf, p + 28);
+    const extraLen = u16(buf, p + 30);
+    const commentLen = u16(buf, p + 32);
+    const localOffset = u32(buf, p + 42);
+    const name = decoder.decode(buf.subarray(p + 46, p + 46 + nameLen));
+    entries.set(name, { name, method, compSize, localOffset });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+
+/** Inflate ONE part, never producing more than `budget` bytes (zlib stops and throws instead of allocating more). */
+function extractPart(buf: Uint8Array, entry: ZipEntry, budget: number, label: string): Uint8Array {
+  const o = entry.localOffset;
+  if (o + 30 > buf.length || u32(buf, o) !== 0x04034b50) throw new Error('Not a readable XLSX workbook (damaged zip entry).');
+  const start = o + 30 + u16(buf, o + 26) + u16(buf, o + 28);
+  const data = buf.subarray(start, start + entry.compSize);
+  if (start + entry.compSize > buf.length) throw new Error('Not a readable XLSX workbook (truncated zip entry).');
+  if (entry.method === 0) {
+    if (data.length > budget) throw new WorkbookLimitError(`${label} is larger than the ${mb(budget)} allowed`);
+    return data;
+  }
+  if (entry.method !== 8) throw new Error(`Not a readable XLSX workbook (unsupported compression ${entry.method}).`);
+  try {
+    return inflateRawSync(data, { maxOutputLength: Math.max(1, budget) });
+  } catch (e) {
+    if ((e as { code?: string }).code === 'ERR_BUFFER_TOO_LARGE' || e instanceof RangeError) {
+      throw new WorkbookLimitError(`${label} expands to more than the ${mb(budget)} allowed`);
+    }
+    throw new Error('Not a readable XLSX workbook (damaged compressed data).');
+  }
+}
 
 const parser = new XMLParser({
   removeNSPrefix: true,
@@ -141,17 +236,26 @@ function dateStyleIndexes(stylesXml: string | undefined): Set<number> {
 
 /* ---------------------------- reader ----------------------------- */
 
-export function readWorkbook(bytes: Uint8Array): Workbook {
-  const files = unzipSync(bytes, {
-    filter: (file) => file.originalSize <= MAX_PART_BYTES && /^(xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|styles\.xml|worksheets\/[^/]+\.xml)|\[Content_Types\]\.xml)$/.test(file.name),
-  });
-  const text = (name: string): string | undefined => {
-    const part = files[name];
-    return part ? decoder.decode(part) : undefined;
+export function readWorkbook(bytes: Uint8Array, limitOverrides: Partial<WorkbookLimits> = {}): Workbook {
+  const limits: WorkbookLimits = { ...DEFAULT_WORKBOOK_LIMITS, ...limitOverrides };
+  if (bytes.length > limits.maxFileBytes) {
+    throw new WorkbookLimitError(`the file is ${mb(bytes.length)}, over the ${mb(limits.maxFileBytes)} limit`);
+  }
+  const directory = readZipDirectory(bytes);
+  let used = 0;
+  const read = (name: string): string | undefined => {
+    const entry = directory.get(name);
+    if (!entry) return undefined;
+    const budget = Math.min(limits.maxPartBytes, limits.maxTotalBytes - used);
+    if (budget <= 0) throw new WorkbookLimitError(`the parts together expand to more than ${mb(limits.maxTotalBytes)}`);
+    const out = extractPart(bytes, entry, budget, `"${name}"`);
+    used += out.length;
+    return decoder.decode(out);
   };
 
-  const workbookXml = text('xl/workbook.xml');
-  const relsXml = text('xl/_rels/workbook.xml.rels');
+  // Only the parts the workbook actually references are inflated: unreferenced junk in the zip is never touched.
+  const workbookXml = read('xl/workbook.xml');
+  const relsXml = read('xl/_rels/workbook.xml.rels');
   if (!workbookXml || !relsXml) throw new Error('Not a readable XLSX workbook (missing workbook.xml or its relationships).');
 
   const rels = new Map<string, string>();
@@ -160,13 +264,17 @@ export function readWorkbook(bytes: Uint8Array): Workbook {
     rels.set(r['@_Id'] as string, r['@_Target'] as string);
   }
 
-  const sharedXml = text('xl/sharedStrings.xml');
+  const sharedXml = read('xl/sharedStrings.xml');
   const shared: string[] = [];
   if (sharedXml) {
     const sd = parser.parse(sharedXml) as Record<string, any>;
-    for (const si of asArray(sd.sst?.si)) shared.push(stringItemText(si));
+    for (const si of asArray(sd.sst?.si)) {
+      const t = stringItemText(si);
+      if (t.length > limits.maxStringChars) throw new WorkbookLimitError(`a shared string has ${t.length} characters (limit ${limits.maxStringChars})`);
+      shared.push(t);
+    }
   }
-  const dateStyles = dateStyleIndexes(text('xl/styles.xml'));
+  const dateStyles = dateStyleIndexes(read('xl/styles.xml'));
 
   const wbDoc = parser.parse(workbookXml) as Record<string, any>;
   const sheetDefs = asArray<Record<string, string>>(wbDoc.workbook?.sheets?.sheet);
@@ -178,9 +286,9 @@ export function readWorkbook(bytes: Uint8Array): Workbook {
     const target = rels.get(relId);
     if (!target) throw new Error(`Sheet "${name}" has no relationship target.`);
     const path = target.startsWith('/') ? target.slice(1) : `xl/${target}`;
-    const xml = text(path);
+    const xml = read(path);
     if (!xml) throw new Error(`Sheet "${name}" part is missing: ${path}`);
-    sheets.push(parseSheet(name, xml, shared, dateStyles));
+    sheets.push(parseSheet(name, xml, shared, dateStyles, limits));
   }
 
   return {
@@ -193,7 +301,7 @@ export function readWorkbook(bytes: Uint8Array): Workbook {
   };
 }
 
-function parseSheet(name: string, xml: string, shared: string[], dateStyles: Set<number>): Sheet {
+function parseSheet(name: string, xml: string, shared: string[], dateStyles: Set<number>, limits: WorkbookLimits): Sheet {
   const doc = parser.parse(xml) as Record<string, any>;
   const cells = new Map<string, Cell>();
   let maxRow = 0;
@@ -202,6 +310,9 @@ function parseSheet(name: string, xml: string, shared: string[], dateStyles: Set
     for (const c of asArray<Record<string, any>>(row.c)) {
       const ref = c['@_r'] as string | undefined;
       if (!ref) continue;
+      if (cells.size >= limits.maxCellsPerSheet) {
+        throw new WorkbookLimitError(`sheet "${name}" has more than ${limits.maxCellsPerSheet} cells`);
+      }
       const { row: r, col } = parseRef(ref);
       const t = c['@_t'] as string | undefined;
       const style = c['@_s'] !== undefined ? Number(c['@_s']) : -1;
@@ -215,6 +326,7 @@ function parseSheet(name: string, xml: string, shared: string[], dateStyles: Set
         type = 'string';
       } else if (t === 'inlineStr') {
         value = stringItemText(c.is);
+        if (value.length > limits.maxStringChars) throw new WorkbookLimitError(`a string in sheet "${name}" has ${value.length} characters (limit ${limits.maxStringChars})`);
         type = 'string';
       } else if (t === 'str' && vRaw !== undefined) {
         value = vRaw;

@@ -58,7 +58,7 @@ describe('couple review', () => {
     expect((await avery.post(`/api/reviews/${r.id}/complete`, { baseVersion: done.body.record.version })).status).toBe(409);
 
     expect((await avery.get('/api/snapshot')).body.last_review_completed_at).toBe('2026-10-29T21:30:00.000Z');
-    h.clock.now = new Date('2026-11-12T20:00:00.000Z');
+    h.clock.now = new Date('2026-11-10T20:00:00.000Z');
     const next = await jun.post('/api/reviews', {});
     expect(next.body.resumed).toBe(false);
     expect(next.body.record.id).not.toBe(r.id);

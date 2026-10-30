@@ -10,12 +10,20 @@
  *
  * Ports 8787, 8791, 8901, 5173 and 5179 are used by other tools in this workspace; do not reuse them.
  */
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 export const E2E_PORTS = { main: 8920, snapshot: 8921, safety: 8922 } as const;
 
 export type E2EServer = keyof typeof E2E_PORTS;
 
 export function baseUrlFor(server: E2EServer): string {
   return `http://127.0.0.1:${E2E_PORTS[server]}`;
+}
+
+/** Where start-server.mjs keeps a throw-away server's database and backups (it deletes the folder on exit). */
+export function e2eDataDir(server: E2EServer): string {
+  return join(tmpdir(), 'kadode-e2e', `${server}-${E2E_PORTS[server]}`);
 }
 
 /** The demo household's people (fictional). */

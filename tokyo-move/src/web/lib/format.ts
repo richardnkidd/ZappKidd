@@ -1,4 +1,4 @@
-import { formatCivil, formatInstant, isCivilDate, relativeDays } from '@shared/dates';
+import { formatCivil, formatInstant, isCivilDate, relativeDays, todayIn } from '@shared/dates';
 import type { IanaZone } from '@shared/types';
 import { AWAITING_DATE } from '@shared/labels';
 
@@ -103,4 +103,19 @@ export function plain(text: string | null | undefined): string {
     .replace(/\s*\(\s*[A-Z]{1,4}\d{1,3}(?:\s*(?:,|and|&|\/|;)\s*[A-Z]{1,4}\d{1,3})*\s*\)/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
+
+/**
+ * The calendar day an instant falls on in a zone, or the value itself when it already is a calendar date.
+ * Slicing the first ten characters of a UTC instant would give the wrong day for Honolulu and Tokyo evenings.
+ */
+export function dayIn(value: string | null | undefined, zone: IanaZone): string | null {
+  if (!value) return null;
+  if (isCivilDate(value)) return value;
+  try {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : todayIn(zone, d);
+  } catch {
+    return null;
+  }
 }

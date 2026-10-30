@@ -6,10 +6,9 @@
  *   npm run user:password -- --disable-dev-identities
  * Piped input is also accepted:  printf '%s' "$PW" | npm run user:password -- --username <name>
  */
-import { openDb } from '../src/server/db/db';
 import { MIN_PASSWORD_LENGTH } from '../src/server/auth/password';
 import { createUser, disableAllDevIdentities, findUserByUsername, setUserPassword } from '../src/server/auth/users';
-import { dbPathFromEnv, flagString, parseArgs } from './_cli';
+import { cliMain, flagString, openExistingDb, parseArgs } from './_cli';
 
 const { flags } = parseArgs(process.argv.slice(2));
 
@@ -53,7 +52,8 @@ function readSecret(prompt: string): Promise<string> {
   });
 }
 
-const db = openDb(dbPathFromEnv());
+await cliMain(async () => {
+const { db } = openExistingDb({ allowEmpty: true });
 try {
   if (flags.has('disable-dev-identities')) {
     console.log(`Disabled ${disableAllDevIdentities(db)} development identit(ies).`);
@@ -97,3 +97,4 @@ try {
 } finally {
   db.close();
 }
+});

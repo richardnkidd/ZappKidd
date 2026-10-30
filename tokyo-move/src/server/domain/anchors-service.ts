@@ -32,7 +32,7 @@ function anchorRow(deps: Deps, ctx: AuthContext, code: string) {
 function deadlineContext(deps: Deps, ctx: AuthContext): DeadlineContext {
   const records = listRecordRows(deps.db, ctx).map((r) => rowToRecord(r, false) as BaseRecord);
   const people = listPeople(deps.db, ctx.householdId);
-  const links = listTaskLinkRows(deps.db, ctx.householdId).map((r) => taskLinkFromRow(r) as TaskLink);
+  const links = listTaskLinkRows(deps.db, ctx.householdId, ctx.personId).map((r) => taskLinkFromRow(r) as TaskLink);
   return {
     records,
     people,

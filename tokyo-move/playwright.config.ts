@@ -41,8 +41,9 @@ export default defineConfig({
     navigationTimeout: 15_000,
   },
   projects: [
-    { name: 'phone', use: { viewport: { width: 390, height: 844 }, ...phone } },
-    { name: 'small-phone', use: { viewport: { width: 320, height: 640 }, ...phone } },
+    // data-safety.spec.ts only talks to the API (and restores a whole database), so it runs once, in `desktop`.
+    { name: 'phone', testIgnore: /data-safety\.spec\.ts/, use: { viewport: { width: 390, height: 844 }, ...phone } },
+    { name: 'small-phone', testIgnore: /data-safety\.spec\.ts/, use: { viewport: { width: 320, height: 640 }, ...phone } },
     { name: 'desktop', use: { viewport: { width: 1280, height: 800 } } },
   ],
   webServer: [

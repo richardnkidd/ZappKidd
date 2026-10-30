@@ -77,7 +77,7 @@ describe('fixture adapter: propose -> capture -> readback -> synced', () => {
     const c = await loginAs(h, 'avery');
     const before = (await c.get('/api/tasks')).body.task_links.map((t: any) => [t.id, t.due, t.due_basis]);
     await c.post('/api/tasks', { title: 'New one', due_mode: 'default' });
-    h.clock.now = new Date('2026-11-20T00:00:00.000Z');
+    h.clock.now = new Date('2026-11-08T00:00:00.000Z');
     await c.post('/api/tasks/sync', {});
     const after = (await c.get('/api/tasks')).body.task_links.filter((t: any) => before.some((b: any) => b[0] === t.id)).map((t: any) => [t.id, t.due, t.due_basis]);
     expect(after.sort()).toEqual(before.sort());

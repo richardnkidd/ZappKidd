@@ -5,8 +5,12 @@
  * result into the database idempotently, and prints counts, status and receipts. Exits non-zero when the plan's IDs
  * fail validation (for example a missing W01–W71) or the import fails. Never prints record bodies.
  */
+// Everything this script creates (database, reports) is private to the current user.
+process.umask(0o077);
+
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { applyBundle } from '../src/import/apply';
 import { applyCorrections, BUILTIN_CORRECTIONS, loadCorrectionFiles, mergeCorrections } from '../src/import/corrections';
 import { parseSourcePackage } from '../src/import/normalize';
@@ -84,13 +88,17 @@ function main(): number {
     }
     if (reportPath) {
       const target = resolve(reportPath);
-      if (!target.includes(`${join('private')}`)) {
+      // The report quotes real household data: it may only be written inside <project>/private (not merely somewhere
+      // whose path contains the word "private").
+      const privateDir = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'private');
+      const rel = relative(privateDir, target);
+      if (rel === '' || rel.startsWith('..') || rel.startsWith(sep) || resolve(privateDir, rel) !== target) {
         console.error('Refusing to write a report outside a private/ directory (it contains real household data).');
         return 1;
       }
       const verificationFile = join(source, 'verification.json');
       const { bundle: final, receipts: allReceipts } = applyCorrections(parsedForReport, corrections);
-      mkdirSync(dirname(target), { recursive: true });
+      mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
       writeFileSync(
         target,
         buildReconciliationReport({
@@ -102,6 +110,7 @@ function main(): number {
           verification: existsSync(verificationFile) ? JSON.parse(readFileSync(verificationFile, 'utf8')) : undefined,
           run: { id: res.run.id, status: res.status, summary: res.run.summary },
         }),
+        { mode: 0o600 },
       );
       console.log(`  report written: ${target}`);
     }
@@ -111,4 +120,10 @@ function main(): number {
   }
 }
 
-process.exitCode = main();
+try {
+  process.exitCode = main();
+} catch (e) {
+  // A clear one-line message (for example a workbook that is over the size limits), never a stack trace of the data.
+  console.error(e instanceof Error ? e.message : String(e));
+  process.exitCode = 1;
+}

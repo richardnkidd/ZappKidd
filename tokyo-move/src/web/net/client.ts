@@ -41,6 +41,16 @@ export class NetworkError extends ApiError {
   }
 }
 
+/** Any 421: the server does not serve this address. Calm message, and nothing should retry in a loop. */
+export class MisdirectedError extends ApiError {
+  constructor() {
+    super(421, 'forbidden', "This address isn't allowed for Kadode.");
+    this.name = 'MisdirectedError';
+  }
+}
+
+export const isMisdirected = (e: unknown): boolean => e instanceof MisdirectedError || (e instanceof ApiError && e.status === 421);
+
 export class ConflictError extends ApiError {
   readonly server: BaseRecord | null;
   readonly yourChanges: Record<string, unknown>;
@@ -101,6 +111,8 @@ async function request<T>(method: string, path: string, opts: RequestOptions = {
   }
 
   if (res.ok) return payload as T;
+
+  if (res.status === 421) throw new MisdirectedError();
 
   const body = (payload ?? {}) as Partial<ApiErrorBody>;
   const message = typeof body.message === 'string' && body.message ? body.message : defaultMessage(res.status);
@@ -301,8 +313,8 @@ export const api = {
 
   createBackup: () => send<{ backup: BackupInfo }>('POST', '/api/admin/backup'),
   listBackups: () => get<{ backups: BackupInfo[] }>('/api/admin/backups'),
-  restoreBackup: (backup: string) =>
-    send<{ restore: { restored_from: string; pre_restore_backup: string; session_invalidated: boolean } }>('POST', '/api/admin/restore', { backup, confirm: 'RESTORE' }),
+  restoreBackup: (backup: string, confirm: 'RESTORE' | 'RESTORE-INCLUDING-USERS' = 'RESTORE') =>
+    send<{ restore: { restored_from: string; pre_restore_backup: string; session_invalidated: boolean } }>('POST', '/api/admin/restore', { backup, confirm }),
 };
 
 /** Human message for any thrown error, safe to show. Validation failures say plainly what was wrong. */

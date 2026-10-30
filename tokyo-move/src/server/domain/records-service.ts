@@ -5,7 +5,7 @@ import { HttpError, conflictError, forbidden, notFound, validationError } from '
 import { parseWith, type ValidationIssue } from '../http/validate';
 import { listPeople } from '../auth/users';
 import { listAudit } from './audit';
-import { awaitingText, evaluateDecision } from './decisions';
+import { awaitingText, evaluateDecision, requiredApprovers } from './decisions';
 import { taskLinkFromRow } from './task-links-repo';
 import { importChangesForRecord } from './import-service';
 import {
@@ -268,6 +268,7 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
     const next: RecordState = clone(cur);
     const edited = new Set(cur.locally_edited);
     const ch = body.changes;
+    let resetNote: string | null = null;
 
     if (ch.title !== undefined && ch.title !== cur.title) {
       next.title = ch.title;
@@ -323,6 +324,20 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
         if (!deepEqual(cur.data[key], merged[key])) edited.add(`data.${key}`);
       }
       next.data = merged;
+      if (row.type === 'decision') {
+        const reset = guardDecisionEdit(cur.data, merged, Object.keys(incoming), people);
+        if (reset) {
+          // The options changed after people had approved: nobody's approval may carry over to different choices.
+          const dd = merged as unknown as DecisionData;
+          const who = people.find((p) => p.id === ctx.personId)?.display_name ?? ctx.personId;
+          dd.approvals = [];
+          dd.decided_option_id = null;
+          dd.decided_at = null;
+          dd.history_note = [dd.history_note, `${who} changed the options on ${deps.now().toISOString().slice(0, 10)}; earlier approvals were cleared.`].filter(Boolean).join('\n').slice(-5000);
+          for (const f of ['data.approvals', 'data.decided_option_id', 'data.decided_at', 'data.history_note', 'status']) edited.add(f);
+          resetNote = 'Options changed; earlier approvals were cleared';
+        }
+      }
       postValidate(row.type, next.data, people, cur.data, Object.keys(incoming));
       if (row.type === 'funding') {
         // Once a planning-zero income line leaves that status it stays guarded, so a two-step edit cannot dodge the rule.
@@ -340,12 +355,58 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
     if (deepEqual({ ...next, locally_edited: [] }, { ...cur, locally_edited: [] })) return rowToRecord(row, false);
     const { row: updated } = writeRecordState(deps.db, ctx, row, next, {
       action: 'update',
-      reason: body.reason ?? null,
+      reason: [body.reason, resetNote].filter(Boolean).join(' - ') || null,
       now: deps.now(),
     });
     return rowToRecord(updated, false);
   });
   return run();
+}
+
+/**
+ * Edits that could change what a decision's existing approvals mean. Returns true when the options' id set changed
+ * after approvals exist (the caller then clears the approvals). Throws 422 for edits that are never allowed:
+ *  - required_approvers once anyone has approved, or ever removing a required approver;
+ *  - the question, or the label/consequences of an existing option, once anyone has approved.
+ */
+function guardDecisionEdit(before: Record<string, unknown>, after: Record<string, unknown>, changed: string[], people: Person[]): boolean {
+  const hadApprovals = Array.isArray(before.approvals) && before.approvals.length > 0;
+  if (changed.includes('required_approvers') && !deepEqual(before.required_approvers, after.required_approvers)) {
+    if (hadApprovals) {
+      throw validation('The approvers cannot change once someone has approved', [
+        issue('data.required_approvers', 'Withdraw the approvals first, or start a new decision'),
+      ]);
+    }
+    const now = (after.required_approvers as string[] | undefined) ?? [];
+    const missing = requiredApproversOf(before, people).filter((a) => !now.includes(a));
+    if (missing.length > 0) {
+      throw validation('A required approver cannot be removed', [issue('data.required_approvers', 'Everyone who must approve stays on the list')]);
+    }
+  }
+  if (hadApprovals && changed.includes('question') && !deepEqual(before.question, after.question)) {
+    throw validation('The question cannot change once someone has approved', [issue('data.question', 'Start a new decision instead')]);
+  }
+  if (changed.includes('options') && !deepEqual(before.options, after.options)) {
+    const oldOpts = (before.options as { id: string; label: string; consequences: string | null }[] | undefined) ?? [];
+    const newOpts = (after.options as { id: string; label: string; consequences: string | null }[] | undefined) ?? [];
+    if (hadApprovals) {
+      for (const o of newOpts) {
+        const prev = oldOpts.find((x) => x.id === o.id);
+        if (prev && (prev.label !== o.label || (prev.consequences ?? null) !== (o.consequences ?? null))) {
+          throw validation('An option someone approved cannot be reworded', [
+            issue('data.options', `Add a new option instead of rewording "${prev.id}"`),
+          ]);
+        }
+      }
+    }
+    const sameSet = oldOpts.length === newOpts.length && oldOpts.every((o) => newOpts.some((n) => n.id === o.id));
+    return hadApprovals && !sameSet;
+  }
+  return false;
+}
+
+function requiredApproversOf(data: Record<string, unknown>, people: Person[]): string[] {
+  return requiredApprovers(data as unknown as DecisionData, people);
 }
 
 /** Cross-field rules that single-field schemas cannot express. */
@@ -395,11 +456,7 @@ function postValidate(type: RecordType, data: Record<string, unknown>, people: P
       if (!adults.includes(a)) throw validation('Unknown approver', [issue('data.required_approvers', 'Approvers must be adults in this household')]);
     }
     for (const ap of (data.approvals as { option_id: string }[] | undefined) ?? []) {
-      if (!ids.includes(ap.option_id)) {
-        throw validation('An approval refers to an option that would be removed', [
-          issue('data.options', 'Withdraw the approval before removing that option'),
-        ]);
-      }
+      if (!ids.includes(ap.option_id)) throw validation('An approval refers to an unknown option', [issue('data.options', 'Option ids must stay stable')]);
     }
   }
 }

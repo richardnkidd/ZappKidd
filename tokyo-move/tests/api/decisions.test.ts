@@ -129,19 +129,84 @@ describe('decision approval', () => {
     expect(again.body.record.status).toBe('proposed');
   });
 
-  it('editing options or approvers re-evaluates the decision', async () => {
+  it('before anyone approves, options can be edited and approvers can be added but never removed', async () => {
+    const h = await harness();
+    const avery = await loginAs(h, 'avery');
+    const d = await twoOptionDecision(avery);
+    const reword = await avery.patch(`/api/records/${d.id}`, {
+      baseVersion: d.version,
+      changes: { data: { options: [{ id: 'opt-1', label: 'By sea (slow)', consequences: null, source: 'household' }, { id: 'opt-2', label: 'By air', consequences: null, source: 'household' }, { id: 'opt-3', label: 'Store it', consequences: null, source: 'household' }] } },
+    });
+    expect(reword.status).toBe(200);
+    const drop = await avery.patch(`/api/records/${d.id}`, { baseVersion: reword.body.record.version, changes: { data: { required_approvers: ['avery'] } } });
+    expect(drop.status).toBe(422);
+    expect(drop.body.details[0].path).toBe('data.required_approvers');
+    expect(recordRow(h.db, d.id).data).toContain('"jun"');
+  });
+});
+
+describe('approvals cannot be bent by editing the decision (SEC-007)', () => {
+  it('one adult cannot make a two-person decision household-approved alone by dropping the other approver', async () => {
     const h = await harness();
     const avery = await loginAs(h, 'avery');
     const d = await twoOptionDecision(avery);
     const a = await avery.post(`/api/decisions/${d.id}/approve`, { baseVersion: d.version, option_id: 'opt-1' });
     expect(a.body.record.status).toBe('proposed');
-    // Dropping jun from the approvers makes avery's approval sufficient.
-    const edit = await avery.patch(`/api/records/${d.id}`, { baseVersion: a.body.record.version, changes: { data: { required_approvers: ['avery'] } } });
-    expect(edit.status).toBe(200);
-    expect(edit.body.record.status).toBe('approved');
-    expect(edit.body.record.data.decided_option_id).toBe('opt-1');
-    // Cannot remove an option somebody approved.
-    const drop = await avery.patch(`/api/records/${d.id}`, { baseVersion: edit.body.record.version, changes: { data: { options: [{ id: 'opt-2', label: 'By air', consequences: null, source: 'household' }] } } });
-    expect(drop.status).toBe(422);
+    const sneaky = await avery.patch(`/api/records/${d.id}`, { baseVersion: a.body.record.version, changes: { data: { required_approvers: ['avery'] } } });
+    expect(sneaky.status).toBe(422);
+    const row = recordRow(h.db, d.id);
+    expect(row.status).toBe('proposed');
+    expect(JSON.parse(row.data).required_approvers).toEqual(['avery', 'jun']);
+    // Not even adding someone once approvals exist.
+    expect((await avery.patch(`/api/records/${d.id}`, { baseVersion: a.body.record.version, changes: { data: { required_approvers: ['avery', 'jun'] } } })).status).toBe(200); // unchanged list is a no-op
+  });
+
+  it("an option someone approved cannot be reworded, and neither can the question", async () => {
+    const h = await harness();
+    const avery = await loginAs(h, 'avery');
+    const jun = await loginAs(h, 'jun');
+    const d = await twoOptionDecision(avery);
+    const a = await avery.post(`/api/decisions/${d.id}/approve`, { baseVersion: d.version, option_id: 'opt-1' });
+    const b = await jun.post(`/api/decisions/${d.id}/approve`, { baseVersion: a.body.record.version, option_id: 'opt-1' });
+    expect(b.body.record.status).toBe('approved');
+    const options = b.body.record.data.options;
+    const reworded = options.map((o: any) => (o.id === 'opt-1' ? { ...o, label: 'Ship the car to Tokyo (+$4,800)' } : o));
+    const v = b.body.record.version;
+    expect((await avery.patch(`/api/records/${d.id}`, { baseVersion: v, changes: { data: { options: reworded } } })).status).toBe(422);
+    expect((await avery.patch(`/api/records/${d.id}`, { baseVersion: v, changes: { data: { question: 'A completely different question?' } } })).status).toBe(422);
+    expect((await avery.patch(`/api/records/${d.id}`, { baseVersion: v, changes: { data: { history_note: 'Everyone agreed to this' } } })).status).toBe(422); // append-only
+    const row = recordRow(h.db, d.id);
+    expect(row.version).toBe(v);
+    expect(JSON.parse(row.data).options[0].label).toBe('By sea');
+    expect(row.status).toBe('approved');
+  });
+
+  it('adding or removing an option after approvals clears them, with an audit trail', async () => {
+    const h = await harness();
+    const avery = await loginAs(h, 'avery');
+    const jun = await loginAs(h, 'jun');
+    const d = await twoOptionDecision(avery);
+    const a = await avery.post(`/api/decisions/${d.id}/approve`, { baseVersion: d.version, option_id: 'opt-1' });
+    const b = await jun.post(`/api/decisions/${d.id}/approve`, { baseVersion: a.body.record.version, option_id: 'opt-1' });
+    expect(b.body.record.status).toBe('approved');
+    const more = [...b.body.record.data.options, { id: 'opt-3', label: 'Sell it', consequences: null, source: 'household' }];
+    const res = await jun.patch(`/api/records/${d.id}`, { baseVersion: b.body.record.version, changes: { data: { options: more } }, reason: 'Added a third idea' });
+    expect(res.status).toBe(200);
+    expect(res.body.record.status).toBe('open');
+    expect(res.body.record.data).toMatchObject({ approvals: [], decided_option_id: null, decided_at: null });
+    expect(res.body.record.data.history_note).toContain('Jun changed the options');
+    expect(res.body.record.data.options).toHaveLength(3);
+    const entry = (await jun.get(`/api/audit?record_id=${d.id}`)).body.entries[0];
+    expect(entry).toMatchObject({ action: 'update', actor: 'jun' });
+    expect(entry.reason).toContain('Added a third idea');
+    expect(entry.reason).toContain('approvals were cleared');
+    expect(entry.before.data.approvals).toHaveLength(2);
+    expect(entry.after.data.approvals).toEqual([]);
+    // Removing an approved option clears them too.
+    const again = await avery.post(`/api/decisions/${d.id}/approve`, { baseVersion: res.body.record.version, option_id: 'opt-2' });
+    const fewer = again.body.record.data.options.filter((o: any) => o.id !== 'opt-2');
+    const removed = await jun.patch(`/api/records/${d.id}`, { baseVersion: again.body.record.version, changes: { data: { options: fewer } } });
+    expect(removed.status).toBe(200);
+    expect(removed.body.record.data.approvals).toEqual([]);
   });
 });

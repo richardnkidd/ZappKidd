@@ -12,6 +12,20 @@ import { parseJson, stableStringify } from '../util/json';
 const UNDOABLE: ReadonlySet<AuditAction> = new Set(['update', 'status_change', 'approve', 'reject', 'defer', 'anchor_change', 'undo']);
 const undoBody = z.strictObject({ reason: text(1000).optional() });
 
+/** Person ids whose approval entry differs between two decision data objects (added, removed or changed). */
+function changedApprovers(from: Record<string, unknown>, to: Record<string, unknown>): string[] {
+  const index = (d: Record<string, unknown>): Map<string, string> => {
+    const m = new Map<string, string>();
+    if (Array.isArray(d.approvals)) for (const a of d.approvals as { person_id?: string; option_id?: string; note?: string | null }[]) {
+      if (a && typeof a.person_id === 'string') m.set(a.person_id, `${a.option_id ?? ''}|${a.note ?? ''}`);
+    }
+    return m;
+  };
+  const a = index(from);
+  const b = index(to);
+  return [...new Set([...a.keys(), ...b.keys()])].filter((p) => a.get(p) !== b.get(p));
+}
+
 function looksLikeState(v: unknown): v is RecordState {
   if (typeof v !== 'object' || v === null) return false;
   const o = v as Record<string, unknown>;
@@ -40,6 +54,16 @@ export function undoAudit(deps: Deps, ctx: AuthContext, auditId: string, rawBody
     const after = parseJson<unknown>(entry.after, null);
     if (!looksLikeState(before) || !looksLikeState(after)) {
       throw validationError('This entry cannot be undone', [{ path: '', message: 'No restorable state was recorded' }]);
+    }
+    // Undo must not be a back door around the rules that apply going forward.
+    if ((entry.action === 'approve' || entry.action === 'reject' || entry.action === 'defer') && entry.actor !== ctx.personId) {
+      throw new HttpError(403, 'forbidden', 'Only the person who recorded this can undo it');
+    }
+    if (before.visibility !== after.visibility && row.created_by !== ctx.personId) {
+      throw new HttpError(403, 'forbidden', 'Only the person who created a record can change who can see it');
+    }
+    for (const person of changedApprovers(after.data, before.data)) {
+      if (person !== ctx.personId) throw new HttpError(403, 'forbidden', "Undo cannot add or withdraw another person's approval");
     }
     if (stableStringify(stateOf(row)) !== stableStringify(after)) {
       throw new HttpError(409, 'conflict', 'The record changed after this entry, so it cannot be undone safely.', {

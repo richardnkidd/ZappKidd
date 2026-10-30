@@ -9,7 +9,7 @@ import { useAuth } from '../state/auth';
 type IdentitiesState = { kind: 'loading' } | { kind: 'dev'; identities: DevIdentity[] } | { kind: 'password' };
 
 export function SignIn() {
-  const { completeSignIn } = useAuth();
+  const { completeSignIn, notice } = useAuth();
   const [state, setState] = useState<IdentitiesState>({ kind: 'loading' });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -65,6 +65,14 @@ export function SignIn() {
         <h1 className="signin__title">Welcome back</h1>
         <p className="muted">A private planning home for your move.</p>
 
+        {notice && (
+          <div className="banner banner--info" role="status">
+            <Icon name="info" size={20} />
+            <div className="banner__text">
+              <p className="banner__title">{notice}</p>
+            </div>
+          </div>
+        )}
         {error && <ErrorBanner title="That did not work">{error}</ErrorBanner>}
 
         {state.kind === 'loading' && <Skeleton lines={3} height={44} />}

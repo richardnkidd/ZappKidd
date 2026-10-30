@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { BaseRecord, Snapshot, TaskLink } from '@shared/types';
-import { api, ConflictError, describeError, type DueMode, type StatusChangeBody } from '../net/client';
+import { api, ConflictError, describeError, isMisdirected, type DueMode, type StatusChangeBody } from '../net/client';
 import { buildDirectory, buildIndexes, type Directory, type Indexes } from '../lib/records';
 import { useMe } from './auth';
 
@@ -71,9 +71,12 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
   const [dirty, setDirtyKeys] = useState<ReadonlySet<string>>(new Set());
   const inflight = useRef<Promise<void> | null>(null);
   const hasData = useRef(false);
+  // After a 421 ("this address isn't allowed") nothing is retried automatically: it would only fail again.
+  const blocked = useRef(false);
 
   const refresh = useCallback((): Promise<void> => {
     if (inflight.current) return inflight.current;
+    if (blocked.current) return Promise.resolve();
     const p = (async () => {
       try {
         const s = await api.snapshot();
@@ -84,6 +87,7 @@ export function SnapshotProvider({ children }: { children: ReactNode }) {
         setStatus('ready');
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
+        if (isMisdirected(e)) blocked.current = true;
         setError(err);
         setStatus(hasData.current ? 'stale' : 'error');
       } finally {

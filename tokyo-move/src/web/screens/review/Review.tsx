@@ -3,7 +3,6 @@ import { Link } from 'react-router';
 import { addCalendarDays, isCivilDate } from '@shared/dates';
 import type { AuditEntry, BaseRecord } from '@shared/types';
 import { api, describeError } from '../../net/client';
-import { Chip } from '../../components/Badges';
 import { Button, Field, TextArea, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { ErrorBanner } from '../../components/Feedback';
@@ -13,7 +12,7 @@ import { Card, EmptyState, PageTitle, Section, Skeleton } from '../../components
 import { OwnerChip } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { describeAuditList } from '../../lib/audit';
-import { civil, instant } from '../../lib/format';
+import { civil, dayIn, instant } from '../../lib/format';
 import { selectDecisions, selectNow, type FilterContext } from '../../lib/home';
 import { dataOf, firstReviewDecisionKeys, isOpenWork, type AnyRecord, type Decision, type Directory, type Indexes, type Question } from '../../lib/records';
 import { buildReviewSummary } from '../../lib/reviewSummary';
@@ -289,7 +288,7 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
           onClose={() => setApproving(null)}
           onDone={(rec, label) => {
             const d = approving;
-            setSession((s) => ({ ...s, decisions: [...s.decisions.filter((x) => x.id !== d.id), { id: d.id, title: d.title, outcome: `${me} approved ${label ? `“${label}”` : 'an option'}${rec.status === 'approved' ? ' and the household decided' : ''}` }] }));
+            setSession((s) => ({ ...s, decisions: [...s.decisions.filter((x) => x.id !== d.id), { id: d.id, title: d.title, outcome: `${me} approved ${label ? `“${label.replace(/[.\s]+$/, '')}”` : 'an option'}${rec.status === 'approved' ? ', and the household decided' : ''}` }] }));
           }}
         />
       )}
@@ -479,7 +478,7 @@ function StepWrapUp({ session, idx, dir, since, onSaved }: { session: Session; i
 function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const { snapshot } = useSnapshot();
   const since = snapshot?.last_review_completed_at ?? null;
-  const { today } = useData();
+  const { today, zone } = useData();
   const open = idx.all.find((r) => r.type === 'review_session' && r.status === 'in_progress');
   const [session, setSessionState] = useState<Session | null>(null);
   const [step, setStep] = useState(0);
@@ -540,7 +539,7 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
             ))}
           </ol>
           <p className="muted small">
-            {since ? `Last review finished ${civil(since.slice(0, 10), 'long')}.` : 'No review has been finished yet.'} Today is {civil(today, 'long')}.
+            {since ? `Last review finished ${civil(dayIn(since, zone), 'long')}.` : 'No review has been finished yet.'} Today is {civil(today, 'long')}.
           </p>
           {open && <p className="muted small">A review was already started. Starting again picks it up.</p>}
           {error && <p className="field__error" role="alert">{error}</p>}
@@ -607,9 +606,7 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
           </>
         )}
       </div>
-      <Chip tone="neutral" small>
-        Leaving this page keeps what you have done; the review stays open until you save it.
-      </Chip>
+      <p className="faint small">Leaving this page keeps what you have done; the review stays open until you save it.</p>
     </div>
   );
 }

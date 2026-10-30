@@ -25,7 +25,10 @@ const exportQuery = z.strictObject({
   format: z.enum(['json', 'csv']).optional(),
   type: z.enum(RECORD_TYPES as [RecordType, ...RecordType[]]).optional(),
 });
-const restoreBody = z.strictObject({ backup: line(120), confirm: z.literal('RESTORE', { error: 'Type RESTORE to confirm' }) });
+const restoreBody = z.strictObject({
+  backup: line(120),
+  confirm: z.enum(['RESTORE', 'RESTORE-INCLUDING-USERS'], { error: 'Type RESTORE (keeps current users) or RESTORE-INCLUDING-USERS to confirm' }),
+});
 const emptyBody = z.strictObject({});
 
 export function registerDataRoutes(app: FastifyInstance, deps: Deps): void {
@@ -86,8 +89,10 @@ export function registerDataRoutes(app: FastifyInstance, deps: Deps): void {
       backupPath,
       actor: { householdId: ctx.householdId, personId: ctx.personId, tokenHash: ctx.tokenHash },
       now: deps.now(),
+      includeUsers: body.confirm === 'RESTORE-INCLUDING-USERS',
+      disableDevIdentities: !deps.config.devIdentitiesEnabled,
     });
-    if (result.session_invalidated) clearSessionCookie(deps, reply);
+    clearSessionCookie(deps, reply); // every session was ended, including this one
     return { restore: result };
   });
 }

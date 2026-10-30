@@ -1,4 +1,5 @@
 // Start the API (tsx watch) and the web dev server (vite) together. Ctrl-C stops both.
+process.umask(0o077); // everything started from here is private to this user
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';

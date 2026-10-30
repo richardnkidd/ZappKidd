@@ -278,7 +278,7 @@ async function pushToStore(deps: Deps, ctx: AuthContext, adapter: TaskAdapter, l
 
 export function listTasks(deps: Deps, ctx: AuthContext): { task_links: ApiTaskLink[]; adapter: AdapterStatus } {
   return {
-    task_links: listTaskLinkRows(deps.db, ctx.householdId).map(taskLinkFromRow),
+    task_links: listTaskLinkRows(deps.db, ctx.householdId, ctx.personId).map(taskLinkFromRow),
     adapter: adapterStatus(deps, ctx),
   };
 }
@@ -331,7 +331,7 @@ export async function proposeTask(deps: Deps, ctx: AuthContext, rawBody: unknown
 }
 
 function loadLink(deps: Deps, ctx: AuthContext, id: string): TaskLinkRow {
-  const row = getTaskLinkRow(deps.db, ctx.householdId, id);
+  const row = getTaskLinkRow(deps.db, ctx.householdId, id, ctx.personId); // private links are invisible to others
   if (!row) throw notFound('Task');
   return row;
 }
@@ -443,11 +443,11 @@ export async function syncTasks(deps: Deps, ctx: AuthContext, rawBody: unknown):
   parseWith(syncBody, rawBody);
   const adapter = adapterFor(deps, ctx);
   if (!adapter.canWrite) {
-    return { task_links: listTaskLinkRows(deps.db, ctx.householdId).map(taskLinkFromRow), adapter: adapterStatus(deps, ctx), refreshed: 0, failed: 0, skipped_reason: 'read_only_adapter' };
+    return { task_links: listTaskLinkRows(deps.db, ctx.householdId, ctx.personId).map(taskLinkFromRow), adapter: adapterStatus(deps, ctx), refreshed: 0, failed: 0, skipped_reason: 'read_only_adapter' };
   }
   let refreshed = 0;
   let failed = 0;
-  for (const row of listTaskLinkRows(deps.db, ctx.householdId)) {
+  for (const row of listTaskLinkRows(deps.db, ctx.householdId, ctx.personId)) {
     if (row.adapter !== adapter.name || !row.canonical_id) continue;
     if (row.sync_state !== 'synced' && row.sync_state !== 'conflict') continue;
     const before = taskLinkFromRow(row);
@@ -470,7 +470,7 @@ export async function syncTasks(deps: Deps, ctx: AuthContext, rawBody: unknown):
       failed += 1;
     }
   }
-  return { task_links: listTaskLinkRows(deps.db, ctx.householdId).map(taskLinkFromRow), adapter: adapterStatus(deps, ctx), refreshed, failed, skipped_reason: null };
+  return { task_links: listTaskLinkRows(deps.db, ctx.householdId, ctx.personId).map(taskLinkFromRow), adapter: adapterStatus(deps, ctx), refreshed, failed, skipped_reason: null };
 }
 
 export type { TaskLink };

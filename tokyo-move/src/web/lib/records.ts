@@ -23,6 +23,9 @@ import type {
 } from '@shared/types';
 import { TERMINAL_STATUSES } from '@shared/types';
 
+/** Any record regardless of its data shape (typed records such as Milestone are assignable to this). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyRecord = BaseRecord<RecordType, any>;
 export type Milestone = BaseRecord<'milestone', MilestoneData>;
 export type Decision = BaseRecord<'decision', DecisionData>;
 export type Question = BaseRecord<'question', QuestionData>;

@@ -261,3 +261,13 @@ export const ZONE_OPTIONS: { zone: 'Asia/Tokyo' | 'Pacific/Honolulu' | 'America/
 
 export const NOT_KNOWN = 'Not known yet';
 export const AWAITING_DATE = 'Awaiting date';
+
+export const JURISDICTION_LABEL: Record<string, string> = {
+  JP: 'Japan',
+  'JP-Tokyo': 'Tokyo',
+  US: 'United States',
+  'US-HI': 'Hawaiʻi',
+  'US-MD': 'Maryland',
+  household: 'Our household',
+  contract: 'Set by a contract',
+};

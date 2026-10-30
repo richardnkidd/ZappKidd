@@ -63,8 +63,26 @@ private/       GITIGNORED — real source package, real database, reviews, perso
 
 Development identities are real rows in `users` with `is_dev_identity = 1`; the server refuses them outside
 `local-demo`/`local`. Sessions are random 256-bit tokens in an `HttpOnly; SameSite=Lax` cookie; only a SHA-256 of the
-token is stored. Passwords use Node's scrypt. Mutations require JSON bodies and a same-origin `Origin` header.
-Every query is scoped by `household_id`; `private` records are visible only to their creator.
+token is stored; sessions end after 14 idle days and at most 30 days after sign-in. Passwords use Node's scrypt, with
+login limits that hold under concurrent requests. Every query is scoped by `household_id`; `private` records (and task
+links or reviews that point at them) are visible only to their creator.
+
+Hardening added after the independent security review:
+
+- **Host allowlist (DNS-rebinding defence):** every request — reads included — must carry a loopback `Host` on the
+  bound port or the configured `KADODE_PUBLIC_ORIGIN`; anything else gets `421`. Mutations also need JSON and an
+  `Origin` from the configured list (never compared with the request's own `Host`).
+- **Safe defaults:** an unset `KADODE_MODE` is refused when `KADODE_DB` points at a database; `local-demo` refuses a
+  non-demo household; `KADODE_LAN=1` is refused with development identities over real data; staging/production refuse
+  non-loopback HTTP without a trusted proxy and secure cookies. Forwarded headers are trusted only from loopback.
+- **Integrity:** once anyone has approved a decision its question, options and required approvers are frozen (adding or
+  removing an option clears approvals with an audit reason); only the approver can undo an approval.
+- **Data at rest:** database, WAL/SHM files and backups are created `0600` in a `0700` directory. Restore signs everyone
+  out and refuses to bring back different logins unless `RESTORE-INCLUDING-USERS` is typed.
+- **Inputs:** encoded or dot-segment `/api` paths are rejected; the XLSX reader has size, part and cell budgets; CSV export
+  neutralises formula prefixes (including leading spaces and full-width signs).
+- **Dev server:** Vite serves only `src/web`, `src/shared` and `node_modules`, denies `private/`, databases and secrets,
+  and rejects foreign `Host` headers.
 
 ## 5. Records, versions, conflicts, audit
 
@@ -84,16 +102,32 @@ export and import idempotency are uniform. Record ids are deterministic (`milest
 2. Parse to a normalized bundle (`src/import/normalize.ts`), preserving raw cell values and coordinates.
 3. Upsert by deterministic id. For a *new* source version, fields not edited in-app take the new source value;
    locally edited fields are kept and logged as `local_kept`.
-4. Apply reviewed-model corrections once per (correction, record), each with a receipt in `import_changes`.
+4. Apply reviewed-model corrections once per (correction, record), each with a receipt in `import_changes`:
+   generic, ID-based corrections ship in `src/import/builtin-corrections.ts`; household-specific corrections (from the
+   independent plan reviews) are loaded from `private/corrections/*.json` in file-name order. Operations are
+   `set` / `add` / `remove` / `replace_text` / `create` / `setting`; a correction that finds nothing to change is recorded
+   as *not applicable* rather than failing. Rules are never merged automatically — duplicates are marked `superseded`
+   with an explicit `superseded_by`, and records follow the chain to the active rule.
 5. Validate counts and references (every dependency, workstream and evidence reference must resolve).
 
 ## 7. Dates and deadlines
 
 - Civil dates are strings; arithmetic is integer day math, so a date never shifts across Tokyo/Honolulu/New York.
-- Units: calendar days, business days (weekends excluded; holiday calendars must be supplied, otherwise the result is
-  labeled approximate), calendar months (end-of-month clamped).
-- Each traveler has independent anchors (arrival, departure, residence, health/pension eligibility). Household T/D are
-  coordination helpers only and never drive a traveler's legal deadline.
+- Units: calendar days, business days (weekends plus computed Japanese national and US federal holidays — labeled
+  approximate until checked against the official calendar), calendar months (end-of-month clamped).
+- Every rule states what its date **means**: *by* (do it on or before), *not before* (a window opens — e.g. a pet
+  exam that must fall inside the days before boarding), *on* (happens that day), *continuously since*, or *recurring*.
+  Weekend/holiday advice follows the meaning: "aim for the prior business day" for *by*, "the first business day inside
+  the window" for *not before* — never an earlier date.
+- Dates from a dated, read-only copy (e.g. the task-list snapshot) or old task dates are **historical**: shown calmly,
+  never as overdue, because they prove nothing about completion.
+- Each traveler has independent anchors (arrival, departure, residence, health/pension eligibility, residence-status
+  expiry, final departure from Japan, and — where a route uses one — the Certificate of Eligibility issue date).
+  Household T/D are coordination helpers only and never drive a traveler's date.
+- Readiness is per traveler and never a percentage. A shared row (e.g. "entry permissions") tracks each traveler's part
+  separately (`traveler_progress`), dependencies can apply to one traveler only (`dependency_scope`), steps that may not
+  apply are answered per traveler (`applies_to`: yes / no / not sure), and an unanswered "does this apply?" step holds
+  that traveler's go-ahead. Optional future work never counts as a gate.
 - Missing anchor ⇒ **Awaiting date**. A rule never invents a date.
 - Every deadline records its kind (legal / contractual / user-committed / internal target / estimate / review date),
   basis, sources, jurisdiction, timezone, verification date and traveler.

@@ -9,7 +9,10 @@ import {
   VERIFICATION_LABEL,
   WORK_STATUS_LABEL,
 } from '@shared/labels';
-import { weekendNote } from '../lib/deadlineNotes';
+import type { ComputedDeadline } from '@shared/engine-contracts';
+import { dateParts, windowPairOf, type DateParts } from '../lib/dateWords';
+import { dataOf } from '../lib/records';
+import { useData } from '../state/data';
 import { civil, relative } from '../lib/format';
 import { useOptionalSnapshot } from '../state/snapshot';
 import { Icon, type IconName } from './Icon';
@@ -96,32 +99,83 @@ export function VerificationNote({ verification, kind }: { verification: Deadlin
   );
 }
 
-/** The date line used in lists: "Thu, Nov 20 · in 22 days" or "Awaiting date". Legal dates add a weekend heads-up. */
-export function DateText({ date, today, state, kind }: { date: string | null | undefined; today?: string; state?: DeadlineState; kind?: DeadlineKind | null }) {
-  const holidays = useOptionalSnapshot()?.snapshot?.settings?.jp_holidays;
-  if (!date) return <span className="date-text date-text--awaiting">Awaiting date</span>;
+interface DateTextProps {
+  date: string | null | undefined;
+  today?: string;
+  state?: DeadlineState;
+  /** Words before and after the date ("Due by ", " (window opens)") and the far end of a window. */
+  prefix?: string;
+  suffix?: string;
+  endDate?: string | null;
+  /** Shown instead of "Awaiting date" (for example a repeating rule). */
+  emptyText?: string | null;
+  /** Weekend or holiday advice from the engine, shown exactly as given. */
+  advice?: string | null;
+  /** Accepts a deadline kind for call sites that pass it; the wording comes from `prefix`. */
+  kind?: DeadlineKind | null;
+}
+
+/** The date line used in lists: "Due by Thu, Nov 20 · in 22 days", or "Awaiting date". */
+export function DateText({ date, today, state, prefix = '', suffix = '', endDate = null, emptyText = null, advice = null }: DateTextProps) {
+  if (!date) return <span className="date-text date-text--awaiting">{emptyText ?? 'Awaiting date'}</span>;
   const historical = state === 'historical';
-  const rel = today && !historical ? relative(date, today) : null;
+  const rel = today && !historical && !endDate ? relative(date, today) : null;
   const overdue = state === 'overdue';
-  const note = historical ? null : weekendNote(date, kind, holidays);
   if (historical) {
-    // A past date from a dated copy or an old record: neutral, and explicitly not evidence either way.
+    // A past date from a dated copy or an old record: neutral, and it says nothing about whether the thing was done.
     return (
       <span className="date-text date-text--old">
         <time dateTime={date}>{civil(date, 'short')}</time>
-        <span> · {DEADLINE_STATE_LABEL.historical}</span>
+        <span> — {DEADLINE_STATE_LABEL.historical}</span>
       </span>
     );
   }
   return (
     <>
       <span className={`date-text${overdue ? ' date-text--past' : ''}${state === 'due_soon' || state === 'due_today' ? ' date-text--soon' : ''}`}>
+        {prefix}
         <time dateTime={date}>{civil(date, 'weekday')}</time>
+        {endDate && (
+          <>
+            {' – '}
+            <time dateTime={endDate}>{civil(endDate, 'weekday')}</time>
+          </>
+        )}
+        {suffix}
         {rel && <span className="faint"> · {rel}</span>}
         {overdue && <span className="date-flag"> · past its date</span>}
       </span>
-      {note && <span className="date-note">{note}</span>}
+      {advice && <span className="date-note">{advice}</span>}
     </>
+  );
+}
+
+/** A computed deadline with its meaning in words (see lib/dateWords.ts) and the engine's business-day advice. */
+export function DeadlineWhen({ d, today }: { d: ComputedDeadline; today?: string }) {
+  const { deadlines } = useData();
+  const idx = useOptionalSnapshot()?.idx;
+  const rule = d.rule_id ? (idx?.byKey.get(d.rule_id) ?? idx?.byId.get(`deadline_rule:${d.rule_id}`) ?? null) : null;
+  const rd = rule ? dataOf<DeadlineRuleData>(rule) : null;
+  const pair = deadlines.ok ? windowPairOf(d, rd?.window_pair, deadlines.value) : null;
+  const parts: DateParts = dateParts({
+    bound: d.bound,
+    kind: d.kind,
+    date: d.deadline.date,
+    pairDate: pair?.deadline.date ?? null,
+    label: d.label,
+    trigger: rd?.applies_when ?? null,
+  });
+  return (
+    <DateText
+      date={parts.date}
+      today={today}
+      state={d.state}
+      prefix={parts.prefix}
+      suffix={parts.suffix}
+      endDate={parts.endDate}
+      emptyText={parts.emptyText ?? (d.deadline.date ? null : undefined)}
+      advice={d.business_day_advice ?? null}
+    />
   );
 }
 
@@ -129,7 +183,7 @@ export function DeadlineLine({ deadline, today, state }: { deadline: Deadline | 
   if (!deadline) return <span className="faint">No date yet</span>;
   return (
     <span className="deadline-line">
-      <DateText date={deadline.date} today={today} state={state} kind={deadline.kind} />
+      <DateText date={deadline.date} today={today} state={state} />
       <DeadlineBadge kind={deadline.kind} />
     </span>
   );

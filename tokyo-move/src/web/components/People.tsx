@@ -1,5 +1,5 @@
 import type { OwnerRef, Person } from '@shared/types';
-import { plainRefs } from '../lib/format';
+import { proseText } from '../lib/prose';
 import { buildDirectory, type Directory } from '../lib/records';
 import { useOptionalSnapshot } from '../state/snapshot';
 import { Icon, PawIcon } from './Icon';
@@ -82,5 +82,5 @@ export function OwnerChip({ owner, proposed = false, compact = false, prefix }: 
 /** Imported text with internal codes removed or swapped for plain titles. Display-only. */
 export function usePlain(): (text: string | null | undefined) => string {
   const idx = useOptionalSnapshot()?.idx;
-  return (text) => plainRefs(text, (key) => idx?.byKey.get(key)?.title ?? null);
+  return (text) => proseText(text, idx);
 }

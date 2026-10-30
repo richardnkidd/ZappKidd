@@ -1,13 +1,28 @@
-import { formatCivil, formatInstant, isCivilDate, relativeDays, todayIn } from '@shared/dates';
+import { diffDays, formatCivil, formatInstant, isCivilDate, relativeDays, todayIn } from '@shared/dates';
 import type { IanaZone } from '@shared/types';
 import { AWAITING_DATE } from '@shared/labels';
 
-/** Civil date → text; never shifts timezone. Unknown → "Awaiting date". */
+/** Today in the display zone, kept here so every date can decide whether it needs a year (set by the data provider). */
+let formatToday: string | null = null;
+export function setFormatToday(today: string | null): void {
+  formatToday = today && isCivilDate(today) ? today : null;
+}
+
+/** A year is shown when it differs from this year, or the date is more than six months away (a 3-year plan is ambiguous without it). */
+export function needsYear(date: string, today: string | null = formatToday): boolean {
+  if (!isCivilDate(date)) return false;
+  if (!today) return true;
+  if (date.slice(0, 4) !== today.slice(0, 4)) return true;
+  return Math.abs(diffDays(today, date)) > 183;
+}
+
+/** Civil date → text; never shifts timezone. Unknown → "Awaiting date". Short and long styles always carry the year. */
 export function civil(date: string | null | undefined, style: 'short' | 'long' | 'compact' | 'weekday' = 'short', empty = AWAITING_DATE): string {
   if (!date) return empty;
   if (!isCivilDate(date)) return date; // show source text as-is rather than crash
   try {
-    return formatCivil(date, style);
+    const base = formatCivil(date, style);
+    return (style === 'weekday' || style === 'compact') && needsYear(date) ? `${base}, ${date.slice(0, 4)}` : base;
   } catch {
     return date;
   }

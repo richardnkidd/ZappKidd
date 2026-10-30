@@ -4,6 +4,7 @@ import { todayIn } from '@shared/dates';
 import { collectDeadlines, type DeadlineContext } from '@shared/deadlines';
 import { householdReadiness } from '@shared/readiness';
 import type { IanaZone } from '@shared/types';
+import { setFormatToday } from '../lib/format';
 import { attempt, type Attempt } from '../lib/safe';
 import { usePrefs } from './prefs';
 import { useSnapshot } from './snapshot';
@@ -23,11 +24,20 @@ const Ctx = createContext<DataCtx | null>(null);
 
 /** Re-render when the civil day changes in the display zone (checked once a minute). */
 function useToday(zone: IanaZone): string {
-  const [today, setToday] = useState(() => todayIn(zone));
+  const [today, setToday] = useState(() => {
+    const t = todayIn(zone);
+    setFormatToday(t);
+    return t;
+  });
   useEffect(() => {
-    setToday(todayIn(zone));
-    const t = window.setInterval(() => setToday(todayIn(zone)), 60_000);
-    return () => window.clearInterval(t);
+    const tick = () => {
+      const t = todayIn(zone);
+      setFormatToday(t);
+      setToday(t);
+    };
+    tick();
+    const timer = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(timer);
   }, [zone]);
   return today;
 }

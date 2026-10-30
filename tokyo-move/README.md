@@ -122,7 +122,7 @@ this is for trying the layout, not for anything you would not say on your own Wi
 | `npm run dev:server` / `npm run dev:web` | Just the API (watching) / just Vite |
 | `npm run typecheck` | `tsc --noEmit` over `src`, `scripts` and `tests` |
 | `npm test` | Vitest: unit, API and web-component tests (500+ tests, about 30 seconds) |
-| `npm run test:e2e` | Playwright browser tests in three viewports against throw-away demo servers (builds first; about 8 minutes) |
+| `npm run test:e2e` | Playwright browser tests in three viewports against throw-away demo servers (builds first; about 7 minutes) |
 | `npm run seed:demo` | Creates the fictional demo database (`-- --reset` recreates it) |
 | `npm run import -- --source <dir>` | Reads a source package into the database, idempotently, with receipts (`--report`, `--corrections`, `--force`) |
 | `npm run db:migrate` | Applies database migrations (opening the app does this too) |

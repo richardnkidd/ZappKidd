@@ -45,7 +45,7 @@ export const DEADLINE_KIND_LABEL: Record<DeadlineKind, string> = {
   user_committed: 'We committed',
   internal_target: 'Our target',
   estimate: 'Estimate',
-  review_date: 'Review checkpoint',
+  review_date: 'Check-in',
 };
 
 /** One-sentence plain explanation shown in detail views and as a tooltip-free help line. */
@@ -132,7 +132,7 @@ export const DEADLINE_STATE_LABEL: Record<DeadlineState, string> = {
   overdue: 'Past its date',
   met: 'Met',
   not_applicable: 'Not needed',
-  historical: 'Old date — not evidence either way',
+  historical: 'Date has passed · check whether it’s done',
 };
 
 export const SYNC_STATE_LABEL: Record<TaskSyncState, string> = {

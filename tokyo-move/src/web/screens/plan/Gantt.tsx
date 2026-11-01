@@ -43,6 +43,7 @@ import { Chain } from './Chain';
 
 /* Sizes that the layout and the pixel maths must agree on. Everything else about looks lives in styles/gantt.css. */
 const UNIT_PX = { wide: 72, phone: 56 }; // the narrowest month (or quarter) column
+const LABEL_COL_PX = 240; // keep in step with --gl in gantt.css (the sticky label column)
 const MIN_BAR = 24; // a bar is never narrower than a comfortable touch target
 const HIT_PAD = 8; // room for a diamond or a circle that hangs past the bar
 const PHONE_QUERY = '(max-width: 600px)'; // titles move above their bars
@@ -639,7 +640,24 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
   const placed = useMemo(() => placeItems({ items, today, baselineOn, target, departures }), [items, today, baselineOn, target, departures]);
   const markers = useMemo(() => departureMarkers(departures, dir.people, target), [departures, dir, target]);
   const range = useMemo(() => chartRange(mode, { today, baselineOn, markerDates: markers.map((m) => m.date) }), [mode, today, baselineOn, markers]);
-  const axis = useMemo(() => buildAxis(range, phone ? UNIT_PX.phone : UNIT_PX.wide), [range, phone]);
+  // On a large monitor the months stretch to use the width of the chart box (never narrower than the usual column).
+  const [boxWidth, setBoxWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setBoxWidth(el.clientWidth);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const axis = useMemo(() => {
+    if (phone) return buildAxis(range, UNIT_PX.phone);
+    const base = buildAxis(range, UNIT_PX.wide);
+    const room = boxWidth - LABEL_COL_PX - 2;
+    return boxWidth > 0 && base.width < room ? buildAxis(range, (UNIT_PX.wide * room) / base.width) : base;
+  }, [range, phone, boxWidth]);
   const bands = useMemo(() => phaseBands({ today, baselineOn, departure: referenceDeparture(departures, target) }, range), [today, baselineOn, departures, target, range]);
 
   const checkIns = useMemo(() => sharedCheckIns(placed), [placed]);

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { addCalendarDays, diffDays, isCivilDate } from '@shared/dates';
-import type { AuditEntry, BaseRecord, ReviewSessionData } from '@shared/types';
-import { api, describeError } from '../../net/client';
+import type { AuditEntry, BaseRecord, ReviewProgress, ReviewSessionData } from '@shared/types';
+import { api, ConflictError, describeError } from '../../net/client';
 import { Button, Field, TextArea, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { ClampText } from '../../components/ClampText';
@@ -14,7 +14,7 @@ import { OwnerChip } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { AuditLines } from '../../components/AuditLines';
 import { describeAuditList } from '../../lib/audit';
-import { completedReviews } from '../../lib/reviews';
+import { completedReviews, describeProgress, mergeProgress, progressOf, REVIEW_STEP_TITLES, toProgress } from '../../lib/reviews';
 import { whenFor } from '../../lib/when';
 import { civil, dayIn, instant, plural } from '../../lib/format';
 import { selectDecisions, selectNow, type FilterContext } from '../../lib/home';
@@ -30,7 +30,7 @@ import { relevanceScore } from '../decide/QuestionsTab';
 import { isPlanQuestion } from '../../lib/questions';
 import { currentPhase } from '../../lib/home';
 
-const STEPS = ['What changed', 'This week and owners', 'Decisions', 'A few questions', 'Wrap-up'] as const;
+const STEPS = REVIEW_STEP_TITLES;
 
 interface Outcome {
   id: string;
@@ -381,7 +381,7 @@ function StepQuestions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
   );
 }
 
-function StepWrapUp({ session, idx, dir, since, onSaved }: { session: Session; idx: Indexes; dir: Directory; since: string | null; onSaved: (rec: BaseRecord) => void }) {
+function StepWrapUp({ session, idx, dir, since, prepare, onSaved }: { session: Session; idx: Indexes; dir: Directory; since: string | null; prepare: () => Promise<number>; onSaved: (rec: BaseRecord) => void }) {
   const { today } = useData();
   const { actions, refresh } = useSnapshot();
   const [next, setNext] = useState(() => addCalendarDays(today, 7));
@@ -422,9 +422,10 @@ function StepWrapUp({ session, idx, dir, since, onSaved }: { session: Session; i
     setBusy(true);
     setError(null);
     try {
-      const live = idx.byId.get(session.record.id) ?? session.record;
+      // Settle the review's own record of what it covered first, so the version this save is based on is the newest.
+      const baseVersion = (await prepare()) || (idx.byId.get(session.record.id) ?? session.record).version;
       const rec = await api.completeReview(session.record.id, {
-        baseVersion: live.version,
+        baseVersion,
         participants: both ? dir.adults.map((a) => a.id) : [dir.me?.id ?? ''].filter(Boolean),
         reviewed_record_ids: recordIds,
         decisions: session.decisions.slice(0, 3).map((d) => ({ record_id: d.id, outcome: d.outcome.replace(/\s+/g, ' ').slice(0, 480) })),
@@ -497,7 +498,7 @@ function ReviewStart({
   dir: Directory;
   past: AnyRecord[];
   since: string | null;
-  open: boolean;
+  open: AnyRecord | null;
   starting: boolean;
   error: string | null;
   onStart: () => void;
@@ -520,11 +521,19 @@ function ReviewStart({
           ))}
         </ol>
         <p className="muted small">Today is {civil(today, 'long')}.</p>
-        {open && <p className="muted small">A review was already started. Starting again picks it up.</p>}
+        {open && (
+          <Card as="section" tone="inset" className="stack" aria-labelledby="review-open-title">
+            <h2 id="review-open-title" className="money-h3">
+              A review is open
+            </h2>
+            <p>{describeProgress(progressOf(open))}</p>
+            <p className="small muted">Nothing you confirmed or answered has been lost. Continuing picks up where it stopped.</p>
+          </Card>
+        )}
         {error && <p className="field__error" role="alert">{error}</p>}
         <div className="row-actions">
           <Button variant="primary" busy={starting} onClick={onStart}>
-            {open ? 'Continue the review' : 'Start a review together'}
+            {open ? 'Continue your review' : 'Start a review together'}
           </Button>
         </div>
       </Card>
@@ -588,8 +597,11 @@ function ReviewStart({
 
 /* ------------------------------------------------------------------ flow */
 
+/** How long to wait after the last change before the review's own record of what it covered is saved. */
+const PROGRESS_SAVE_DELAY_MS = 600;
+
 function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
-  const { snapshot } = useSnapshot();
+  const { snapshot, actions } = useSnapshot();
   const since = snapshot?.last_review_completed_at ?? null;
   const { today, zone } = useData();
   const open = idx.all.find((r) => r.type === 'review_session' && r.status === 'in_progress');
@@ -600,8 +612,77 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const [timer, setTimer] = useState(false);
   const startedAt = useRef(Date.now());
   const [saved, setSaved] = useState<BaseRecord | null>(null);
+  const [placeNotSaved, setPlaceNotSaved] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const setSession = (f: (s: Session) => Session) => setSessionState((s) => (s ? f(s) : s));
+
+  // The review's own record of what it covered (owners confirmed, decisions, questions, step) is kept on the open
+  // review, a moment after each change, so leaving this page and coming back loses nothing.
+  const progress: ReviewProgress | null = session ? toProgress(session, step) : null;
+  const progressKey = progress ? JSON.stringify(progress) : '';
+  const wanted = useRef<ReviewProgress | null>(null);
+  wanted.current = progress;
+  const sentKey = useRef('');
+  const version = useRef(0);
+  const recordId = useRef('');
+  const finished = useRef(false);
+  const queue = useRef<Promise<void>>(Promise.resolve());
+
+  const flush = useCallback((): Promise<void> => {
+    const run = async () => {
+      let body = wanted.current;
+      if (finished.current || !body || !recordId.current || JSON.stringify(body) === sentKey.current) return;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const rec = await api.patchReview(recordId.current, { baseVersion: version.current, changes: { progress: body } });
+          version.current = rec.version;
+          sentKey.current = JSON.stringify(body);
+          actions.adoptRecord(rec);
+          setPlaceNotSaved(false);
+          // Someone else covered things too: show their entries as well as ours.
+          if (attempt > 0) {
+            const theirs = body;
+            setSessionState((s) => {
+              if (!s) return s;
+              const merged = mergeProgress(theirs, toProgress(s, 0)); // what was added while this save was under way stays
+              return { ...s, accepted: merged.accepted, decisions: merged.decisions, questions: merged.questions, changeCount: merged.change_count };
+            });
+          }
+          return;
+        } catch (e) {
+          if (e instanceof ConflictError && e.server && e.server.status === 'in_progress' && attempt < 2) {
+            // A newer copy exists (the other adult saved first): take its version number and keep both people's entries.
+            version.current = e.server.version;
+            body = mergeProgress(progressOf(e.server), body);
+            continue;
+          }
+          if (e instanceof ConflictError && e.server && e.server.status !== 'in_progress') finished.current = true; // saved elsewhere
+          setPlaceNotSaved(true);
+          return;
+        }
+      }
+    };
+    queue.current = queue.current.then(run, run);
+    return queue.current;
+  }, [actions]);
+
+  useEffect(() => {
+    if (!progressKey || progressKey === sentKey.current) return;
+    const t = window.setTimeout(() => void flush(), PROGRESS_SAVE_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [progressKey, flush]);
+
+  // Leaving the page (or hiding the tab) saves straight away instead of waiting out the delay.
+  useEffect(() => {
+    const hide = () => {
+      if (document.visibilityState === 'hidden') void flush();
+    };
+    document.addEventListener('visibilitychange', hide);
+    return () => {
+      document.removeEventListener('visibilitychange', hide);
+      void flush();
+    };
+  }, [flush]);
 
   useEffect(() => {
     if (session) headingRef.current?.focus();
@@ -612,9 +693,16 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
     setError(null);
     try {
       const r = await api.startReview({ title: `Couple review · ${civil(today, 'weekday')}`, participants: dir.me ? [dir.me.id] : undefined });
+      const back = r.resumed ? progressOf(r.record) : null;
       startedAt.current = Date.now();
-      setSessionState({ record: r.record, accepted: [], decisions: [], questions: [], changeCount: 0 });
-      setStep(0);
+      recordId.current = r.record.id;
+      version.current = r.record.version;
+      finished.current = false;
+      const first: Session = { record: r.record, accepted: back?.accepted ?? [], decisions: back?.decisions ?? [], questions: back?.questions ?? [], changeCount: back?.change_count ?? 0 };
+      // Nothing to save until something changes from what the record already holds.
+      sentKey.current = JSON.stringify(toProgress(first, back?.step ?? 0));
+      setSessionState(first);
+      setStep(back?.step ?? 0);
     } catch (e) {
       setError(describeError(e));
     } finally {
@@ -641,7 +729,7 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
 
   if (!session) {
     const past = completedReviews(idx);
-    return <ReviewStart idx={idx} dir={dir} past={past} since={since} open={Boolean(open)} starting={starting} error={error} onStart={start} />;
+    return <ReviewStart idx={idx} dir={dir} past={past} since={since} open={open ?? null} starting={starting} error={error} onStart={start} />;
   }
 
   const stepNode =
@@ -654,7 +742,7 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
     ) : step === 3 ? (
       <StepQuestions idx={idx} dir={dir} session={session} setSession={setSession} />
     ) : (
-      <StepWrapUp session={session} idx={idx} dir={dir} since={since} onSaved={setSaved} />
+      <StepWrapUp session={session} idx={idx} dir={dir} since={since} prepare={async () => { await flush(); return version.current; }} onSaved={(rec) => { finished.current = true; setSaved(rec); }} />
     );
 
   return (
@@ -713,6 +801,11 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
         )}
       </div>
       <p className="faint small">Leaving this page keeps what you have done; the review stays open until you save it.</p>
+      {placeNotSaved && (
+        <p role="status" className="small muted">
+          We couldn’t note your place in this review just now. Everything you confirmed or answered is saved; only this list of what you covered may be missing if you leave.
+        </p>
+      )}
     </div>
   );
 }

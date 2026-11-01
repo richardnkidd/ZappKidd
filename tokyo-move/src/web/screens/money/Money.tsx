@@ -26,7 +26,7 @@ import {
   SECTION_ORDER,
   SECTION_TITLE,
   STAGE_LABEL,
-  weakerYenPercent,
+  fxEffectSentence,
 } from '../../lib/money';
 import { attempt } from '../../lib/safe';
 import { dataOf, type Directory, type Indexes } from '../../lib/records';
@@ -163,7 +163,7 @@ function FxPanel({ budget, scenario, fxRecord, onEdit }: { budget: BudgetView; s
       )}
       {effect && effect.ok && (
         <p className="fx__effect">
-          <Icon name="info" size={16} /> A {weakerYenPercent(scenario.fx_factor)}% {scenario.fx_factor < 1 ? 'weaker' : 'stronger'} yen makes fixed-yen costs {Math.abs(effect.value * 100).toFixed(2)}% {effect.value >= 0 ? 'more' : 'less'} in dollars.
+          <Icon name="info" size={16} /> {fxEffectSentence(scenario.fx_factor, effect.value)}
         </p>
       )}
     </Card>
@@ -261,7 +261,8 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
   const statement = cashStatement(model, incomeNotCounted);
 
   return (
-    <div className="stack stack--loose">
+    <div className="stack stack--loose money-cols">
+      <div className="money-col">
       <Section title="Which situation?" headingLevel={2}>
         <SegmentedControl
           label="Scenario"
@@ -338,6 +339,8 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
         <IncomeCards budget={b} />
       </Section>
 
+      </div>
+      <div className="money-col">
       <Section title="Where the money goes" headingLevel={2} intro="Each part shows what is known so far and how much is still unknown. A total is never shown on its own.">
         <div className="stack stack--tight">
           {SECTION_ORDER.map((s) => (
@@ -361,6 +364,8 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
           </ul>
         )}
       </Card>
+
+      </div>
 
       {editing && <CostLineDialog open onClose={() => setEditing(null)} record={editing} />}
       <FxDialog open={fxOpen} onClose={() => setFxOpen(false)} record={fxRecord} />

@@ -1,7 +1,7 @@
 /** Guided couple review: start, update, complete. The summary is plain text; at most three decisions. */
 import { z } from 'zod';
 import type { Deps, AuthContext } from '../context';
-import type { ReviewSessionData } from '../../shared/types';
+import type { ReviewProgress, ReviewSessionData } from '../../shared/types';
 import { HttpError, notFound, validationError } from '../http/errors';
 import { parseWith } from '../http/validate';
 import { listPeople } from '../auth/users';
@@ -11,12 +11,21 @@ import { clone, parseJson } from '../util/json';
 import { shortToken } from '../util/ids';
 
 const decisionEntry = z.strictObject({ record_id: line(200), outcome: requiredLine(500) });
+/** What the open review has covered so far (see ReviewProgress). Lists are bounded; ids must be shared records. */
+const progressSchema = z.strictObject({
+  step: z.number().int().min(0).max(9),
+  accepted: z.array(z.strictObject({ id: line(200), title: line(500), owner: line(100) })).max(300),
+  decisions: z.array(z.strictObject({ id: line(200), title: line(500), outcome: line(500) })).max(20),
+  questions: z.array(z.strictObject({ id: line(200), title: line(500), outcome: line(500) })).max(50),
+  change_count: z.number().int().min(0).max(100000),
+});
 const reviewFields = {
   reviewed_record_ids: z.array(line(200)).max(300).optional(),
   decisions: z.array(decisionEntry).max(3, 'A review records at most three decisions').optional(),
   summary: text(5000).optional(),
   participants: z.array(line(100)).min(1).max(10).optional(),
   next_review_on: civilDate.nullable().optional(),
+  progress: progressSchema.optional(),
 };
 const startBody = z.strictObject({ title: requiredLine(300).optional(), participants: z.array(line(100)).min(1).max(10).optional() });
 const patchBody = z.strictObject({ baseVersion: z.number().int().min(1), changes: z.strictObject(reviewFields) });
@@ -111,7 +120,8 @@ function loadReview(deps: Deps, ctx: AuthContext, id: string, baseVersion: numbe
 function applyFields(deps: Deps, ctx: AuthContext, state: RecordState, f: Fields): void {
   const data = state.data as unknown as ReviewSessionData;
   const people = listPeople(deps.db, ctx.householdId);
-  const previous = new Set([...data.reviewed_record_ids, ...data.decisions.map((d) => d.record_id)]);
+  const progressIds = (p: ReviewProgress | null | undefined) => (p ? [...p.accepted, ...p.decisions, ...p.questions].map((x) => x.id) : []);
+  const previous = new Set([...data.reviewed_record_ids, ...data.decisions.map((d) => d.record_id), ...progressIds(data.progress)]);
   if (f.participants) {
     const adults = people.filter((p) => p.kind === 'adult').map((p) => p.id);
     for (const p of f.participants) {
@@ -123,13 +133,14 @@ function applyFields(deps: Deps, ctx: AuthContext, state: RecordState, f: Fields
   if (f.decisions) data.decisions = f.decisions;
   if (f.summary !== undefined) data.summary = f.summary.replaceAll('\r\n', '\n').trim();
   if (f.next_review_on !== undefined) data.next_review_on = f.next_review_on;
+  if (f.progress !== undefined) data.progress = f.progress;
   // Every decision must point at a reviewed record; add it automatically so the summary's claims stay traceable.
   for (const d of data.decisions) {
     if (!data.reviewed_record_ids.includes(d.record_id)) data.reviewed_record_ids.push(d.record_id);
   }
   // A review is shared by both adults, so it may only name shared records. Only ids being ADDED are checked, so a record
   // that was shared when it was added never blocks the other person from editing the review later.
-  const added = [...new Set([...data.reviewed_record_ids, ...data.decisions.map((d) => d.record_id)])].filter((id) => !previous.has(id));
+  const added = [...new Set([...data.reviewed_record_ids, ...data.decisions.map((d) => d.record_id), ...progressIds(data.progress)])].filter((id) => !previous.has(id));
   const missing: string[] = [];
   const privateOnes: string[] = [];
   for (const id of added) {
@@ -165,6 +176,7 @@ export function completeReview(deps: Deps, ctx: AuthContext, id: string, rawBody
     applyFields(deps, ctx, next, fields);
     const data = next.data as unknown as ReviewSessionData;
     if (!data.participants.includes(ctx.personId)) data.participants.push(ctx.personId);
+    delete data.progress; // the saved summary is the record of the review; the working list is no longer needed
     data.completed_at = deps.now().toISOString();
     next.status = 'completed';
     const { row: updated } = writeRecordState(deps.db, ctx, row, next, { action: 'review_complete', now: deps.now() });

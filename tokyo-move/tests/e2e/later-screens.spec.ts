@@ -1,4 +1,5 @@
 import type { Page, TestInfo } from '@playwright/test';
+import { baseUrlFor } from './support/env';
 import { addDays, expect, loaded, test, todayInZone } from './support/fixtures';
 
 /**
@@ -66,12 +67,17 @@ test.describe('Money', () => {
 
     // Scenarios: one is chosen at a time; the explanation changes with it.
     const group = page.getByRole('group', { name: 'Scenario' });
-    const status = page.getByRole('status').filter({ hasText: /nothing extra assumed|more months|weaker|stress/i });
+    const status = page.getByRole('status').filter({ hasText: /nothing extra assumed|more months|fewer yen|stress/i });
     await expect(group.getByRole('button', { name: 'Planning' })).toHaveAttribute('aria-pressed', 'true');
-    for (const name of ['Condo delay', 'Delay + weaker yen', 'Planning']) {
+    for (const name of ['Condo delay', 'Delay + stronger yen', 'Planning']) {
       await group.getByRole('button', { name }).click();
       await expect(group.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
     }
+    // The stress case is worded in terms of the dollar: it buys fewer yen, so yen costs are more in dollars.
+    await group.getByRole('button', { name: 'Delay + stronger yen' }).click();
+    await expect(status).toContainText('the dollar buying 10% fewer yen');
+    await expect(page.getByRole('region', { name: 'Exchange rate' })).toContainText('If the dollar buys 10% fewer yen, fixed-yen costs are 11.11% more in dollars.');
+    await expect(main).not.toContainText(/weaker yen|yen weaker/i);
     await group.getByRole('button', { name: 'Condo delay' }).click();
     await expect(status).toContainText(/months/);
     await group.getByRole('button', { name: 'Planning' }).click();
@@ -202,6 +208,64 @@ test.describe('Documents', () => {
       // Put it back the way it was.
       const now = await avery.record(before.id);
       await avery.patch(`/api/records/${enc(before.id)}`, { baseVersion: now.version, changes: { data: { reviewed_on: before.data.reviewed_on ?? null } }, reason: 'e2e cleanup' }, [200, 422]);
+    }
+  });
+});
+
+test.describe('Documents: who carries them, and how sensitive they are', () => {
+  // Its own server: marking documents changes what every traveler's arrival pack lists.
+  test.use({ baseURL: baseUrlFor('snapshot') });
+
+  test('can be set from the document dialog, and the arrival pack follows', async ({ page, signIn, api }, testInfo) => {
+    const title = pick(testInfo, ['Passports and renewal receipts', 'Storage contract', 'Marriage and civil records with translations']);
+    const avery = await api('avery', 'snapshot');
+    const before = ((await avery.get('/api/records?type=document')).records as any[]).find((r) => r.title === title);
+    expect(before, title).toBeTruthy();
+    try {
+      await signIn(page, 'avery', '/documents');
+      await expect(page.getByRole('heading', { level: 1, name: 'Documents' })).toBeVisible();
+      await loaded(page);
+      await page.getByRole('button', { name: `Update status: ${title}` }).click();
+      const dialog = page.getByRole('dialog', { name: 'Update this document' });
+      // One checkbox per traveler (the dog too), and a sensitivity choice.
+      const group = dialog.getByRole('group', { name: 'Who carries it on arrival' });
+      for (const name of ['Avery', 'Jun', 'Mochi']) await expect(group.getByRole('checkbox', { name: `Carry on arrival: ${name}` })).toBeVisible();
+      await group.getByRole('checkbox', { name: 'Carry on arrival: Avery' }).check();
+      await group.getByRole('checkbox', { name: 'Carry on arrival: Mochi' }).check();
+      await dialog.getByRole('combobox', { name: 'How sensitive is it?' }).selectOption('medical');
+      await dialog.getByRole('button', { name: 'Save' }).click();
+      await expect(dialog).toHaveCount(0);
+
+      // Saved on the record, through the normal version-checked update.
+      const saved = await avery.record(before.id);
+      expect([...saved.data.carry_on_arrival].sort()).toEqual(['avery', 'mochi']);
+      expect(saved.data.sensitivity).toBe('medical');
+      expect(saved.version).toBe(before.version + 1);
+
+      // Opening it again shows what was saved; saving with nothing changed sends nothing (no new version).
+      await page.getByRole('button', { name: `Update status: ${title}` }).click();
+      const again = page.getByRole('dialog', { name: 'Update this document' });
+      await expect(again.getByRole('checkbox', { name: 'Carry on arrival: Avery' })).toBeChecked();
+      await expect(again.getByRole('checkbox', { name: 'Carry on arrival: Jun' })).not.toBeChecked();
+      await expect(again.getByRole('combobox', { name: 'How sensitive is it?' })).toHaveValue('medical');
+      await again.getByRole('button', { name: 'Cancel' }).click();
+
+      // The arrival pack says its rule, lists the document for the people ticked, and keeps a medical one out until ticked.
+      await page.goto('/arrival-pack');
+      await expect(page.getByRole('heading', { level: 1, name: 'Printable arrival pack' })).toBeVisible();
+      const rule = page.getByTestId('pack-documents-rule');
+      await expect(rule).toContainText('Only documents marked to carry are listed.');
+      await rule.getByRole('link', { name: 'Documents' }).click();
+      await expect(page.getByRole('heading', { level: 1, name: 'Documents' })).toBeVisible();
+      await page.goto('/arrival-pack');
+      const averyPack = page.getByRole('article', { name: 'Arrival pack for Avery' });
+      await expect(averyPack).not.toContainText(title);
+      await page.getByRole('checkbox', { name: /Include health and medicine/ }).check();
+      await expect(averyPack).toContainText(title);
+      await expect(page.getByRole('article', { name: 'Arrival pack for Jun' })).not.toContainText(title);
+    } finally {
+      const now = await avery.record(before.id);
+      await avery.patch(`/api/records/${enc(before.id)}`, { baseVersion: now.version, changes: { data: { carry_on_arrival: before.data.carry_on_arrival ?? [], sensitivity: before.data.sensitivity ?? null } }, reason: 'e2e cleanup' }, [200, 422]);
     }
   });
 });
@@ -439,6 +503,9 @@ test.describe('Settings', () => {
     await signIn(page, 'avery');
     await openScreen(page, '/settings', 'Settings');
     const condo = page.getByRole('region', { name: 'Condo delay' });
+    // The currency field is worded in terms of the dollar, not "weaker yen".
+    await expect(page.getByRole('region', { name: 'Combined stress' }).getByRole('textbox', { name: 'Dollar buys fewer yen by (percent)' })).toHaveValue('10');
+    await expect(page.getByRole('region', { name: 'Combined stress' })).not.toContainText(/weaker/i);
     const months = condo.getByRole('textbox', { name: 'Extra months of US costs' });
     const original = await months.inputValue();
     try {
@@ -485,7 +552,12 @@ test.describe('Couple review', () => {
     }
     // What the last review said (or that none has been finished yet) is kept on this page.
     await expect(page.getByRole('region', { name: 'Last review' })).toBeVisible();
-    await page.getByRole('button', { name: /^(Start a review together|Continue the review)$/ }).click();
+    await page.getByRole('button', { name: /^(Start a review together|Continue your review)$/ }).click();
+    // An open review resumes on the step where it stopped; this run walks all five from the first.
+    await expect(page.getByRole('region', { name: /^Step \d of 5/ })).toBeVisible();
+    for (let i = 0; i < 4 && !(await page.getByRole('region', { name: /^Step 1 of 5/ }).isVisible()); i += 1) {
+      await page.getByRole('button', { name: 'Back' }).click();
+    }
 
     const avery = await api('avery');
     const plan = JSON.stringify((await avery.snapshot()).records.filter((r: any) => r.type === 'milestone').map((r: any) => [r.id, r.status, r.owner]));
@@ -543,6 +615,69 @@ test.describe('Couple review', () => {
   });
 });
 
+test.describe('Couple review: leaving and coming back', () => {
+  // Its own server, so the one open review the other tests share is left alone.
+  test.use({ baseURL: baseUrlFor('snapshot') });
+
+  test('keeps what the review covered, and picks it up where it stopped', async ({ page, signIn, api }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop', 'One open review per household; runs once (desktop).');
+    const avery = await api('avery', 'snapshot');
+    let acceptedId: string | null = null;
+    try {
+      await signIn(page, 'avery', '/review');
+      await expect(page.getByRole('heading', { level: 1, name: 'Couple review' })).toBeVisible();
+      await loaded(page);
+      await page.getByRole('button', { name: /^(Start a review together|Continue your review)$/ }).click();
+      await page.getByRole('button', { name: 'Continue', exact: true }).click();
+      const step2 = page.getByRole('region', { name: /^Step 2 of 5/ });
+      await expect(step2).toBeVisible();
+
+      // Confirm one proposed owner (the edit itself is saved on the plan straight away).
+      const more = step2.getByRole('button', { name: /^Show (all|\d+ more)/ });
+      if (await more.count()) await more.click();
+      const accept = step2.getByRole('button', { name: /^Accept / }).first();
+      await expect(accept).toBeVisible();
+      const first = step2.getByRole('listitem').filter({ has: page.getByRole('button', { name: /^Accept / }) }).first();
+      const title = (await first.getByRole('link').first().innerText()).trim();
+      const row = step2.getByRole('listitem').filter({ hasText: title });
+      await accept.click();
+      await expect(row).toContainText('accepted.');
+      acceptedId = ((await avery.snapshot()).records as { id: string; title: string; owner_proposed: boolean }[]).find((r) => r.title === title)?.id ?? null;
+
+      // The review's own record gets the list and the step (a moment after the change).
+      await expect
+        .poll(async () => {
+          const open = ((await avery.get('/api/records?type=review_session')).records as any[]).find((r) => r.status === 'in_progress');
+          return open?.data?.progress ? { step: open.data.progress.step, accepted: open.data.progress.accepted.map((a: { title: string }) => a.title) } : null;
+        })
+        .toEqual({ step: 1, accepted: [title] });
+
+      // Leave, come back: the page offers to continue and says how far it got.
+      await page.goto('/');
+      await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+      await page.goto('/review');
+      await loaded(page);
+      const open = page.getByRole('region', { name: 'A review is open' });
+      await expect(open).toContainText('You are on step 2 of 5 (This week and owners)');
+      await expect(open).toContainText('1 owner confirmed');
+      await page.getByRole('button', { name: 'Continue your review' }).click();
+      const again = page.getByRole('region', { name: /^Step 2 of 5/ });
+      await expect(again).toBeVisible();
+      await expect(again.getByRole('listitem').filter({ hasText: title })).toContainText('accepted.');
+
+      // And it is still in what will be saved at the end.
+      for (let i = 0; i < 3; i += 1) await page.getByRole('button', { name: 'Continue', exact: true }).click();
+      await expect(page.getByRole('region', { name: /^Step 5 of 5/ })).toBeVisible();
+      await expect(page.getByText('What will be saved').locator('xpath=..')).toContainText(title);
+    } finally {
+      if (acceptedId) {
+        const rec = await avery.record(acceptedId);
+        await avery.patch(`/api/records/${encodeURIComponent(acceptedId)}`, { baseVersion: rec.version, changes: { owner_proposed: true } });
+      }
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ What if */
 
 test.describe('What if the pet arrives later?', () => {
@@ -562,7 +697,11 @@ test.describe('What if the pet arrives later?', () => {
     await expect(page.getByRole('radio', { name: '+6 months' })).toBeChecked();
     await expect.poll(async () => moved.innerText()).not.toBe(before3);
     await expect(moved).toContainText(unchangedText);
+    // Arriving after the adult it would travel with raises one calm question, and keeps the true statement about deadlines.
+    await expect(main).toContainText(/Mochi would arrive about \d+ months after Avery\. In the meantime, who looks after Mochi in Hawaii, and who flies with Mochi\?/);
+    await expect(main).toContainText(/Mochi.s dates never move an adult.s legal deadlines/);
     await page.getByRole('radio', { name: 'With the first adult' }).check();
+    await expect(main).not.toContainText(/who looks after Mochi in Hawaii/);
     await expect(moved.locator('time').first()).toBeVisible();
     // Weekend and legal-deadline warnings stay honest.
     await expect(moved).toContainText(/legal deadline/i);

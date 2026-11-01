@@ -157,6 +157,19 @@ a.item__title:focus-visible::after {
   }
 }
 
+/* Large monitors: three columns (this week | decisions and blocked | who is ready and coming up). */
+@media (min-width: 1440px) {
+  .home-grid--wide {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--s-6);
+  }
+  /* In a third of the page, the date sits above its item instead of in a narrow column beside it. */
+  .home-grid--wide .coming {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-1);
+  }
+}
+
 .coming-group {
   padding: var(--s-4);
 }
@@ -411,6 +424,15 @@ a.coming__title {
     gap: var(--s-3);
   }
 }
+/* Large monitors: every status column side by side across the full width, never scrolling sideways. */
+@media (min-width: 1440px) {
+  .board {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: var(--s-4);
+  }
+}
 .board-col {
   display: flex;
   flex-direction: column;
@@ -427,6 +449,14 @@ a.coming__title {
   justify-content: space-between;
   gap: var(--s-2);
   font-family: var(--font-ui);
+}
+/* At 200% text a long status name must wrap inside the column instead of pushing the page sideways (WCAG 1.4.10). */
+.board-col__title > .chip {
+  min-width: 0;
+  white-space: normal;
+}
+.board-col__title > .count {
+  flex: none;
 }
 .board-col__empty {
   padding: var(--s-2);

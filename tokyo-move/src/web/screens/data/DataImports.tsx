@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { PendingUpdateNotice } from '../../components/PendingUpdateNotice';
 import type { ImportChange, ImportRun } from '@shared/types';
 import { RECORD_TYPES, RECORD_TYPE_LABEL } from '../../lib/recordTypes';
 import { api, ConflictError, describeError, isMisdirected, type BackupInfo } from '../../net/client';
@@ -555,6 +556,7 @@ export function DataImports() {
   return (
     <div className="page data">
       <PageTitle kicker="Where the plan came from">Data & imports</PageTitle>
+      <PendingUpdateNotice />
       <DataGate>
         {({ idx }) => (
           <div className="stack stack--loose">

@@ -204,8 +204,11 @@ and `styles/gantt.css` styles it with existing tokens only.
   "Not placed yet" with words and no bar. Every bar's accessible name says which of these it is; colour is never the only signal
   (pattern, glyph for blocked/done/in progress, and text).
 - **Phase windows** live in one table (`PHASE_RULES`): Now = plan baseline (or today) to 30 Nov 2026; Nov–Dec 2026; Jan–Mar 2027;
-  then relative to the item's departure D: D−90…D−61, D−60…D−1, D…D+90, D+90…D+3 years. D is the item's one traveler's own
-  departure anchor, otherwise the household anchor, otherwise the planning target (flagged), otherwise none.
+  then relative to the item's departure D: D−90…D−61, D−60…D−1, D…D+90, D+90…D+3 years. D is the one traveler's own departure
+  anchor for an item scoped to exactly one person; for an item shared by several people it is the earliest departure set among
+  those people (shared work has to be done before the first of them leaves), falling back to the household anchor when none of
+  them has a date; for household-wide work it is the household anchor. When that is not set the planning target stands in
+  (flagged), otherwise there is none. The phase strip follows the same rule for everyone.
 - **`planning_target`** (`{ date, label, note? }`, household overrides key `planning_target`, read-only setting like `plan_baseline`)
   is used only to place that undated relative work. It is never shown as a deadline and never moves one. Unset travel dates fall
   back to it with a dashed departure marker reading "<name>: not set — <label> target".

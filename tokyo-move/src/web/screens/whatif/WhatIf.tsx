@@ -19,10 +19,12 @@ import {
   defaultDeparture,
   EXAMPLE_ARRIVAL,
   firstAdultArrival,
+  hypotheticalAdultFor,
   monthsBetween,
   petArrivalFor,
   previewPetMove,
   type ArrivalChoice,
+  waitingNote,
 } from '../../lib/whatif';
 import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
@@ -247,10 +249,20 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const departure = arrival ? (isCivilDate(depOverride) ? depOverride : defaultDeparture(arrival)) : null;
 
   const preview = useMemo(() => (arrival && departure && pet ? attempt(() => previewPetMove(deadlineContext, arrivalCode, departureCode, arrival, departure)) : null), [arrival, departure, pet, deadlineContext, arrivalCode, departureCode]);
+  // With no adult date anywhere, a date typed in above stands in for the first adult's arrival (and a matching departure)
+  // in the comparison only; the other adult's dates are untouched and nothing is saved.
+  const firstAdultPerson = dir.people.find((p) => p.kind === 'adult') ?? null;
+  const hypotheticalAdult = useMemo(() => (!known && isCivilDate(hypo) ? hypotheticalAdultFor(firstAdultPerson, hypo) : null), [known, hypo, firstAdultPerson]);
   const overlap = useMemo(
-    () => (arrival && departure && pet ? attempt(() => compareOverlap({ records: deadlineContext.records, people: deadlineContext.people, today, arrivalCode, departureCode, arrival, departure })) : null),
-    [arrival, departure, pet, deadlineContext, today, arrivalCode, departureCode],
+    () =>
+      arrival && departure && pet
+        ? attempt(() => compareOverlap({ records: deadlineContext.records, people: deadlineContext.people, today, arrivalCode, departureCode, arrival, departure, hypotheticalAdult }))
+        : null,
+    [arrival, departure, pet, deadlineContext, today, arrivalCode, departureCode, hypotheticalAdult],
   );
+  const waiting = pet
+    ? waitingNote({ petName: pet.display_name, adultName: known ? dir.nameOf(known.personId) : (firstAdultPerson?.display_name ?? 'the first adult'), adultArrival: firstAdult, petArrival: arrival })
+    : null;
 
   const staging = (snapshot?.settings as unknown as { staging_analysis?: Record<string, unknown> } | undefined)?.staging_analysis;
 
@@ -278,6 +290,7 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
       lines.push(preview.value.changes.length ? `${plural(preview.value.changes.length, 'date')} would move: ${preview.value.changes.map((c) => `${c.label} (${c.before ? civil(c.before) : 'awaiting'} → ${c.after ? civil(c.after) : 'awaiting'})`).join('; ')}.` : 'No other dates would move.');
       if (unaffectedAdults.length) lines.push(`Unchanged: ${unaffectedAdults.map((p) => dir.nameOf(p)).join(' and ')}’s deadlines (${unchangedCount}).`);
     }
+    if (waiting) lines.push(waiting);
     if (overlap?.ok) lines.push(noneKnown ? 'Staged overlap: no amounts known yet.' : `Staged overlap known so far: ${fmtUsd(overlap.value.beforeKnown)} → ${fmtUsd(overlap.value.afterKnown)}${overlap.value.unknownAfter ? `; ${overlap.value.unknownAfter} amounts not known yet` : ''}.`);
     return lines.join('\n');
   };
@@ -409,7 +422,10 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
                   </>
                 )}
                 <p className="unchanged">
-                  <Icon name="check" size={16} /> <strong>Unchanged:</strong> {unaffectedAdults.length ? unaffectedAdults.map((p) => dir.nameOf(p)).join(' and ') + '’s deadlines' : 'no other traveler’s deadlines'} ({unchangedCount}).
+                  <Icon name="check" size={16} />
+                  <span>
+                    <strong>Unchanged:</strong> {unaffectedAdults.length ? unaffectedAdults.map((p) => dir.nameOf(p)).join(' and ') + '’s deadlines' : 'no other traveler’s deadlines'} ({unchangedCount}).
+                  </span>
                 </p>
               </div>
             )}
@@ -449,6 +465,12 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
               </Card>
             )}
           </Section>
+
+          {waiting && (
+            <p className="whatif-waiting">
+              <Icon name="info" size={16} /> {waiting}
+            </p>
+          )}
 
           <Section title="Conditions to check" headingLevel={2} intro="From the household’s own staging notes. They are things to confirm, not answers.">
             {!staging || typeof staging !== 'object' || Object.keys(staging).length === 0 ? (

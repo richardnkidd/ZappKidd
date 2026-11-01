@@ -9,6 +9,7 @@ import { listTaskLinkRows, taskLinkFromRow } from './task-links-repo';
 import { getSetting } from './settings-repo';
 import { adapterStatus } from './tasks-service';
 import { lastCompletedReviewAt } from './reviews-service';
+import { pendingUpdate } from './pending-update';
 import { isPlainObject, parseJson } from '../util/json';
 
 export function buildMe(deps: Deps, ctx: AuthContext): MeResponse {
@@ -117,15 +118,18 @@ export function buildSettings(deps: Deps, ctx: AuthContext): HouseholdSettings {
 }
 
 export function buildSnapshot(deps: Deps, ctx: AuthContext): Snapshot {
+  const imported = lastImport(deps, ctx.householdId);
+  const pending = pendingUpdate(deps, imported);
   return {
     generated_at: deps.now().toISOString(),
     me: buildMe(deps, ctx),
     people: listPeople(deps.db, ctx.householdId),
     records: listRecordRows(deps.db, ctx).map((r) => rowToRecord(r, false)),
     task_links: listTaskLinkRows(deps.db, ctx.householdId, ctx.personId).map(taskLinkFromRow),
-    last_import: lastImport(deps, ctx.householdId),
+    last_import: imported,
     last_review_completed_at: lastCompletedReviewAt(deps, ctx.householdId),
     scenarios: mergeScenarios(getSetting<unknown>(deps.db, ctx.householdId, 'scenarios', [])),
     settings: buildSettings(deps, ctx),
+    ...(pending ? { pending_update: pending } : {}),
   };
 }

@@ -599,6 +599,20 @@ export interface NoteData {
   linked_record_id: string | null;
 }
 
+/**
+ * What an open couple review has covered so far, kept on the review record so leaving the page (or opening it on another
+ * device) loses nothing. The edits themselves (owner accepted, decision approved, question answered) are saved as they
+ * happen; this is only the review's own list of what it covered.
+ */
+export interface ReviewProgress {
+  /** Index of the step the people were on (0-based). */
+  step: number;
+  accepted: { id: string; title: string; owner: string }[];
+  decisions: { id: string; title: string; outcome: string }[];
+  questions: { id: string; title: string; outcome: string }[];
+  change_count: number;
+}
+
 export interface ReviewSessionData {
   started_at: string;
   completed_at: string | null;
@@ -608,6 +622,8 @@ export interface ReviewSessionData {
   decisions: { record_id: string; outcome: string }[]; // at most three
   summary: string; // plain text; every claim links to record ids in `reviewed_record_ids`
   next_review_on: string | null;
+  /** Only while the review is open; dropped when it is saved. */
+  progress?: ReviewProgress | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -716,6 +732,11 @@ export interface Snapshot {
   last_review_completed_at: string | null;
   scenarios: ScenarioSettings[];
   settings: HouseholdSettings;
+  /**
+   * Local modes only: how many private update files in the Kadode folder are newer than what was last loaded. The data is
+   * only read when Kadode starts, so this is the cue to close and start it again. Never names or shows the files.
+   */
+  pending_update?: { changed: number };
 }
 
 /**

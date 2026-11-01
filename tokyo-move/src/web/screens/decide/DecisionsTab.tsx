@@ -53,7 +53,7 @@ function DecisionsList({ idx, dir, today }: { idx: Indexes; dir: Directory; toda
   const targetInLater = !!targetRecord && later.some((d) => d.id === targetRecord.id);
 
   return (
-    <div className="stack stack--loose">
+    <div className="stack stack--loose decide-cols">
       <Section title="Up next" count={upNext.length || undefined} intro="Proposals have a dashed outline until everyone who needs to agree has approved.">
         <div role="status" className="decided-live stack">
           {lingering.map((d) => (
@@ -69,7 +69,7 @@ function DecisionsList({ idx, dir, today }: { idx: Indexes; dir: Directory; toda
             </Card>
           )
         ) : (
-          <ul className="stack">
+          <ul className="stack grid-wide">
             {upNext.map((d) => (
               <DecisionCard key={d.id} d={d} idx={idx} dir={dir} today={today} startOpen={targetRecord?.id === d.id} onDecidedTogether={decidedTogether} />
             ))}

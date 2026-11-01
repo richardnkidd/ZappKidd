@@ -127,11 +127,35 @@ describe('phase windows: relative to a departure', () => {
 });
 
 describe('which departure an item hangs on', () => {
-  it('uses the one traveler\'s own anchor, and the household anchor for everyone else', () => {
+  it('uses the one traveler\'s own anchor, and the household anchor for household-wide work', () => {
     expect(departureFor(['mochi'], SET, TARGET)).toEqual({ date: '2027-09-13', source: 'anchor' });
     expect(departureFor(['avery'], SET, TARGET)).toEqual({ date: '2027-07-05', source: 'anchor' });
-    expect(departureFor(['avery', 'jun'], SET, TARGET)).toEqual({ date: '2027-07-05', source: 'anchor' });
     expect(departureFor([], SET, TARGET)).toEqual({ date: '2027-07-05', source: 'anchor' });
+  });
+  it('a shared item hangs on the EARLIEST departure set among the people in its scope', () => {
+    // Avery leaves first, so the work they share has to be done before May 3, not before the household's July date.
+    const earlier: DepartureAnchors = { household: '2027-07-05', byTraveler: { avery: '2027-05-03', jun: null, mochi: '2027-09-13' } };
+    expect(departureFor(['avery', 'jun'], earlier, TARGET)).toEqual({ date: '2027-05-03', source: 'anchor' });
+    // One person's date set: that one, whichever side of the household date it falls.
+    const later: DepartureAnchors = { household: '2027-07-05', byTraveler: { avery: null, jun: '2027-09-01', mochi: null } };
+    expect(departureFor(['avery', 'jun'], later, TARGET)).toEqual({ date: '2027-09-01', source: 'anchor' });
+    // Both set: the earlier one, in either order.
+    const both: DepartureAnchors = { household: '2027-07-05', byTraveler: { avery: '2027-08-01', jun: '2027-07-20', mochi: null } };
+    expect(departureFor(['avery', 'jun'], both, TARGET)).toEqual({ date: '2027-07-20', source: 'anchor' });
+    expect(departureFor(['jun', 'avery'], both, TARGET)).toEqual({ date: '2027-07-20', source: 'anchor' });
+    // Only the people named in the scope count; the dog's date does not pull a two-adult item later or earlier.
+    expect(departureFor(['avery', 'jun'], { household: null, byTraveler: { avery: '2027-08-01', jun: null, mochi: '2027-01-01' } }, TARGET)).toEqual({ date: '2027-08-01', source: 'anchor' });
+    expect(departureFor(['avery', 'mochi'], { household: null, byTraveler: { avery: '2027-08-01', jun: null, mochi: '2027-01-01' } }, TARGET)).toEqual({ date: '2027-01-01', source: 'anchor' });
+  });
+  it('a shared item with no traveler date falls back to the household departure, then to the flagged target', () => {
+    const householdOnly: DepartureAnchors = { household: '2027-07-05', byTraveler: { avery: null, jun: null, mochi: '2027-09-13' } };
+    expect(departureFor(['avery', 'jun'], householdOnly, TARGET)).toEqual({ date: '2027-07-05', source: 'anchor' });
+    expect(departureFor(['avery', 'jun'], NO_ANCHORS, TARGET)).toEqual({ date: '2027-07-01', source: 'target' });
+    expect(departureFor(['avery', 'jun'], NO_ANCHORS, null)).toBeNull();
+  });
+  it('the same person named twice is still one person (no household fallback for their unset date)', () => {
+    const onlyHousehold: DepartureAnchors = { household: '2027-07-05', byTraveler: { avery: null, jun: null } };
+    expect(departureFor(['jun', 'jun'], onlyHousehold, null)).toBeNull();
   });
   it('falls back to the planning target, flagged, when that date is not set', () => {
     expect(departureFor(['jun'], SET, TARGET)).toEqual({ date: '2027-07-01', source: 'target' });
@@ -144,6 +168,13 @@ describe('which departure an item hangs on', () => {
   it('a traveler\'s unset date is never filled in from the household date', () => {
     const onlyHousehold: DepartureAnchors = { household: '2027-07-05', byTraveler: { jun: null } };
     expect(departureFor(['jun'], onlyHousehold, null)).toBeNull();
+  });
+  it('places a shared item\'s departure-relative bar on the earliest traveler\'s date', () => {
+    const earlier: DepartureAnchors = { household: '2027-07-05', byTraveler: { avery: '2027-05-03', jun: null, mochi: '2027-09-13' } };
+    const g = placeItem(item({ phase: 'p5_final_60_30_14', scope: ['avery', 'jun'] }), input({ departures: earlier }));
+    // Final 60 days run from Mar 4 to May 2 (D-60 .. D-1 around May 3), not from early May to early July.
+    expect(g).toMatchObject({ basis: 'phase', start: '2027-03-04', end: '2027-05-02' });
+    expect(g.window?.source).toBe('anchor');
   });
 });
 
@@ -485,8 +516,10 @@ describe('departure anchors and markers', () => {
     expect(together).toEqual([{ date: '2027-07-05', names: ['Avery', 'Jun'], basis: 'anchor', label: 'Avery, Jun depart' }]);
   });
 
-  it('the phase strip hangs on the household date, else the earliest traveler date, else the target', () => {
+  it('the phase strip follows the shared-work rule: earliest traveler date, else the household date, else the target', () => {
     expect(referenceDeparture(SET, TARGET)).toEqual({ date: '2027-07-05', source: 'anchor' });
+    expect(referenceDeparture({ household: '2027-07-05', byTraveler: { avery: '2027-05-03', jun: null } }, TARGET)).toEqual({ date: '2027-05-03', source: 'anchor' });
+    expect(referenceDeparture({ household: '2027-07-05', byTraveler: { avery: null, jun: null } }, TARGET)).toEqual({ date: '2027-07-05', source: 'anchor' });
     expect(referenceDeparture({ household: null, byTraveler: { a: '2027-08-01', b: '2027-07-20' } }, TARGET)).toEqual({ date: '2027-07-20', source: 'anchor' });
     expect(referenceDeparture(NO_ANCHORS, TARGET)).toEqual({ date: '2027-07-01', source: 'target' });
     expect(referenceDeparture(NO_ANCHORS, null)).toBeNull();

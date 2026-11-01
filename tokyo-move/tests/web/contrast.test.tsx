@@ -60,6 +60,13 @@ const PAIRS: Pair[] = [
   // Non-text: input borders, focus ring, icons that carry meaning.
   { fg: 'line-strong', bg: ['paper', 'surface', 'surface-2'], min: UI, use: 'input and control boundaries' },
   { fg: 'ai', bg: ['paper', 'surface', 'surface-2', 'ai-soft'], min: UI, use: 'focus ring' },
+  // Buttons (see .btn--* in components.css), in every theme.
+  { fg: 'ink', bg: ['surface'], min: TEXT, use: 'secondary button label' },
+  { fg: 'line-strong', bg: ['paper', 'surface', 'surface-2'], min: UI, use: 'secondary button boundary against the page and against a card (WCAG 1.4.11)' },
+  { fg: 'ai', bg: ['surface'], min: TEXT, use: 'secondary button label on hover' },
+  { fg: 'ai', bg: ['paper', 'surface'], min: UI, use: 'secondary and quiet button boundary or label on hover' },
+  { fg: 'kaki', bg: ['surface', 'kaki-soft'], min: TEXT, use: 'danger button label, at rest and on hover' },
+  { fg: 'kaki', bg: ['paper', 'surface'], min: UI, use: 'danger button boundary (WCAG 1.4.11)' },
 ];
 
 describe('contrast helper', () => {
@@ -69,6 +76,20 @@ describe('contrast helper', () => {
     expect(contrast('#ffffff', '#ffffff')).toBeCloseTo(1, 5);
   });
 });
+
+/** What a colour looks like after CSS `filter: brightness(k)` (each sRGB channel times k, clamped). */
+function brighten(hex: string, k: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const c = (v: number) => Math.min(255, Math.round(v * k));
+  return `#${[c((n >> 16) & 255), c((n >> 8) & 255), c(n & 255)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
+/** `fg` shown at `alpha` opacity over `under`. */
+function blend(fg: string, under: string, alpha: number): string {
+  const a = parseInt(fg.slice(1), 16);
+  const b = parseInt(under.slice(1), 16);
+  const mix = (x: number, y: number) => Math.round(x * alpha + y * (1 - alpha));
+  return `#${[mix((a >> 16) & 255, (b >> 16) & 255), mix((a >> 8) & 255, (b >> 8) & 255), mix(a & 255, b & 255)].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+}
 
 describe('theme blocks', () => {
   it('a theme forced to dark in Settings uses exactly the same values as the system dark theme', () => {
@@ -94,6 +115,25 @@ describe('design tokens meet WCAG 2.2 AA', () => {
           });
         }
       }
+    });
+  }
+});
+
+describe('button states keep their contrast in light and dark', () => {
+  const t = themes();
+  for (const theme of ['light', 'dark'] as const) {
+    const tokens = t[theme];
+    it(`${theme}: the primary button label stays readable on hover (filter: brightness(1.08) lightens the whole button)`, () => {
+      const ratio = contrast(brighten(tokens['on-ai']!, 1.08), brighten(tokens.ai!, 1.08));
+      expect(ratio).toBeGreaterThanOrEqual(TEXT);
+    });
+    it(`${theme}: the primary button label stays readable while it is busy (the button is shown at 80% opacity)`, () => {
+      const ratio = contrast(blend(tokens['on-ai']!, tokens.paper!, 0.8), blend(tokens.ai!, tokens.paper!, 0.8));
+      expect(ratio).toBeGreaterThanOrEqual(TEXT);
+    });
+    it(`${theme}: the primary button is a clear shape against the page and against a card (WCAG 1.4.11)`, () => {
+      expect(contrast(tokens.ai!, tokens.paper!)).toBeGreaterThanOrEqual(UI);
+      expect(contrast(tokens.ai!, tokens.surface!)).toBeGreaterThanOrEqual(UI);
     });
   }
 });

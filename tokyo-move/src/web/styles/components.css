@@ -502,9 +502,9 @@
   background: var(--ai-soft);
 }
 .choice input {
-  width: 22px;
-  height: 22px;
-  margin: 2px 0 0;
+  width: 24px; /* WCAG 2.5.8: at least 24 x 24 CSS px */
+  height: 24px;
+  margin: 1px 0 0;
   accent-color: var(--ai);
   flex: none;
 }

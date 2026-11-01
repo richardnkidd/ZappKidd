@@ -122,7 +122,7 @@ function AfterArrivalDeadlines({ person, idx, dir }: { person: string; idx: Inde
   });
   if (rows.length === 0) return <p className="muted">No dated rules start from this traveler’s arrival yet.</p>;
   return (
-    <ul className="item-list">
+    <ul className="item-list grid-wide">
       {rows.map((d) => (
         <DeadlineRow key={d.id} d={d} idx={idx} today={today} dir={dir} headingLevel={3} />
       ))}
@@ -225,13 +225,13 @@ function ContinuingObligations({ idx, dir, who }: { idx: Indexes; dir: Directory
       {mine.length > 0 && (
         <div>
           <h3 className="coming-group__title">For {who.display_name}</h3>
-          <ul className="item-list">{mine.map(ruleRow)}</ul>
+          <ul className="item-list grid-wide">{mine.map(ruleRow)}</ul>
         </div>
       )}
       {(shared.length > 0 || horizon.length > 0) && (
         <div>
           <h3 className="coming-group__title">Shared by the household</h3>
-          <ul className="item-list">
+          <ul className="item-list grid-wide">
             {horizon.map((h) => {
               const d = dataOf<HorizonData>(h);
               return (
@@ -334,7 +334,7 @@ function ReturnPlanning({ idx }: { idx: Indexes }) {
       {items.length === 0 ? (
         <p className="muted">Nothing has been listed yet.</p>
       ) : (
-        <ul className="item-list">
+        <ul className="item-list grid-wide">
           {items.map((h) => {
             const d = dataOf<HorizonData>(h);
             return (
@@ -413,7 +413,7 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
                 <EmptyState icon="plane" title={`Nothing is listed for ${who.display_name}’s arrival yet.`} />
               </Card>
             ) : (
-              <div className="stack">
+              <div className="stack grid-wide grid-wide--2">
                 {[...ARRIVAL_WINDOW_ORDER, ...[...byWindow.keys()].filter((k) => !(ARRIVAL_WINDOW_ORDER as readonly string[]).includes(k))].map((k) => {
                   const list = byWindow.get(k);
                   if (!list || list.length === 0) return null;
@@ -452,7 +452,7 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
         {properties.length === 0 ? (
           <p className="muted">Nothing is listed yet.</p>
         ) : (
-          <ul className="stack">
+          <ul className="stack grid-wide">
             {properties.map((p) => (
               <li key={p.id}>
                 <PropertyCard record={p} idx={idx} />

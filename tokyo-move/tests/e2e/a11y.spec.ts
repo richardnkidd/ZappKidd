@@ -26,7 +26,7 @@ interface Problems {
 }
 
 /** Runs inside the page. Keep it dependency-free. */
-function inspect(scope: string | null): Problems {
+function inspect({ scope, nominal }: { scope: string | null; nominal: number }): Problems {
   const root: ParentNode = scope ? (document.querySelector(scope) ?? document) : document;
   const visible = (el: Element): boolean => {
     const h = el as HTMLElement;
@@ -114,14 +114,16 @@ function inspect(scope: string | null): Problems {
     .map((el) => `${describe(el)} ${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`);
 
   // Sideways scrolling: the document itself must not scroll horizontally. Report the widest offenders for diagnosis.
+  // On a phone the browser may widen its layout viewport to fit overflowing content instead of scrolling, which makes
+  // clientWidth grow with it; so the width the test asked for (`nominal`) is the limit, not what the browser reports.
   const doc = document.documentElement;
   const overflow: string[] = [];
-  if (doc.scrollWidth > doc.clientWidth + 1) {
-    overflow.push(`document is ${doc.scrollWidth}px wide in a ${doc.clientWidth}px window`);
+  if (doc.scrollWidth > doc.clientWidth + 1 || doc.scrollWidth > nominal + 1 || window.innerWidth > nominal + 1) {
+    overflow.push(`document is ${doc.scrollWidth}px wide in a ${nominal}px window`);
     const offenders = Array.from(document.body.querySelectorAll('*'))
       .filter(visible)
       .map((el) => ({ el, right: el.getBoundingClientRect().right }))
-      .filter((x) => x.right > doc.clientWidth + 1)
+      .filter((x) => x.right > Math.min(doc.clientWidth, nominal) + 1)
       .sort((a, b) => b.right - a.right)
       .slice(0, 5);
     for (const o of offenders) overflow.push(`${describe(o.el)} reaches ${Math.round(o.right)}px`);
@@ -160,7 +162,7 @@ function watchErrors(page: Page): { errors: string[] } {
  * level in a heading never hides a missing label, and all routes are reported together (soft assertions).
  */
 async function check(page: Page, label: string, opts: { scope?: string; bestPractice?: boolean } = {}) {
-  const p = await page.evaluate(inspect, opts.scope ?? null);
+  const p = await page.evaluate(inspect, { scope: opts.scope ?? null, nominal: page.viewportSize()?.width ?? 1280 });
   const where = `[${label}]`;
   if (opts.bestPractice) {
     expect.soft(p.headingJumps, `${where} headings do not skip levels`).toEqual([]);
@@ -274,27 +276,115 @@ test.describe('Accessibility smoke', () => {
     // At 320px the 400%-zoom reflow rule applies instead (covered by the sideways-scroll checks above).
     test.skip((page.viewportSize()?.width ?? 0) < 380, 'Reflow at 320px is covered by the per-route checks.');
     await signIn(page, 'avery', '/');
-    // WCAG "resize text": a larger root font size must still fit the width.
-    for (const path of ['/plan?view=list', '/', '/decide']) {
+    const nominal = page.viewportSize()!.width;
+    // WCAG 1.4.10 / "resize text": a larger root font size must still fit the width. On phones the browser widens its layout
+    // viewport rather than scroll, so the requested width (not clientWidth) is what the page has to fit in.
+    const paths = ['/plan?view=list', '/', '/decide', '/plan?view=board', '/plan?view=workstream', '/plan?view=timeline', '/r/milestone:W24', '/money', '/documents', '/ready/avery', '/what-if', '/settings'];
+    for (const path of paths) {
       await page.goto(path);
       await settle(page);
       // Set through the DOM (the app's strict CSP rightly refuses injected <style> tags).
       await page.evaluate(() => {
         document.documentElement.style.fontSize = '200%';
       });
-      const result = await page.evaluate(() => {
+      const result = await page.evaluate((limit) => {
         const doc = document.documentElement;
-        const wide = doc.scrollWidth - doc.clientWidth;
+        const wide = Math.max(doc.scrollWidth, window.innerWidth) - limit;
         const offenders = Array.from(document.body.querySelectorAll('*'))
           .filter((el) => (el as HTMLElement).getClientRects().length > 0)
           .map((el) => ({ el, right: el.getBoundingClientRect().right }))
-          .filter((x) => x.right > doc.clientWidth + 1)
+          .filter((x) => x.right > limit + 1 && !(x.el.closest('[role="region"][tabindex], .app-nav, .save-indicator-wrap')))
           .sort((a, b) => b.right - a.right)
           .slice(0, 4)
-          .map((x) => `<${x.el.tagName.toLowerCase()}> "${(x.el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 30)}" reaches ${Math.round(x.right)}px of ${doc.clientWidth}px`);
+          .map((x) => `<${x.el.tagName.toLowerCase()}.${String((x.el as HTMLElement).className).slice(0, 30)}> "${(x.el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 30)}" reaches ${Math.round(x.right)}px of ${limit}px`);
         return { wide, offenders };
-      });
+      }, nominal);
       expect.soft(result.wide, `${path} at 200% text: ${result.offenders.join('; ')}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test('phones: every tap target is at least 24x24 CSS px, or has room around it (WCAG 2.5.8)', async ({ page, signIn }, testInfo) => {
+    test.skip(testInfo.project.name !== 'phone', 'Measured at 390px wide.');
+    test.setTimeout(120_000);
+    await signIn(page, 'avery', '/');
+    const steps: { path: string; act?: (p: Page) => Promise<void>; label: string }[] = [
+      ...['/', '/plan?view=list', '/plan?view=board', '/plan?view=timeline', '/decide', '/decide/questions', '/decide/risks', '/money', '/documents', '/contacts', '/arrival', '/future', '/data', '/settings', '/ready/avery', '/review', '/what-if', '/arrival-pack', '/r/milestone:W24'].map((path) => ({ path, label: path })),
+      { path: '/plan?view=timeline', label: 'timeline table', act: async (p) => { await p.getByRole('button', { name: 'Table' }).click(); } },
+      { path: '/documents', label: 'document dialog', act: async (p) => { await p.getByRole('button', { name: /^Update status/ }).first().click(); } },
+    ];
+    for (const step of steps) {
+      await page.goto(step.path);
+      await settle(page);
+      if (step.act) await step.act(page);
+      const bad = await page.evaluate(() => {
+        const SEL = 'a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=tab], [role=checkbox], [role=radio], [tabindex]:not([tabindex="-1"])';
+        const shown = (el: Element) => {
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && !el.closest('[hidden],[inert]') && cs.opacity !== '0';
+        };
+        // A link inside a sentence is exempt (WCAG 2.5.8 "inline"); a link on a line of its own is not.
+        const inSentence = (el: Element) => {
+          if (el.tagName !== 'A' || getComputedStyle(el).display !== 'inline') return false;
+          const rest = (el.parentElement?.textContent ?? '').replace(el.textContent ?? '', '').replace(/\s+/g, ' ').trim();
+          return rest.length >= 3;
+        };
+        const box = (el: Element) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y + scrollY, w: r.width, h: r.height };
+        };
+        const items = [...document.querySelectorAll(SEL)].filter(shown).map((el) => ({ el, r: box(el) }));
+        const small = (r: { w: number; h: number }) => r.w < 23.5 || r.h < 23.5;
+        const centreDistance = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) => Math.hypot(a.x + a.w / 2 - (b.x + b.w / 2), a.y + a.h / 2 - (b.y + b.h / 2));
+        const circleTouches = (c: ReturnType<typeof box>, r: ReturnType<typeof box>) => {
+          const cx = c.x + c.w / 2;
+          const cy = c.y + c.h / 2;
+          return Math.hypot(cx - Math.max(r.x, Math.min(cx, r.x + r.w)), cy - Math.max(r.y, Math.min(cy, r.y + r.h))) < 12;
+        };
+        const out: string[] = [];
+        for (const s of items.filter((i) => small(i.r) && !inSentence(i.el))) {
+          // The 24px-circle spacing exception: a small target passes when its circle touches no other target.
+          const crowded = items.some((o) => o.el !== s.el && !o.el.contains(s.el) && !s.el.contains(o.el) && (small(o.r) ? centreDistance(s.r, o.r) < 24 : circleTouches(s.r, o.r)));
+          if (crowded) out.push(`<${s.el.tagName.toLowerCase()}> "${(s.el.getAttribute('aria-label') || s.el.textContent || '').trim().slice(0, 30)}" ${Math.round(s.r.w)}x${Math.round(s.r.h)}`);
+        }
+        return out;
+      });
+      expect.soft(bad, `[${step.label}] targets under 24x24 with no room around them`).toEqual([]);
+    }
+  });
+
+  test('phones: the bottom bar never covers the control that has keyboard focus (WCAG 2.4.11)', async ({ page, signIn }, testInfo) => {
+    test.skip(testInfo.project.name !== 'phone', 'The bottom bar is a phone layout.');
+    test.setTimeout(120_000);
+    await signIn(page, 'avery', '/');
+    for (const path of ['/', '/plan?view=list', '/plan?view=timeline', '/decide', '/money', '/documents', '/settings', '/ready/avery']) {
+      await page.goto(path);
+      await settle(page);
+      const covered: string[] = [];
+      for (let i = 0; i < 70; i += 1) {
+        await page.keyboard.press('Tab');
+        const hit = await page.evaluate(() => {
+          const el = document.activeElement as HTMLElement | null;
+          if (!el || el === document.body || el.closest('.app-nav')) return null;
+          const r = el.getBoundingClientRect();
+          if (r.height === 0 || r.bottom < 0 || r.top > innerHeight) return null;
+          // What is on top at the centre of the focused control (clamped into the window)?
+          const x = Math.min(Math.max(r.x + r.width / 2, 1), innerWidth - 1);
+          const y = Math.min(Math.max(r.y + r.height / 2, 1), innerHeight - 1);
+          const top = document.elementFromPoint(x, y);
+          let bar: Element | null = null;
+          for (let e: Element | null = top; e && e !== document.documentElement; e = e.parentElement) {
+            const position = getComputedStyle(e).position;
+            if (position === 'fixed' || position === 'sticky') {
+              bar = e;
+              break;
+            }
+          }
+          return bar && !bar.contains(el) && !el.contains(top) ? `${(el.getAttribute('aria-label') || el.textContent || el.tagName).trim().slice(0, 30)} under ${bar.className || bar.tagName}` : null;
+        });
+        if (hit) covered.push(hit);
+      }
+      expect.soft(covered, `[${path}] focused controls hidden under a fixed bar`).toEqual([]);
     }
   });
 });

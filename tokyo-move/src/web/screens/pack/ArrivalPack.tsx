@@ -1,10 +1,13 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router';
 import { PersonBadge } from '../../components/People';
 import { Button } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { Icon } from '../../components/Icon';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
 import { civil } from '../../lib/format';
+import { dataOf } from '../../lib/records';
+import type { DocumentData } from '@shared/types';
 import { buildPack, SENSITIVITY_ORDER, type Pack, type PackItem, type Sensitivity } from '../../lib/pack';
 import { useData } from '../../state/data';
 import type { Directory, Indexes } from '../../lib/records';
@@ -81,6 +84,8 @@ function PackBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
     [travelers, chosen, idx, dir, deadlines],
   );
   const present = SENSITIVITY_ORDER.filter((k) => packs.some((x) => x.pack.sensitive[k].length > 0));
+  // The pack lists what each person carries, not every document: once any document is marked to carry, only those appear.
+  const anyMarked = idx.all.some((r) => r.type === 'document' && (dataOf<DocumentData>(r).carry_on_arrival ?? []).length > 0);
 
   if (travelers.length === 0) return <EmptyState icon="plane" title="No travelers are set up yet." />;
 
@@ -90,6 +95,18 @@ function PackBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
         <Card className="stack">
           <p className="muted">
             A short pack per traveler, about two pages. It prints on A4 or Letter in black on white, with links written out as text. Documents show status and who holds them, never numbers or identifiers.
+          </p>
+          <p className="small muted" data-testid="pack-documents-rule">
+            {anyMarked ? (
+              <>Only documents marked to carry are listed. </>
+            ) : (
+              <>No document is marked to carry yet, so each pack lists the documents that are that person’s. </>
+            )}
+            Mark more in{' '}
+            <Link to="/documents" className="more-link">
+              Documents
+            </Link>
+            .
           </p>
           <fieldset>
             <legend>Who to print for</legend>

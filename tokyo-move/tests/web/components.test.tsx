@@ -9,6 +9,7 @@ import { Disclosure } from '../../src/web/components/Disclosure';
 import { ErrorBanner } from '../../src/web/components/Feedback';
 import { EmptyState } from '../../src/web/components/Layout';
 import { OwnerChip, PersonBadge } from '../../src/web/components/People';
+import { PendingUpdateNotice } from '../../src/web/components/PendingUpdateNotice';
 import { SnapshotContext, type SnapshotCtx } from '../../src/web/state/snapshot';
 import { buildDirectory, buildIndexes } from '../../src/web/lib/records';
 import { applyTheme } from '../../src/web/state/prefs';
@@ -272,5 +273,29 @@ describe('phone filter chips and theme', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
     applyTheme('system');
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
+});
+
+describe('the "newer update is waiting" notice', () => {
+  const withSnapshot = (snapshot: unknown) => createElement(SnapshotContext.Provider, { value: { ...fakeSnapshot(), snapshot: snapshot as never } }, createElement(PendingUpdateNotice));
+  it('shows one calm sentence when the server says something is waiting, and tells what to do', () => {
+    const el = mount(withSnapshot({ pending_update: { changed: 3 } }));
+    const note = el.querySelector('aside');
+    expect(note).not.toBeNull();
+    expect(note!.getAttribute('aria-label')).toBe('A newer update is waiting');
+    expect(note!.textContent).toContain('A newer private update is in your Kadode folder. Close the Terminal window running Kadode, then start it again to load it.');
+    // A count is all the server sends; the page never prints it, a file name or anything from the files.
+    expect(note!.textContent).not.toMatch(/\b3\b|\.json/);
+    expect(note!.getAttribute('role')).toBeNull(); // not a live region: a refresh of the page data must not announce it again
+  });
+  it('shows nothing when nothing is waiting (or in staging and production, where the server never sends it)', () => {
+    expect(mount(withSnapshot({})).querySelector('aside')).toBeNull();
+    act(() => root.unmount());
+    expect(mount(withSnapshot({ pending_update: { changed: 0 } })).querySelector('aside')).toBeNull();
+    act(() => root.unmount());
+    expect(mount(withSnapshot(null)).querySelector('aside')).toBeNull();
+  });
+  it('renders nothing outside the snapshot provider (the sign-in screen)', () => {
+    expect(mount(createElement(PendingUpdateNotice)).querySelector('aside')).toBeNull();
   });
 });

@@ -492,6 +492,20 @@
   margin-top: 3px;
   color: var(--matcha);
 }
+/* A calm prompt under the comparison: something to settle, not a warning. */
+.whatif-waiting {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--ai-soft, var(--surface-inset, transparent));
+  border-radius: var(--r-ctl);
+}
+.whatif-waiting .icon {
+  flex: none;
+  margin-top: 3px;
+  color: var(--ai);
+}
 .overlap-lines {
   display: flex;
   flex-direction: column;

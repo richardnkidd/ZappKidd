@@ -279,3 +279,48 @@ test.describe('The pet’s dates', () => {
     expect((await anchor(avery, 'TP')).data.date).toBe(tp.data.date);
   });
 });
+
+test.describe('Travel dates on each traveler’s Ready page', () => {
+  // Own server (nothing else there depends on anyone's dates), one date per browser project so they never collide;
+  // every date is put back afterwards.
+  test.use({ baseURL: baseUrlFor('failcreate') });
+  const cases = {
+    phone: { person: 'jun', name: 'Jun', code: 'DR', meaning: 'Jun departure' },
+    'small-phone': { person: 'jun', name: 'Jun', code: 'TR', meaning: 'Jun arrival' },
+    desktop: { person: 'mochi', name: 'Mochi', code: 'DP', meaning: 'Mochi departure / boarding' },
+  } as const;
+
+  test('each date can be set or changed from the page that shows it, with the same preview as the timeline', async ({ page, signIn, api }, testInfo) => {
+    const c = cases[testInfo.project.name as keyof typeof cases];
+    const avery = await api('avery', 'failcreate');
+    const rec = async () => (await avery.record(`anchor:${c.code}`)) as { version: number; data: { date: string | null; confidence: string } };
+    const original = await rec();
+    const newDate = original.data.date === '2027-08-15' ? '2027-08-16' : '2027-08-15';
+    try {
+      await signIn(page, 'avery', `/ready/${c.person}`);
+      await expect(page.getByRole('heading', { level: 1, name: `${c.name}’s readiness` })).toBeVisible();
+      await loaded(page);
+      const dates = page.getByRole('region', { name: 'Travel dates' });
+      const open = dates.getByRole('button', { name: `${original.data.date ? 'Change' : 'Set'} date: ${c.meaning}` });
+      await expect(open).toBeVisible();
+      await expect(open).toHaveText(original.data.date ? 'Change' : 'Set date');
+      await open.click();
+
+      const dialog = page.getByRole('dialog', { name: c.meaning });
+      await dialog.getByLabel('Date', { exact: true }).fill(newDate);
+      // The preview of what would move is the timeline's own, and nothing is saved until the person confirms.
+      await expect(dialog.getByRole('heading', { name: 'What would change' })).toBeVisible();
+      expect((await rec()).data.date).toBe(original.data.date);
+      await dialog.getByRole('button', { name: 'Save date' }).click();
+      await expect(dialog).toHaveCount(0);
+
+      expect((await rec()).data.date).toBe(newDate);
+      await expect(dates.getByRole('button', { name: `Change date: ${c.meaning}` })).toHaveText('Change');
+      await expect(dates).toContainText(/Aug 1[56], 2027/);
+    } finally {
+      const now = await rec();
+      await avery.send('PUT', `/api/anchors/${c.code}`, { baseVersion: now.version, date: original.data.date, confidence: original.data.confidence }).catch(() => undefined);
+    }
+    expect((await rec()).data.date).toBe(original.data.date);
+  });
+});

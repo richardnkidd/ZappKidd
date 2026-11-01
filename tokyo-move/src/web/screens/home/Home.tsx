@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useMediaQuery } from '../../layout/useMedia';
+import { PendingUpdateNotice } from '../../components/PendingUpdateNotice';
 import { Link } from 'react-router';
 import { formatCivil } from '@shared/dates';
 import { ZONE_OPTIONS } from '@shared/labels';
@@ -22,6 +24,8 @@ const FILTERS: OwnerFilter[] = ['all', 'needs_me', 'mine', 'other', 'together', 
 export function Home() {
   const me = useMe();
   const desktop = useIsDesktop();
+  // On a large monitor the page uses three columns instead of two (see .home-grid--wide).
+  const wide = useMediaQuery('(min-width: 1440px)');
   const { today, zone } = useData();
   const [filter, setFilter] = useState<OwnerFilter>(() => {
     const stored = loadPref('home-filter');
@@ -59,6 +63,8 @@ export function Home() {
         {greetingFor(hourIn(zone))}, {me.person.display_name}
       </PageTitle>
 
+      <PendingUpdateNotice />
+
       <DataGate>
         {({ idx, dir }) => {
           const otherName = dir.others[0]?.display_name;
@@ -80,19 +86,39 @@ export function Home() {
             <>
               {!desktop && <ReadyStrip dir={dir} />}
               <FilterChips label="Show items for" value={filter} options={options} onChange={changeFilter} scroll />
-              <div className="home-grid">
-                <div className="home-col home-col--main">
-                  <NowSection idx={idx} filter={filter} ctx={ctx} />
-                  <PendingTasksSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
-                  <DecisionsSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
-                  <BlockedSection idx={idx} filter={filter} ctx={ctx} />
+              {wide ? (
+                <div className="home-grid home-grid--wide">
+                  <div className="home-col">
+                    <NowSection idx={idx} filter={filter} ctx={ctx} />
+                    <PendingTasksSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
+                  </div>
+                  <div className="home-col">
+                    <DecisionsSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
+                    <BlockedSection idx={idx} filter={filter} ctx={ctx} />
+                    <SinceReviewSection idx={idx} dir={dir} />
+                  </div>
+                  <div className="home-col">
+                    <ReadySection idx={idx} dir={dir} />
+                    <ComingUpSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
+                  </div>
                 </div>
-                <div className="home-col home-col--side">
-                  {desktop && <ReadySection idx={idx} dir={dir} />}
-                  <ComingUpSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
-                </div>
-              </div>
-              <SinceReviewSection idx={idx} dir={dir} />
+              ) : (
+                <>
+                  <div className="home-grid">
+                    <div className="home-col home-col--main">
+                      <NowSection idx={idx} filter={filter} ctx={ctx} />
+                      <PendingTasksSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
+                      <DecisionsSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
+                      <BlockedSection idx={idx} filter={filter} ctx={ctx} />
+                    </div>
+                    <div className="home-col home-col--side">
+                      {desktop && <ReadySection idx={idx} dir={dir} />}
+                      <ComingUpSection idx={idx} dir={dir} filter={filter} ctx={ctx} />
+                    </div>
+                  </div>
+                  <SinceReviewSection idx={idx} dir={dir} />
+                </>
+              )}
               <FreshnessFooter />
               {hasOptionalFuture(idx) && (
                 <p className="faint small home-link">

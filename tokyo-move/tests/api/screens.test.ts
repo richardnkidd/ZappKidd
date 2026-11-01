@@ -566,6 +566,34 @@ describe('applies_to, sensitivity and carry_on_arrival', () => {
   });
 });
 
+describe('the document dialog saves its fields together', () => {
+  it('who carries a document and how sensitive it is are saved with the dates in one version-checked update', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    const doc = (await c.get('/api/records?type=document')).body.records[0];
+    const dialogPayload = { requested_at: null, received_at: '2026-10-20', reviewed_at: null, accepted_by_authority_at: null, accepted_by: null, expiry: null, refresh_trigger: null, link: null, carry_on_arrival: ['avery', 'mochi'], sensitivity: 'identity' };
+    const res = await patch(c, doc.id, doc.version, dialogPayload);
+    expect(res.status).toBe(200);
+    expect(res.body.record.version).toBe(doc.version + 1);
+    expect(res.body.record.data).toMatchObject({ received_at: '2026-10-20', carry_on_arrival: ['avery', 'mochi'], sensitivity: 'identity' });
+    expect(res.body.record.locally_edited).toEqual(expect.arrayContaining(['data.carry_on_arrival', 'data.sensitivity']));
+    const audit = (await c.get(`/api/audit?record_id=${encodeURIComponent(doc.id)}`)).body.entries[0];
+    expect(audit).toMatchObject({ action: 'update', actor: 'avery' });
+    expect(audit.after.data.carry_on_arrival).toEqual(['avery', 'mochi']);
+
+    // Clearing both (the "not sensitive" choice is null; nobody ticked is an empty list).
+    const cleared = await patch(c, doc.id, res.body.record.version, { carry_on_arrival: [], sensitivity: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.record.data).toMatchObject({ carry_on_arrival: [], sensitivity: null });
+
+    // The other adult's stale copy is refused, not silently overwritten; a bad value in the same request writes nothing.
+    expect((await patch(c, doc.id, doc.version, { carry_on_arrival: ['jun'] })).status).toBe(409);
+    const v = cleared.body.record.version;
+    expect((await patch(c, doc.id, v, { carry_on_arrival: ['jun'], sensitivity: 'secret' })).status).toBe(422);
+    expect(recordRow(h.db, doc.id).version).toBe(v);
+  });
+});
+
 describe('read-only importer settings: first_review and staging_analysis', () => {
   const firstReview = { decision_keys: ['D02', 'D03', 'D04'], note: 'Start with the housing choice.' };
   const staging = { relocation: { pattern: 'one adult first' }, immigration: { statement: 'Adviser to confirm the sequence.', implied_sequence_for_adviser_to_confirm: ['a', 'b'] }, nationality_branches: [{ if: 'x', then: 'y' }] };

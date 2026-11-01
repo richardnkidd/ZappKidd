@@ -86,7 +86,28 @@ export interface OverlapComparison {
   unknownAfter: number;
 }
 
-/** Staged-overlap costs under today's dates and under the hypothetical ones, from the shared money model. */
+/** A first-adult arrival the person typed in because no adult has a date yet. Only for the comparison; never saved. */
+export interface HypotheticalAdult {
+  arrivalCode: string;
+  departureCode: string;
+  arrival: string;
+  /** Same convention as the pet's default: the day before arrival. */
+  departure: string;
+}
+
+/** The hypothetical arrival (and its matching departure) for one adult, or null when there is no usable date or adult. */
+export function hypotheticalAdultFor(adult: Pick<Person, 'anchors'> | null | undefined, arrival: string): HypotheticalAdult | null {
+  if (!adult || !isCivilDate(arrival)) return null;
+  const { arrival: arrivalCode, departure: departureCode } = adult.anchors;
+  if (!arrivalCode || !departureCode) return null;
+  return { arrivalCode, departureCode, arrival, departure: defaultDeparture(arrival) };
+}
+
+/**
+ * Staged-overlap costs under today's dates and under the hypothetical ones, from the shared money model. When a
+ * hypothetical first-adult arrival is given it fills that adult's dates in BOTH runs (so only the pet's move differs
+ * between them); the other adult's dates are left exactly as they are.
+ */
 export function compareOverlap(args: {
   records: BaseRecord[];
   people: Person[];
@@ -96,11 +117,13 @@ export function compareOverlap(args: {
   arrival: string;
   departure: string;
   horizonMonths?: number;
+  hypotheticalAdult?: HypotheticalAdult | null;
 }): OverlapComparison {
   const scenario: ScenarioSettings = { key: 'planning', label: 'What if', fx_factor: 1, extra_us_months: 0, horizon_months: args.horizonMonths ?? 12 };
   const costs = args.records.filter((r) => r.type === 'cost');
   const funding = args.records.filter((r) => r.type === 'funding');
-  const baseAnchors = anchorsFrom(args.records);
+  const h = args.hypotheticalAdult ?? null;
+  const baseAnchors = anchorsFrom(args.records).map((a) => (h && a.code === h.arrivalCode ? { ...a, date: h.arrival } : h && a.code === h.departureCode ? { ...a, date: h.departure } : a));
   const movedAnchors = baseAnchors.map((a) => (a.code === args.arrivalCode ? { ...a, date: args.arrival } : a.code === args.departureCode ? { ...a, date: args.departure } : a));
   const run = (anchors: AnchorData[]): BudgetView => computeBudget({ costs: costs as never, funding: funding as never, anchors, people: args.people, scenario, today: args.today });
   const before = run(baseAnchors);
@@ -128,3 +151,16 @@ export function monthsBetween(a: string, b: string): number {
 
 /** An example date offered when no arrival date exists anywhere yet. It only fills the comparison and is never saved. */
 export const EXAMPLE_ARRIVAL = { date: '2027-07-01', label: 'July 1, 2027' } as const;
+
+/**
+ * One calm sentence for when the pet's chosen arrival is later than the adult it would travel with: someone has to look
+ * after the pet in Hawaii in the meantime, and someone has to fly with it. Null when it is not later (or a date is missing).
+ * It says what to settle, never what to do, and repeats that the pet's dates never move an adult's legal deadlines.
+ */
+export function waitingNote(args: { petName: string; adultName: string; adultArrival: string | null; petArrival: string | null }): string | null {
+  const { petName, adultName, adultArrival, petArrival } = args;
+  if (!adultArrival || !petArrival || !isCivilDate(adultArrival) || !isCivilDate(petArrival) || petArrival <= adultArrival) return null;
+  const months = monthsBetween(adultArrival, petArrival);
+  const gap = months >= 1 ? `about ${months} ${months === 1 ? 'month' : 'months'}` : `${diffDays(adultArrival, petArrival)} ${diffDays(adultArrival, petArrival) === 1 ? 'day' : 'days'}`;
+  return `${petName} would arrive ${gap} after ${adultName}. In the meantime, who looks after ${petName} in Hawaii, and who flies with ${petName}? That is for you to settle; ${petName}’s dates never move an adult’s legal deadlines.`;
+}

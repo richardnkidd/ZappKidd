@@ -66,6 +66,22 @@ describe('conversions', () => {
     expect(stress.lines[1]?.unpaid_usd).toBe(500);
     expect(stress.warnings.some((w) => w.includes('11.11%'))).toBe(true);
   });
+  it('the shipped stress case is the dollar buying FEWER yen (¥150 -> ¥135), which makes yen costs MORE in dollars', () => {
+    const stress = DEFAULT_SCENARIOS.find((s) => s.key === 'combined_stress')!;
+    const costs = [cost('B1', { section: 'one_time', estimate: jpy(150000), unpaid_balance: jpy(150000), commitment_state: 'estimate' })];
+    const base = budget(costs, [FX150], PLANNING);
+    const v = budget(costs, [FX150], stress);
+    expect(v.fx.active_jpy_per_usd!).toBeLessThan(base.fx.active_jpy_per_usd!);
+    expect(v.lines[0]!.unpaid_usd!).toBeGreaterThan(base.lines[0]!.unpaid_usd!);
+    expect(v.warnings.find((w) => w.startsWith('Stress case'))).toBe('Stress case: unchanged yen spending costs 11.11% more in US dollars.');
+  });
+  it('the opposite change (the dollar buying more yen) is worded as costing LESS in dollars', () => {
+    const costs = [cost('B1', { section: 'one_time', estimate: jpy(150000), unpaid_balance: jpy(150000), commitment_state: 'estimate' })];
+    const v = budget(costs, [FX150], { ...PLANNING, key: 'combined_stress', fx_factor: 1.1 });
+    expect(v.fx.active_jpy_per_usd).toBeCloseTo(165, 10);
+    expect(v.lines[0]!.unpaid_usd!).toBeLessThan(1000);
+    expect(v.warnings.find((w) => w.startsWith('Stress case'))).toBe('Stress case: unchanged yen spending costs 9.09% less in US dollars.');
+  });
 });
 
 describe('unknown is never zero', () => {

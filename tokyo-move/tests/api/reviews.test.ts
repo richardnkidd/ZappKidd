@@ -85,6 +85,67 @@ describe('couple review', () => {
     expect((await c.patch('/api/reviews/milestone:W06', { baseVersion: 1, changes: {} })).status).toBe(404);
   });
 
+  it('keeps what the open review has covered, so resuming it starts where it stopped, and drops it when saved', async () => {
+    const h = await harness();
+    const avery = await loginAs(h, 'avery');
+    const jun = await loginAs(h, 'jun');
+    const r = (await avery.post('/api/reviews', {})).body.record;
+    expect(r.data.progress ?? null).toBeNull();
+
+    const progress = {
+      step: 2,
+      accepted: [{ id: 'milestone:W06', title: 'A shared step', owner: 'Jun' }],
+      decisions: [{ id: 'decision:D02', title: 'A decision', outcome: 'Avery approved “the first option”' }],
+      questions: [],
+      change_count: 7,
+    };
+    const upd = await avery.patch(`/api/reviews/${r.id}`, { baseVersion: r.version, changes: { progress } });
+    expect(upd.status).toBe(200);
+    expect(upd.body.record.version).toBe(r.version + 1);
+    expect(upd.body.record.data.progress).toEqual(progress);
+    // Nothing else about the review changed.
+    expect(upd.body.record.data).toMatchObject({ summary: '', decisions: [], reviewed_record_ids: [], completed_at: null });
+
+    // The other adult resuming the open review gets it back, with the same list and step (also on the snapshot).
+    const again = await jun.post('/api/reviews', {});
+    expect(again.body.resumed).toBe(true);
+    expect(again.body.record.data.progress).toEqual(progress);
+    const snap = (await jun.get('/api/snapshot')).body.records.find((x: { id: string }) => x.id === r.id);
+    expect(snap.data.progress).toEqual(progress);
+
+    // A stale save is refused with the newer record, so the page can merge and try again.
+    const stale = await avery.patch(`/api/reviews/${r.id}`, { baseVersion: r.version, changes: { progress: { ...progress, step: 3 } } });
+    expect(stale.status).toBe(409);
+    expect(stale.body.details.server.data.progress).toEqual(progress);
+
+    // Completing records the summary and drops the working list.
+    const done = await avery.post(`/api/reviews/${r.id}/complete`, { baseVersion: upd.body.record.version, summary: 'We looked at things.' });
+    expect(done.status).toBe(200);
+    expect(done.body.record.data.progress).toBeUndefined();
+    expect(done.body.record.data.summary).toBe('We looked at things.');
+  });
+
+  it('refuses a progress list that is the wrong shape, too long, or names records that do not exist (nothing written)', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'avery');
+    const r = (await c.post('/api/reviews', {})).body.record;
+    const ok = { step: 1, accepted: [], decisions: [], questions: [], change_count: 0 };
+    const audits = countRows(h.db, 'audit_log');
+    const bad = async (progress: unknown) => (await c.patch(`/api/reviews/${r.id}`, { baseVersion: r.version, changes: { progress } })).status;
+    expect(await bad({ ...ok, step: -1 })).toBe(422);
+    expect(await bad({ ...ok, step: 1.5 })).toBe(422);
+    expect(await bad({ ...ok, step: 10 })).toBe(422);
+    expect(await bad({ ...ok, change_count: -3 })).toBe(422);
+    expect(await bad({ ...ok, extra: true })).toBe(422);
+    expect(await bad({ step: 1 })).toBe(422);
+    expect(await bad({ ...ok, decisions: Array.from({ length: 21 }, () => ({ id: 'decision:D01', title: 't', outcome: 'o' })) })).toBe(422);
+    expect(await bad({ ...ok, questions: [{ id: 'question:Q01', title: 'multi\nline', outcome: 'o' }] })).toBe(422);
+    expect(await bad({ ...ok, accepted: [{ id: 'milestone:NOPE', title: 'x', owner: 'Jun' }] })).toBe(422);
+    expect(await bad({ ...ok, accepted: [{ id: 'milestone:W06', title: 'x'.repeat(501), owner: 'Jun' }] })).toBe(422);
+    expect(countRows(h.db, 'audit_log')).toBe(audits);
+    expect(await bad(ok)).toBe(200);
+  });
+
   it('can also be started through the generic create endpoint, and cannot be edited through the generic PATCH', async () => {
     const h = await harness();
     const c = await loginAs(h, 'avery');

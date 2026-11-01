@@ -563,3 +563,84 @@ body.is-modal-open {
     background: var(--ai-soft);
   }
 }
+
+/* ---------- Large desktops (1440px and wider): let the content use the screen ---------- */
+/* Phones and tablets are untouched. Pages that are lists of things grow to about 1760px, centred in the space beside the
+   rail; pages that are forms or prose (Settings, Couple review, What if, Data, Printable pack) keep their readable width.
+   Running text stays near 70 characters per line (see `p` in base.css). */
+@media (min-width: 1440px) {
+  :root {
+    --gutter: 40px;
+    --content-wide: 1760px;
+  }
+  .app-main > :is(.home, .plan, .decide, .money, .docs, .arrival, .contacts, .ready) {
+    max-width: var(--content-wide);
+    margin-inline: auto;
+  }
+
+  /* A list of cards becomes a grid of two or three columns, as many as fit (each at least 30rem wide). */
+  :is(.stack, .item-list).grid-wide {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr));
+    gap: var(--s-4) var(--s-5);
+    align-items: start;
+  }
+  :is(.stack, .item-list).grid-wide--2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Decide: Up next and Later side by side. With nothing under Later, the Up next cards fill the width in a grid instead. */
+  /* Doubled class: .stack (components.css, loaded later) would otherwise win and keep one column. */
+  .decide-cols.decide-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-6);
+    align-items: start;
+  }
+  .decide-cols.decide-cols:has(.decide-later) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Questions for an adviser: two columns of questions on wide screens (printing keeps one). */
+  .advisers__list.advisers__list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--s-6);
+    align-items: start;
+  }
+
+  /* Money: the situation and the cash picture | where the money goes. */
+  .money-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-6);
+    min-width: 0;
+  }
+  .money-cols.money-cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-6);
+    align-items: start;
+  }
+
+  /* Ready detail: what holds things up and what unlocks it | dates and the rest. */
+  .ready-cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--s-6);
+    align-items: start;
+  }
+  .ready-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s-6);
+    min-width: 0;
+  }
+}
+
+/* Below that, the Money columns are transparent: the page reads in one column, in order. */
+@media (max-width: 1439.98px) {
+  .money-col {
+    display: contents;
+  }
+}

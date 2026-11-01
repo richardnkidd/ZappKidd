@@ -46,7 +46,7 @@ export function WorkstreamView({ items, idx, today }: { items: PlanItemData[]; i
     return groupPlan(sorted, idx);
   }, [items, idx]);
   return (
-    <div className="stack" aria-label={mode === 'area' ? 'Areas of work' : 'Workstreams'}>
+    <div className="stack grid-wide grid-wide--2" aria-label={mode === 'area' ? 'Areas of work' : 'Workstreams'}>
       {mode === 'area' && <p className="small muted">Grouped by the kind of work. Every group starts closed; the counts say what is still to do.</p>}
       {groups.map((g) => {
         const open = g.items.filter((i) => isOpenWork(i.m.status));

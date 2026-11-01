@@ -140,14 +140,18 @@ function AdviserQuestions({ idx, questions }: { idx: Indexes; questions: Questio
   const plain = usePlain();
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null);
   const [showAll, setShowAll] = useState(false);
+  // Open questions are the list to take along; answered or no-longer-needed ones fold away under it.
   const audiences = useMemo(() => {
-    const seen = new Map<string, Question[]>();
+    const seen = new Map<string, { open: Question[]; closed: Question[] }>();
     for (const q of [...questions].sort(byKey)) {
       const a = q.data?.audience ?? 'adviser';
-      seen.set(a, [...(seen.get(a) ?? []), q]);
+      const entry = seen.get(a) ?? { open: [], closed: [] };
+      (q.status === 'open' ? entry.open : entry.closed).push(q);
+      seen.set(a, entry);
     }
-    return [...seen.entries()].sort((a, b) => b[1].length - a[1].length || audienceLabel(a[0]).localeCompare(audienceLabel(b[0])));
+    return [...seen.entries()].sort((a, b) => b[1].open.length - a[1].open.length || audienceLabel(a[0]).localeCompare(audienceLabel(b[0])));
   }, [questions]);
+  const openCount = questions.filter((q) => q.status === 'open').length;
   useEffect(() => {
     if (!copied) return;
     const t = window.setTimeout(() => setCopied(null), 3000);
@@ -157,7 +161,7 @@ function AdviserQuestions({ idx, questions }: { idx: Indexes; questions: Questio
   const wanted = params.get('for');
   const current = audiences.find(([a]) => a === wanted) ?? audiences[0];
   if (!current) return null;
-  const [audience, list] = current;
+  const [audience, { open: list, closed }] = current;
   const label = audienceLabel(audience);
   const heading = `Questions for the ${label}`;
 
@@ -197,8 +201,8 @@ function AdviserQuestions({ idx, questions }: { idx: Indexes; questions: Questio
   return (
     <Section
       title="Questions for your advisers"
-      count={questions.length}
-      intro="Take these to the appointment. Each one says which facts to bring; nothing here has been answered yet unless it says so."
+      count={openCount || undefined}
+      intro="Take these to the appointment. Each one says which facts to bring. Answered or no-longer-needed questions are folded away under each list."
       className="advisers-print"
     >
       <div className="no-print">
@@ -207,7 +211,7 @@ function AdviserQuestions({ idx, questions }: { idx: Indexes; questions: Questio
             label="Whose questions"
             value={audience}
             onChange={choose}
-            options={audiences.map(([a, qs]) => ({ value: a, label: `${audienceLabel(a)[0]?.toUpperCase()}${audienceLabel(a).slice(1)}`, count: qs.length }))}
+            options={audiences.map(([a, qs]) => ({ value: a, label: `${audienceLabel(a)[0]?.toUpperCase()}${audienceLabel(a).slice(1)}`, count: qs.open.length }))}
           />
         )}
       </div>
@@ -265,6 +269,7 @@ function AdviserQuestions({ idx, questions }: { idx: Indexes; questions: Questio
             </li>
           ))}
         </ol>
+        {list.length === 0 && <p className="muted">Nothing is open for the {label} right now.</p>}
         {list.length > SHOWN_ON_SCREEN && (
           <div className="no-print">
             <Button variant="quiet" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
@@ -272,6 +277,23 @@ function AdviserQuestions({ idx, questions }: { idx: Indexes; questions: Questio
             </Button>
             <p className="faint small">Printing and copying always include the whole list.</p>
           </div>
+        )}
+        {closed.length > 0 && (
+          <Disclosure title="Answered or no longer needed" meta={`${closed.length}`} className="disclosure--flat no-print">
+            <ul className="plain-list plain-list--spaced">
+              {closed.map((q) => (
+                <li key={q.id}>
+                  <RecordLink id={q.id}>{q.title}</RecordLink>
+                  {q.data?.answer && (
+                    <span className="small muted">
+                      {' '}
+                      · <Prose text={q.data.answer} />
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </Disclosure>
         )}
       </Card>
     </Section>

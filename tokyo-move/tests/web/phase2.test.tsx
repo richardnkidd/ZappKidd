@@ -6,11 +6,12 @@ import { dateParts } from '../../src/web/lib/dateWords';
 import { checksOf, cleanNote, directCheckOf, evidenceVerification, lastCheckedOf, reviewChecksOf } from '../../src/web/lib/evidence';
 import { dayIn } from '../../src/web/lib/format';
 import { selectComingUp, type FilterContext } from '../../src/web/lib/home';
-import { cashStatement, knownSoFar, scenarioExplanation, weakerYenPercent } from '../../src/web/lib/money';
+import type { ScenarioSettings } from '../../src/shared/types';
+import { cashStatement, fxChangeInput, fxChangePercent, fxEffectSentence, knownSoFar, scenarioExplanation, scenarioLabel } from '../../src/web/lib/money';
 import { buildPack, sensitivityOf } from '../../src/web/lib/pack';
 import { buildDirectory, buildIndexes } from '../../src/web/lib/records';
 import { buildReviewSummary } from '../../src/web/lib/reviewSummary';
-import { compareOverlap, defaultDeparture, firstAdultArrival, petArrivalFor, previewPetMove } from '../../src/web/lib/whatif';
+import { compareOverlap, defaultDeparture, firstAdultArrival, hypotheticalAdultFor, petArrivalFor, previewPetMove, waitingNote } from '../../src/web/lib/whatif';
 import { computed, DIR, milestone } from './helpers';
 
 const NOW = '2026-10-29T12:00:00Z';
@@ -97,11 +98,30 @@ describe('money wording', () => {
     expect(knownSoFar({ known_usd: 40, known_count: 1, unknown_count: 1, unknown_keys: [], excluded_count: 0, complete: false }, 2).primary).toBe('Known so far $40');
     expect(knownSoFar({ known_usd: 100, unknown_count: 0, unknown_keys: [], excluded_count: 0, complete: true }, 1).secondary).toBe('every amount known');
   });
-  it('explains scenarios from their own numbers and formats the yen effect without float noise', () => {
+  it('explains scenarios from their own numbers, in terms of the dollar, and formats the percent without float noise', () => {
     expect(scenarioExplanation({ key: 'planning', label: 'Planning', fx_factor: 1, extra_us_months: 0, horizon_months: 3 })).toContain('nothing extra');
-    expect(scenarioExplanation({ key: 'combined_stress', label: 'X', fx_factor: 0.9, extra_us_months: 3, horizon_months: 3 })).toBe('Same plan, but with 3 more months of continuing US costs and a yen 10% weaker against the dollar.');
-    expect(weakerYenPercent(0.9)).toBe('10');
-    expect(weakerYenPercent(0.875)).toBe('12.5');
+    expect(scenarioExplanation({ key: 'combined_stress', label: 'X', fx_factor: 0.9, extra_us_months: 3, horizon_months: 3 })).toBe('Same plan, but with 3 more months of continuing US costs and the dollar buying 10% fewer yen.');
+    expect(scenarioExplanation({ key: 'combined_stress', label: 'X', fx_factor: 1.1, extra_us_months: 0, horizon_months: 3 })).toBe('Same plan, but with the dollar buying 10% more yen.');
+    expect(fxChangePercent(0.9)).toBe('10');
+    expect(fxChangePercent(0.875)).toBe('12.5');
+    expect(fxChangePercent(1.1)).toBe('10');
+  });
+  it('words the exchange-rate effect both ways and never says weaker or stronger about the dollar-yen move in its sentence', () => {
+    expect(fxEffectSentence(0.9, 1 / 0.9 - 1)).toBe('If the dollar buys 10% fewer yen, fixed-yen costs are 11.11% more in dollars.');
+    expect(fxEffectSentence(1.1, 1 / 1.1 - 1)).toBe('If the dollar buys 10% more yen, fixed-yen costs are 9.09% less in dollars.');
+    expect(fxEffectSentence(0.9, 1 / 0.9 - 1)).not.toMatch(/weaker|stronger/);
+  });
+  it('labels the shipped stress case by what it does, and leaves a renamed scenario alone', () => {
+    const base: ScenarioSettings = { key: 'combined_stress', label: 'Combined stress', fx_factor: 0.9, extra_us_months: 3, horizon_months: 3 };
+    expect(scenarioLabel(base)).toBe('Delay + stronger yen');
+    expect(scenarioLabel({ ...base, fx_factor: 1.1 })).toBe('Delay + weaker yen');
+    expect(scenarioLabel({ ...base, fx_factor: 1 })).toBe('Combined stress');
+    expect(scenarioLabel({ ...base, label: 'Our worst case' })).toBe('Our worst case');
+  });
+  it('shows a scenario factor as a signed percent in the settings form (negative = the dollar buys more yen)', () => {
+    expect(fxChangeInput(1)).toBe('0');
+    expect(fxChangeInput(0.9)).toBe('10');
+    expect(fxChangeInput(1.1)).toBe('-10');
   });
   it("says 'Can't conclude yet' with the real number of unknowns, and never claims headroom while unknowns remain", () => {
     const total = (n: number) => ({ known_usd: 0, unknown_count: n, unknown_keys: [], excluded_count: 0, complete: n === 0 });
@@ -176,6 +196,66 @@ describe('what if the pet arrives later', () => {
     expect(cmp.afterKnown).toBeGreaterThanOrEqual(0);
     expect(cmp.unknownAfter).toBeGreaterThanOrEqual(0);
     for (const l of cmp.lines) expect(l.after === null || typeof l.after === 'number').toBe(true);
+  });
+});
+
+describe('what if, with no adult date yet (a hypothetical first-adult arrival)', () => {
+  const pet = people.find((p) => p.kind === 'pet')!;
+  const adults = people.filter((p) => p.kind === 'adult');
+  const firstAdult = adults[0]!;
+  const cleared = new Set([...people.map((p) => p.anchors.arrival), ...people.map((p) => p.anchors.departure)]);
+  // No arrival or departure date is set for anyone (the household helper dates are left as they are).
+  const blank = records.map((r) =>
+    r.type === 'anchor' && cleared.has((r.data as { code?: string }).code ?? r.key) ? ({ ...r, data: { ...r.data, date: null, confidence: 'awaiting' } } as typeof r) : r,
+  );
+  const petArrival = '2027-10-01';
+  const common = { records: blank, people, today: TODAY, arrivalCode: pet.anchors.arrival, departureCode: pet.anchors.departure, arrival: petArrival, departure: defaultDeparture(petArrival) };
+  const boarding = (c: ReturnType<typeof compareOverlap>) => c.lines.find((l) => /waits to follow/i.test(l.description))!;
+
+  it('without the hypothetical date the pet-waits-for-the-adult line cannot be worked out (the old behaviour)', () => {
+    const cmp = compareOverlap(common);
+    expect(boarding(cmp).after).toBeNull();
+    expect(boarding(cmp).afterMonths).toBeNull();
+  });
+
+  it('uses the typed first-adult arrival for that adult only, in both runs, and the pet line becomes real', () => {
+    const h = hypotheticalAdultFor(firstAdult, '2027-07-01')!;
+    expect(h).toEqual({ arrivalCode: firstAdult.anchors.arrival, departureCode: firstAdult.anchors.departure, arrival: '2027-07-01', departure: '2027-06-30' });
+    const cmp = compareOverlap({ ...common, hypotheticalAdult: h });
+    // Boarding runs from the first adult's arrival (Jul 1) to the pet's (Oct 1): about three months at $350.
+    expect(boarding(cmp).afterMonths).toBeCloseTo(3, 0);
+    expect(boarding(cmp).after).toBeGreaterThan(900);
+    // The pet has no date of its own here, so "today's dates" for the pet are still unknown...
+    expect(boarding(cmp).before).toBeNull();
+    // ...and the other adult's line does not get the first adult's date by accident.
+    const other = cmp.lines.find((l) => /US living costs for/i.test(l.description))!;
+    expect(other.afterMonths).toBeNull();
+  });
+
+  it('never writes anything: the records it was given are untouched', () => {
+    const before = JSON.stringify(blank);
+    compareOverlap({ ...common, hypotheticalAdult: hypotheticalAdultFor(firstAdult, '2027-07-01') });
+    expect(JSON.stringify(blank)).toBe(before);
+  });
+
+  it('ignores a date that is not a real date, or an adult with no anchor codes', () => {
+    expect(hypotheticalAdultFor(firstAdult, '2027-02-30')).toBeNull();
+    expect(hypotheticalAdultFor(firstAdult, '')).toBeNull();
+    expect(hypotheticalAdultFor(null, '2027-07-01')).toBeNull();
+    expect(hypotheticalAdultFor({ anchors: {} } as never, '2027-07-01')).toBeNull();
+  });
+
+  it('says who looks after the pet and who flies with it, only when the pet arrives later than the adult', () => {
+    const base = { petName: 'Mochi', adultName: 'Avery', adultArrival: '2027-07-01' };
+    const later = waitingNote({ ...base, petArrival: '2027-10-01' })!;
+    expect(later).toContain('Mochi would arrive about 3 months after Avery.');
+    expect(later).toContain('who looks after Mochi in Hawaii, and who flies with Mochi?');
+    expect(later).toContain('never move an adult’s legal deadlines');
+    expect(waitingNote({ ...base, petArrival: '2027-07-12' })).toContain('11 days after Avery');
+    expect(waitingNote({ ...base, petArrival: '2027-07-01' })).toBeNull(); // together
+    expect(waitingNote({ ...base, petArrival: '2027-06-01' })).toBeNull(); // earlier
+    expect(waitingNote({ ...base, adultArrival: null, petArrival: '2027-10-01' })).toBeNull();
+    expect(waitingNote({ ...base, petArrival: null })).toBeNull();
   });
 });
 

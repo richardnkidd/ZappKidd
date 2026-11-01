@@ -6,6 +6,7 @@ import { diffDays } from '@shared/dates';
 import { ANCHOR_CONFIDENCE_LABEL } from '@shared/labels';
 import type { AnchorData } from '@shared/types';
 import { DateText, StatusBadge } from '../../components/Badges';
+import { AnchorDialog } from '../../components/AnchorDialog';
 import { Button, ButtonLink } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { DeadlineRow } from '../../components/DeadlineRow';
@@ -14,7 +15,8 @@ import { ErrorBanner } from '../../components/Feedback';
 import { Card, EmptyState, PageTitle, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
-import type { Directory, Indexes } from '../../lib/records';
+import { dataOf, type Directory, type Indexes } from '../../lib/records';
+import { useMediaQuery } from '../../layout/useMedia';
 import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
 import { AppliesToControl } from '../record/AppliesTo';
@@ -170,6 +172,9 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
   const { refresh } = useSnapshot();
   const plain = usePlain();
   const [notice, setNotice] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Indexes['anchors'][number] | null>(null);
+  // On a large monitor the page has two columns: what holds things up | dates and the rest.
+  const wide = useMediaQuery('(min-width: 1440px)');
   const noticeRef = useRef<HTMLParagraphElement>(null);
   if (!readiness.ok) {
     return (
@@ -204,35 +209,28 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
     setNotice(`Saved. “${g.title}” has moved out of this list.`);
     window.setTimeout(() => noticeRef.current?.focus(), 120);
   };
-  const anchor = (a: AnchorData | null, label: string) =>
-    a ? (
+  // The same editor as Plan > Timeline > Travel dates: it shows what would move before anything is saved.
+  const anchor = (a: AnchorData | null, label: string) => {
+    if (!a) return null;
+    const rec = idx.anchors.find((x) => (dataOf<AnchorData>(x).code ?? x.key) === a.code);
+    return (
       <li className="lane__row">
         <span className="lane__what">{label}</span>
         <span className="lane__when">
           <DateText date={a.date} />
           {a.confidence !== 'awaiting' && <span className="chip chip--neutral chip--sm">{ANCHOR_CONFIDENCE_LABEL[a.confidence] ?? a.confidence}</span>}
+          {rec && (
+            <Button variant="quiet" small icon="pencil" onClick={() => setEditing(rec)} aria-label={`${a.date ? 'Change' : 'Set'} date: ${a.meaning ?? label}`}>
+              {a.date ? 'Change' : 'Set date'}
+            </Button>
+          )}
         </span>
       </li>
-    ) : null;
+    );
+  };
 
-  return (
-    <div className="stack stack--loose ready-page">
-      <Card tone={r.state === 'blocked' ? 'blocked' : 'default'}>
-        <div className="ready__head">
-          <span className="ready__who">
-            <PersonBadge person={person} size={40} />
-            <span className="ready__name-lg">{person.display_name}</span>
-          </span>
-          <ReadinessChip state={r.state} />
-        </div>
-        <p className="ready__headline">{plain(r.headline)}</p>
-        {explanation && <p className="muted">{explanation}</p>}
-      </Card>
-
-      <p ref={noticeRef} tabIndex={-1} role="status" className={notice ? 'notice' : 'visually-hidden'}>
-        {notice ?? ''}
-      </p>
-
+  const datesBlock = (
+    <>
       {(r.departure || r.arrival) && (
         <Section title="Travel dates" headingLevel={2}>
           <Card className="ready-dates">
@@ -241,9 +239,14 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
               {anchor(r.arrival, 'Arriving in Tokyo')}
             </ul>
           </Card>
+          {editing && <AnchorDialog record={editing} onClose={() => setEditing(null)} />}
         </Section>
       )}
 
+    </>
+  );
+  const holdingBlock = (
+    <>
       <Section title="Holding things up" count={blockers.length || undefined}>
         <GateList gates={blockers} empty="Nothing is stuck right now." showReason="blocker" idx={idx} first={3} />
       </Section>
@@ -266,6 +269,10 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
         <GateList gates={open} empty="Nothing else is waiting to be started." idx={idx} first={3} />
       </Section>
 
+    </>
+  );
+  const notNeededBlock = (
+    <>
       {notNeeded.length > 0 && (
         <Disclosure title={`Not needed for ${person.display_name}`} meta={`${notNeeded.length}`}>
           <ul className="gate-list">
@@ -285,6 +292,10 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
         </Disclosure>
       )}
 
+    </>
+  );
+  const restBlock = (
+    <>
       {/* The long lists start closed, with their counts; dates open on their own only when one is close. */}
       <div className="stack stack--tight">
         <Disclosure title="Dates before leaving" meta={`${dates.before_departure.length}`} defaultOpen={soonDates}>
@@ -303,6 +314,45 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
         </Disclosure>
       </div>
 
+    </>
+  );
+
+  return (
+    <div className="stack stack--loose ready-page">
+      <Card tone={r.state === 'blocked' ? 'blocked' : 'default'}>
+        <div className="ready__head">
+          <span className="ready__who">
+            <PersonBadge person={person} size={40} />
+            <span className="ready__name-lg">{person.display_name}</span>
+          </span>
+          <ReadinessChip state={r.state} />
+        </div>
+        <p className="ready__headline">{plain(r.headline)}</p>
+        {explanation && <p className="muted">{explanation}</p>}
+      </Card>
+
+      <p ref={noticeRef} tabIndex={-1} role="status" className={notice ? 'notice' : 'visually-hidden'}>
+        {notice ?? ''}
+      </p>
+
+      {wide ? (
+        <div className="ready-cols">
+          <div className="ready-col">{holdingBlock}</div>
+          <div className="ready-col">
+            {datesBlock}
+            {notNeededBlock}
+            {restBlock}
+          </div>
+        </div>
+      ) : (
+        <>
+          {datesBlock}
+          {holdingBlock}
+          {notNeededBlock}
+          {restBlock}
+        </>
+      )}
+
       <p className="small muted">Optional future work is never counted here. Only the steps this traveler needs for the move are.</p>
 
       <p>
@@ -317,7 +367,7 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
 export function ReadyDetail() {
   const { personId = '' } = useParams();
   return (
-    <div className="page">
+    <div className="page ready">
       <PageTitle kicker="Readiness">{personId ? <ReadyTitle id={personId} /> : 'Who’s ready'}</PageTitle>
       <DataGate>{({ idx, dir }) => <ReadyBody personId={personId} idx={idx} dir={dir} />}</DataGate>
     </div>

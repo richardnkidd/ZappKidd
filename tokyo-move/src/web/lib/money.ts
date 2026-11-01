@@ -46,18 +46,39 @@ export const STAGE_LABEL: Record<string, string> = {
   excluded: 'Left out on purpose',
 };
 
+/**
+ * How a scenario moves the exchange rate, in terms of the dollar (which is unambiguous, unlike "weaker" or "stronger"
+ * yen). The factor multiplies the yen-per-dollar rate: 0.9 means the dollar buys 10% fewer yen, so yen costs are more
+ * in dollars; 1.1 means it buys 10% more yen, so they are less.
+ */
+export function fxChangePercent(factor: number): string {
+  const pct = Math.round(Math.abs(1 - factor) * 1000) / 10; // one decimal, no floating-point noise
+  return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
+}
+
+/** The settings form's number for a factor: percent fewer yen per dollar, negative when the dollar buys more. */
+export function fxChangeInput(factor: number): string {
+  if (factor === 1) return '0';
+  return factor > 1 ? `-${fxChangePercent(factor)}` : fxChangePercent(factor);
+}
+
+/** "the dollar buying 10% fewer yen" (factor below 1) or "the dollar buying 10% more yen" (above 1). */
+export function fxChangePhrase(factor: number): string {
+  return `the dollar buying ${fxChangePercent(factor)}% ${factor < 1 ? 'fewer' : 'more'} yen`;
+}
+
+/** The effect of that change on fixed-yen costs, as one sentence. `effect` is the proportional change in dollar cost. */
+export function fxEffectSentence(factor: number, effect: number): string {
+  return `If the dollar buys ${fxChangePercent(factor)}% ${factor < 1 ? 'fewer' : 'more'} yen, fixed-yen costs are ${(Math.abs(effect) * 100).toFixed(2)}% ${effect >= 0 ? 'more' : 'less'} in dollars.`;
+}
+
 /** One calm line per scenario; built from the scenario's own numbers so edits to a scenario stay truthful. */
 export function scenarioExplanation(s: ScenarioSettings): string {
   const parts: string[] = [];
   if (s.extra_us_months > 0) parts.push(`${s.extra_us_months} more ${s.extra_us_months === 1 ? 'month' : 'months'} of continuing US costs`);
-  if (s.fx_factor !== 1) parts.push(`a yen ${weakerYenPercent(s.fx_factor)}% ${s.fx_factor < 1 ? 'weaker' : 'stronger'} against the dollar`);
+  if (s.fx_factor !== 1) parts.push(fxChangePhrase(s.fx_factor));
   if (parts.length === 0) return 'Costs as they are known today, with nothing extra assumed.';
   return `Same plan, but with ${parts.join(' and ')}.`;
-}
-
-export function weakerYenPercent(factor: number): string {
-  const pct = Math.round(Math.abs(1 - factor) * 1000) / 10; // one decimal, no floating-point noise
-  return Number.isInteger(pct) ? String(pct) : pct.toFixed(1);
 }
 
 /** True when a section has lines but not one of them has a usable amount (unknown is never shown as $0). */
@@ -113,7 +134,12 @@ export function cashStatement(model: CashModel, incomeNotCounted: number): CashS
   }
 }
 
-/** The shipped scenario names, in plain words. A scenario the household has renamed keeps its own name. */
+/**
+ * The shipped scenario names, in plain words. A scenario the household has renamed keeps its own name. The currency
+ * half of the shipped stress case follows its factor, so editing the factor never leaves a wrong label behind.
+ */
 export function scenarioLabel(s: ScenarioSettings): string {
-  return s.key === 'combined_stress' && s.label === 'Combined stress' ? 'Delay + weaker yen' : s.label;
+  if (s.key !== 'combined_stress' || s.label !== 'Combined stress') return s.label;
+  if (s.fx_factor === 1) return s.label;
+  return s.fx_factor < 1 ? 'Delay + stronger yen' : 'Delay + weaker yen';
 }

@@ -67,14 +67,31 @@ export function departureAnchors(anchors: Partial<AnchorData>[], people: Pick<Pe
   return { household: validDate(household?.date), byTraveler };
 }
 
+/** The earliest of the dates that are set (civil dates sort as text), or null when none is. */
+function earliestSet(dates: readonly (string | null | undefined)[]): string | null {
+  const set = dates.filter((d): d is string => typeof d === 'string' && d !== '').sort();
+  return set[0] ?? null;
+}
+
 /**
- * Which departure D an item's departure-relative phase hangs on: the one traveler's own anchor when the item is
- * scoped to exactly one known person, otherwise the household anchor. When that date is not set, the planning target
- * stands in (flagged), and with no target there is no D.
+ * Which departure D an item's departure-relative phase hangs on:
+ *  - scoped to exactly one known person: that person's own date (never filled in from anyone else's);
+ *  - scoped to several people: the EARLIEST departure date set among the people in that scope, because shared work has to
+ *    be done before the first of them leaves; when none of them has a date, the household departure;
+ *  - scoped to nobody in particular (household-wide): the household departure.
+ * When that date is not set, the planning target stands in (flagged as the target), and with no target there is no D.
  */
 export function departureFor(scope: readonly string[], dep: DepartureAnchors, target: PlanningTarget | null): DepartureRef | null {
-  const who = scope.length === 1 ? scope[0]! : null;
-  const date = who && who in dep.byTraveler ? dep.byTraveler[who] ?? null : dep.household;
+  const people = [...new Set(scope)];
+  let date: string | null;
+  if (people.length === 1) {
+    const who = people[0]!;
+    date = who in dep.byTraveler ? dep.byTraveler[who] ?? null : dep.household;
+  } else if (people.length > 1) {
+    date = earliestSet(people.map((p) => dep.byTraveler[p])) ?? dep.household;
+  } else {
+    date = dep.household;
+  }
   if (date) return { date, source: 'anchor' };
   return target ? { date: target.date, source: 'target' } : null;
 }
@@ -341,11 +358,13 @@ export function departureMarkers(dep: DepartureAnchors, people: Pick<Person, 'id
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.basis === b.basis ? 0 : a.basis === 'anchor' ? -1 : 1));
 }
 
-/** The departure the phase strip is drawn against: the household date, else the earliest traveler date, else the target. */
+/**
+ * The departure the phase strip is drawn against. The strip describes shared work, so it follows the same rule as an item
+ * scoped to everyone: the earliest traveler date that is set, else the household date, else the planning target.
+ */
 export function referenceDeparture(dep: DepartureAnchors, target: PlanningTarget | null): DepartureRef | null {
-  if (dep.household) return { date: dep.household, source: 'anchor' };
-  const own = Object.values(dep.byTraveler).filter((d): d is string => !!d).sort();
-  if (own[0]) return { date: own[0], source: 'anchor' };
+  const own = earliestSet(Object.values(dep.byTraveler)) ?? dep.household;
+  if (own) return { date: own, source: 'anchor' };
   return target ? { date: target.date, source: 'target' } : null;
 }
 

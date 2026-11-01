@@ -209,7 +209,7 @@ function ContactList({ idx }: { idx: Indexes }) {
               <EmptyState icon="contacts" title="Nobody in this group." />
             </Card>
           ) : (
-            <ul className="stack">
+            <ul className="stack grid-wide">
               {shown.map((c) => (
                 <li key={c.id}>
                   <ContactCard record={c} idx={idx} />
@@ -313,7 +313,7 @@ function EvidenceList({ idx }: { idx: Indexes }) {
               { value: 'check', label: 'Worth checking again', count: items.filter(needsCheck).length },
             ]}
           />
-          <ul className="stack">
+          <ul className="stack grid-wide">
             {shown.map((r) => (
               <li key={r.id}>
                 <EvidenceCard record={r} />
@@ -499,7 +499,7 @@ function FindingList({ idx }: { idx: Indexes }) {
               <EmptyState icon="check" title="Nothing in this group." />
             </Card>
           ) : (
-            <ul className="stack">
+            <ul className="stack grid-wide">
               {shown.map((r) => (
                 <li key={r.id}>
                   <FindingCard record={r} idx={idx} />

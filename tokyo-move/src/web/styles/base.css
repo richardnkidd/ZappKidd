@@ -93,6 +93,11 @@ a {
 a:hover {
   text-decoration-thickness: 2px;
 }
+/* WCAG 2.5.8 (target size, 24px): a plain link that sits on a line of its own is at least 24px tall. The padding is vertical
+   only and on an inline box, so it makes the hit area (and focus ring) taller without changing the line spacing. */
+a:not([class]) {
+  padding-block: 4px;
+}
 strong,
 b {
   font-weight: 650;

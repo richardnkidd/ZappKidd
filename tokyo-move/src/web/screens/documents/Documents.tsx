@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isCivilDate } from '@shared/dates';
-import type { DocumentData } from '@shared/types';
+import type { DocumentData, Sensitivity } from '@shared/types';
 import { Chip } from '../../components/Badges';
 import { Disclosure } from '../../components/Disclosure';
 import { RecordLink } from '../../components/RecordLink';
@@ -8,12 +8,13 @@ import { diffDays } from '@shared/dates';
 import { isOpenWork } from '../../lib/records';
 import { whenFor } from '../../lib/when';
 import { useData } from '../../state/data';
-import { Button, Field, FilterChips, TextArea, TextInput } from '../../components/Controls';
+import { Button, Field, FilterChips, Select, TextArea, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { Dialog } from '../../components/Dialog';
 import { ConflictBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
 import { LinkedKeys } from '../../components/LinkedKeys';
+import { useDir } from '../../components/People';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
 import { civil, dayIn, humanizeKey, safeHref } from '../../lib/format';
 import { usePrefs } from '../../state/prefs';
@@ -155,8 +156,19 @@ export function DocumentCard({ record, idx, dir, headingLevel = 3, compact = fal
   );
 }
 
+/** The sensitivity choices a document can carry; "not sensitive" is stored as no mark (null). */
+const SENSITIVITY_CHOICES: { value: 'none' | NonNullable<Sensitivity>; label: string }[] = [
+  { value: 'none', label: 'Not sensitive' },
+  { value: 'medical', label: 'Medical' },
+  { value: 'financial', label: 'Financial' },
+  { value: 'identity', label: 'Identity papers' },
+];
+
+const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
+
 function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () => void }) {
   const { actions } = useSnapshot();
+  const dir = useDir();
   const { zone } = usePrefs();
   const DATE_PART = (v: string | null | undefined) => dayIn(v, zone);
   const w = useWrite();
@@ -171,6 +183,11 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
     refresh_trigger: d.refresh_trigger ?? '',
     link: d.link ?? '',
   });
+  // Who carries it on arrival (the printed arrival pack lists it for them) and how sensitive it is (sensitive papers are
+  // left out of the pack unless ticked there).
+  const carryNow = useMemo(() => (d.carry_on_arrival ?? []).filter((id) => dir.personById(id)), [d.carry_on_arrival, dir]);
+  const [carry, setCarry] = useState<string[]>(carryNow);
+  const [sensitivity, setSensitivity] = useState<'none' | NonNullable<Sensitivity>>(d.sensitivity ?? 'none');
   const [startVersion] = useState(record.version);
   const [tried, setTried] = useState(false);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
@@ -188,6 +205,10 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
     setTried(true);
     if (badDate || linkBad) return;
     const n = (v: string) => (v.trim() === '' ? null : v.trim());
+    // Only what the person actually changed is sent, so leaving these alone never marks them as edited.
+    const marks: Record<string, unknown> = {};
+    if (!sameSet(carry, carryNow)) marks.carry_on_arrival = carry;
+    if (sensitivity !== (d.sensitivity ?? 'none')) marks.sensitivity = sensitivity === 'none' ? null : sensitivity;
     const ok = await w.run(
       (v) =>
         actions.patchRecord(record.id, v, {
@@ -200,6 +221,7 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
             expiry: n(f.expiry),
             refresh_trigger: n(f.refresh_trigger),
             link: n(f.link),
+            ...marks,
           },
         }),
       startVersion,
@@ -218,7 +240,7 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
       open
       onClose={onClose}
       title="Update this document"
-      description={`${record.title}. Only status, dates and a link are kept here — never the document itself.`}
+      description={`${record.title}. Only status, dates, who carries it and a link are kept here — never the document itself.`}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>
@@ -243,6 +265,29 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
       </Field>
       <Field label="Restricted link" hint="A link to where the original is kept. It must start with https://." error={tried && linkBad ? 'The link must start with https://.' : null}>
         <TextInput value={f.link} onChange={set('link')} inputMode="url" placeholder="https://" />
+      </Field>
+      <fieldset className="stack stack--tight">
+        <legend>Who carries it on arrival</legend>
+        <p className="small muted">The printable arrival pack lists this document for each person ticked here.</p>
+        {dir.people.map((p) => (
+          <label key={p.id} className="choice">
+            <input
+              type="checkbox"
+              checked={carry.includes(p.id)}
+              onChange={(e) => setCarry((c) => (e.target.checked ? [...c.filter((x) => x !== p.id), p.id] : c.filter((x) => x !== p.id)))}
+            />
+            <span className="choice__text">Carry on arrival: {p.display_name}</span>
+          </label>
+        ))}
+      </fieldset>
+      <Field label="How sensitive is it?" hint="Medical, financial and identity papers are left out of the printed arrival pack unless you tick them there.">
+        <Select value={sensitivity} onChange={(e) => setSensitivity(e.target.value as typeof sensitivity)}>
+          {SENSITIVITY_CHOICES.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </Select>
       </Field>
       {w.error && <p className="field__error" role="alert">{w.error}</p>}
       {w.conflict && (
@@ -329,7 +374,7 @@ function DocumentList({ idx, dir }: { idx: Indexes; dir: Directory }) {
               <EmptyState icon="doc" title={state === 'now' ? 'Nothing needs action right now.' : 'Nothing listed for this view.'} />
             </Card>
           ) : (
-            <ul className="stack stack--tight">
+            <ul className="stack stack--tight grid-wide">
               {shown.map((r) => (
                 <li key={r.id}>
                   <DocumentCard record={r} idx={idx} dir={dir} compact />

@@ -376,7 +376,8 @@ export function computeBudget(inputs: BudgetInputs): BudgetView {
   const jpyLines = costs.some((c) => c.data.applicability === 'include' && [c.data.committed, c.data.quote, c.data.estimate, c.data.unpaid_balance].some((m) => m?.currency === 'JPY'));
   if (jpyLines && active === null) warnings.push('Some amounts are in yen. They stay unknown until the JPY-per-USD rate is entered.');
   if (scenario.fx_factor !== 1 && validRate(scenario.fx_factor)) {
-    warnings.push(`Stress case: unchanged yen spending costs ${(usdEffectOfFxFactor(scenario.fx_factor) * 100).toFixed(2)}% more in US dollars.`);
+    const effect = usdEffectOfFxFactor(scenario.fx_factor);
+    warnings.push(`Stress case: unchanged yen spending costs ${(Math.abs(effect) * 100).toFixed(2)}% ${effect >= 0 ? 'more' : 'less'} in US dollars.`);
   }
   if (fundingOf(funding, 'return_reserve').length > 0 && costs.some((c) => c.data.section === 'reserve' && c.data.applicability === 'include')) {
     warnings.push('A return reserve is entered both as funding and as a cost line. Enter each amount once.');

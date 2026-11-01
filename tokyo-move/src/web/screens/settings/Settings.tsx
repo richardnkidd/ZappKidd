@@ -6,7 +6,7 @@ import { Button, Field, SegmentedControl, Select, TextInput } from '../../compon
 import { DataGate } from '../../components/DataGate';
 import { ErrorBanner } from '../../components/Feedback';
 import { Card, PageTitle, Section, Skeleton } from '../../components/Layout';
-import { scenarioExplanation, weakerYenPercent } from '../../lib/money';
+import { fxChangeInput, scenarioExplanation } from '../../lib/money';
 import { useMe } from '../../state/auth';
 import { usePrefs, type ThemePref } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
@@ -97,7 +97,7 @@ function Scenarios({ scenarios }: { scenarios: ScenarioSettings[] }) {
   const reset = (list: ScenarioSettings[]) =>
     setDraft(
       Object.fromEntries(
-        list.map((s) => [s.key, { months: String(s.extra_us_months), yen: s.fx_factor === 1 ? '0' : weakerYenPercent(s.fx_factor) }]),
+        list.map((s) => [s.key, { months: String(s.extra_us_months), yen: fxChangeInput(s.fx_factor) }]),
       ),
     );
 
@@ -131,7 +131,7 @@ function Scenarios({ scenarios }: { scenarios: ScenarioSettings[] }) {
           key: s.key,
           months,
           yen,
-          bad: !d || !Number.isInteger(months) || months < 0 || months > 60 || !Number.isFinite(yen) || yen < 0 || yen >= 100,
+          bad: !d || !Number.isInteger(months) || months < 0 || months > 60 || !Number.isFinite(yen) || yen <= -100 || yen >= 100,
         };
       }),
     [draft, scenarios],
@@ -161,7 +161,7 @@ function Scenarios({ scenarios }: { scenarios: ScenarioSettings[] }) {
 
   return (
     <div className="stack">
-      <p className="muted">The “what if” cases on the Money page. Change how many extra months of US costs they assume and how much weaker the yen is.</p>
+      <p className="muted">The “what if” cases on the Money page. Change how many extra months of US costs they assume and how many fewer yen the dollar buys.</p>
       {scenarios.map((s) => {
         const d = draft[s.key] ?? { months: '', yen: '' };
         const p = parsed.find((x) => x.key === s.key);
@@ -173,7 +173,7 @@ function Scenarios({ scenarios }: { scenarios: ScenarioSettings[] }) {
               <Field label="Extra months of US costs" error={p?.bad ? 'Whole months, 0 to 60.' : null}>
                 <TextInput value={d.months} inputMode="numeric" onChange={(e) => setDraft((x) => ({ ...x, [s.key]: { ...d, months: e.target.value } }))} />
               </Field>
-              <Field label="Yen weaker by (percent)" hint="0 means no change. A weaker yen makes yen costs more in dollars." error={p?.bad ? 'A number from 0 up to 99.' : null}>
+              <Field label="Dollar buys fewer yen by (percent)" hint="0 means no change. When the dollar buys fewer yen, costs in yen are more in dollars. A negative number means the dollar buys more yen." error={p?.bad ? 'A number from -99 up to 99.' : null}>
                 <TextInput value={d.yen} inputMode="decimal" onChange={(e) => setDraft((x) => ({ ...x, [s.key]: { ...d, yen: e.target.value } }))} />
               </Field>
             </div>

@@ -98,14 +98,18 @@ describe.skipIf(!dir)('real source package', () => {
     expect(state.people.find((p) => p.kind === 'pet')?.anchors.residence ?? null).toBeNull();
   });
 
-  it('imports anchors as awaiting, household T/D as coordination only, in the right zones', () => {
+  it('imports anchors as awaiting (or as dates the household set), household T/D as coordination only, in the right zones', () => {
     const anchors = anchorsFrom(state.records);
     const byCode = new Map(anchors.map((a) => [a.code, a]));
     expect(byCode.get('T')?.coordination_only).toBe(true);
     expect(byCode.get('D')?.coordination_only).toBe(true);
     for (const a of anchors) {
-      expect(a.date, a.code).toBeNull();
-      expect(a.confidence, a.code).toBe('awaiting');
+      // The source sets no dates. A date only arrives through a reviewed household answer, which says where it came from.
+      if (a.date === null) expect(a.confidence, a.code).toBe('awaiting');
+      else {
+        expect(['tentative', 'planned', 'booked', 'actual'], a.code).toContain(a.confidence);
+        expect(a.evidence, a.code).toBeTruthy();
+      }
       expect(a.timezone, a.code).toBe(/^(D|D[A-Z])$/.test(a.code) ? 'Pacific/Honolulu' : 'Asia/Tokyo');
     }
     for (const p of state.people) {

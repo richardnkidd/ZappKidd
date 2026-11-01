@@ -353,8 +353,10 @@ describe.skipIf(!dir)('real source package', () => {
     }
     // costs: every amount is unknown (null), never 0
     for (const c of state.records.filter((r) => r.type === 'cost')) {
-      const d = c.data as { estimate: unknown; quote: unknown; committed: unknown; unpaid_balance: unknown; applicability: string };
-      expect(d.applicability).toBe('review');
+      const d = c.data as { estimate: unknown; quote: unknown; committed: unknown; unpaid_balance: unknown; applicability: string; exclusion_reason: string | null };
+      // Source lines are all "review"; a reviewed household answer may exclude one, always with a reason.
+      expect(['review', 'exclude']).toContain(d.applicability);
+      if (d.applicability === 'exclude') expect(d.exclusion_reason).toBeTruthy();
       expect(d.estimate ?? d.quote ?? d.committed ?? d.unpaid_balance).toBeNull();
     }
     // task snapshot is read only

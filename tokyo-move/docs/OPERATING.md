@@ -146,6 +146,21 @@ visible under "Source & history" on each item), and every correction leaves a re
   corrections for every field nobody edited in the app.
 - The correction files are part of what is fingerprinted, so adding, changing or removing one counts as a new import.
 
+### Changes made by assistants (one way in)
+
+People change the plan in the app; the app records each edited field so an import never overwrites it. **Assistants
+and scripts change the plan only by adding a correction file**, never by writing to the database directly and never by
+editing tracked repository files:
+
+- A direct database write is not marked as an in-app edit, so the next import (the launcher runs one whenever the
+  private files or the importer change) puts the source-plus-corrections value back. The change is silently lost.
+- Write one file per change set into `private/corrections/`, named so it sorts after the files it builds on, for example
+  `97s-pet-records-2026-11-01.json`, with a `title`, a `rationale` and a `source` on each correction, and `set` /
+  `add` / `create` / `exclude` operations as above. Then stop and start Kadode so the import applies it with receipts.
+- New facts go where the app already shows them (for example a question's `data.known` or `data.answer`, a record's
+  `data.next_action`); a new record uses an existing type.
+- Hand the file on with the rest of `private/` so every copy of the plan stays the same.
+
 ## 6. The task list: three states
 
 Actions live in your existing task list, not in Kadode. Kadode shows a **dated copy** and a **sync state**, and it never

@@ -180,7 +180,9 @@ export const FALLBACK_LEAD_DAYS = 14;
 export function placeItem(it: PlanItemData, input: Omit<PlaceInput, 'items'>): GanttItem {
   const { m } = it;
   const phase = m.data?.phase ?? null;
-  const scope = m.data?.traveler_scope ?? [];
+  // A traveler the household marked "does not apply" for this item does not set its timing.
+  const appliesTo = m.data?.applies_to ?? {};
+  const scope = (m.data?.traveler_scope ?? []).filter((p) => appliesTo[p] !== 'no');
   const departure = phase && PHASE_RULES[phase]?.kind === 'relative' ? departureFor(scope, input.departures, input.target) : null;
   const window = phase ? phaseWindow(phase, { today: input.today, baselineOn: input.baselineOn, departure }) : null;
 

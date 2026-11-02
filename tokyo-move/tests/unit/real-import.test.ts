@@ -337,9 +337,10 @@ describe.skipIf(!dir)('real source package', () => {
     const ms = state.records.filter((r) => r.type === 'milestone' && !(r.data as unknown as MilestoneData).parent_key);
     for (const m of ms) {
       const d = m.data as unknown as MilestoneData;
-      // The source only uses the first four; a reviewed household answer may also mark a step not applicable.
-      expect(['planned', 'in_progress', 'blocked', 'completed', 'not_applicable'], m.key).toContain(m.status);
-      if (m.status === 'blocked' || m.status === 'not_applicable') expect(d.status_reason, m.key).toBeTruthy();
+      // The source only uses the first four; a reviewed household answer may also mark a step not applicable, or as
+      // waiting on someone outside the household (for example an agency's confirmation).
+      expect(['planned', 'in_progress', 'blocked', 'completed', 'not_applicable', 'waiting_external'], m.key).toContain(m.status);
+      if (m.status === 'blocked' || m.status === 'not_applicable' || m.status === 'waiting_external') expect(d.status_reason, m.key).toBeTruthy();
       expect(d.source_status, m.key).toBeTruthy();
       expect(['together', 'unassigned', ...state.people.map((p) => p.id)], m.key).toContain(m.owner);
       expect(d.deadline?.kind === 'legal' && (d.deadline.anchor === 'T' || d.deadline.anchor === 'D'), m.key).toBeFalsy();

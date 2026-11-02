@@ -56,6 +56,7 @@ function item(over: {
   kind?: DeadlineKind | null;
   owner?: string;
   title?: string;
+  appliesTo?: Record<string, 'yes' | 'no' | 'unknown'>;
 }): PlanItemData {
   const key = over.key ?? 'W99';
   const m = {
@@ -66,7 +67,7 @@ function item(over: {
     status: over.status ?? 'planned',
     owner: over.owner ?? 'avery',
     owner_proposed: false,
-    data: { phase: over.phase === undefined ? null : over.phase, traveler_scope: over.scope ?? [] } as Partial<MilestoneData>,
+    data: { phase: over.phase === undefined ? null : over.phase, traveler_scope: over.scope ?? [], ...(over.appliesTo ? { applies_to: over.appliesTo } : {}) } as Partial<MilestoneData>,
   } as unknown as PlanItemData['m'];
   return {
     m,
@@ -175,6 +176,12 @@ describe('which departure an item hangs on', () => {
     // Final 60 days run from Mar 4 to May 2 (D-60 .. D-1 around May 3), not from early May to early July.
     expect(g).toMatchObject({ basis: 'phase', start: '2027-03-04', end: '2027-05-02' });
     expect(g.window?.source).toBe('anchor');
+  });
+  it('ignores a traveler the household marked "does not apply" for the item', () => {
+    const earlier: DepartureAnchors = { household: '2027-07-05', byTraveler: { avery: '2027-05-03', jun: '2027-07-14', mochi: null } };
+    // Shared by both, but it does not apply to Avery (who leaves first): it hangs on Jun's departure.
+    const g = placeItem(item({ phase: 'p5_final_60_30_14', scope: ['avery', 'jun'], appliesTo: { avery: 'no', jun: 'yes' } }), input({ departures: earlier }));
+    expect(g).toMatchObject({ basis: 'phase', start: '2027-05-15', end: '2027-07-13' });
   });
 });
 

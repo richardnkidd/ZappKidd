@@ -1,80 +1,97 @@
-import { useMemo, useState } from 'react';
-import { RAID_KIND_LABEL, SEVERITY_LABEL, SEVERITY_ORDER } from '@shared/labels';
+import { useId, useMemo, useState } from 'react';
+import { SEVERITY_LABEL, SEVERITY_ORDER } from '@shared/labels';
+import { displaySummary, displayTitle, keyLookup, stripCodes, type KeyLookup } from '@shared/plain';
 import type { RiskData } from '@shared/types';
-import { FilterChips } from '../../components/Controls';
+import { Button } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
-import { Icon } from '../../components/Icon';
-import { Card, EmptyState } from '../../components/Layout';
-import { OwnerChip } from '../../components/People';
+import { Icon, type IconName } from '../../components/Icon';
+import { EmptyState } from '../../components/Layout';
+import { More } from '../../components/More';
+import { useDir } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import type { Indexes, Risk } from '../../lib/records';
 
-type KindFilter = 'all' | RiskData['raid_kind'];
+/** Per list, it starts short. */
+export const RISKS_SHOWN_FIRST = 8;
 
-function sevTone(s: RiskData['severity'] | undefined): 'kaki' | 'kin' | 'neutral' {
-  return s === 'critical' || s === 'high' ? 'kaki' : s === 'medium' ? 'kin' : 'neutral';
+type Level = RiskData['severity'];
+
+/** A different shape for each level, so seriousness never depends on colour. */
+const LEVEL: Record<Level, { icon: IconName; text: string }> = {
+  critical: { icon: 'stop', text: 'Critical' },
+  high: { icon: 'alert', text: 'High' },
+  medium: { icon: 'flag', text: 'Medium' },
+  low: { icon: 'info', text: 'Low' },
+};
+
+/** Most serious first, then by the name shown. Anything without a level goes last. */
+export function sortRisks(risks: readonly Risk[], lookup?: KeyLookup): Risk[] {
+  const rank = (r: Risk) => {
+    const i = SEVERITY_ORDER.indexOf(r.data?.severity ?? ('' as Level));
+    return i < 0 ? SEVERITY_ORDER.length : i;
+  };
+  return [...risks].sort((a, b) => rank(a) - rank(b) || displayTitle(a, lookup).localeCompare(displayTitle(b, lookup), undefined, { numeric: true }));
+}
+
+function Seriousness({ level }: { level: Level | undefined }) {
+  const l = level ? LEVEL[level] : null;
+  return (
+    <span className={`risk__level${level ? ` risk__level--${level}` : ''}`} role="img" aria-label={l ? `${SEVERITY_LABEL[level!]} risk` : 'Seriousness not set'} title={l ? `${l.text} risk` : 'Seriousness not set'}>
+      <Icon name={l?.icon ?? 'dash'} size={18} />
+    </span>
+  );
+}
+
+function Detail({ label, text }: { label: string; text: string | null | undefined }) {
+  if (!text || !text.trim()) return null;
+  return (
+    <div className="qrow__detail">
+      <p className="qrow__label">{label}</p>
+      <p className="preline">{text}</p>
+    </div>
+  );
 }
 
 export function RiskCard({ r, idx }: { r: Risk; idx: Indexes }) {
+  const dir = useDir();
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   const d = r.data;
-  const sev = d?.severity;
-  const closed = r.status === 'completed' || r.status === 'eliminated' || r.status === 'closed';
+  const summary = displaySummary(r);
+  const owner = !r.owner || r.owner === 'unassigned' ? null : dir.ownerLabel(r.owner);
+  const linked = (d?.linked_records ?? []).map((k) => idx.byKey.get(k)).filter((x): x is NonNullable<typeof x> => Boolean(x));
+  const hasDetails = Boolean(d?.trigger || d?.mitigation || d?.fallback || d?.escalation_trigger || owner || linked.length);
   return (
-    <li>
-      <Card as="article" aria-labelledby={`risk-${r.key}`} tone={sev === 'critical' ? 'blocked' : sev === 'high' ? 'attention' : 'default'}>
-        <div className="item__meta">
-          <span className={`chip chip--${sevTone(sev)} chip--sm`}>
-            <Icon name={sev === 'low' ? 'info' : 'alert'} size={13} />
-            <span>{sev ? `${SEVERITY_LABEL[sev]} severity` : 'Severity not set'}</span>
-          </span>
-          <span className="chip chip--neutral chip--sm">{d?.raid_kind ? RAID_KIND_LABEL[d.raid_kind] : 'Risk'}</span>
-          <OwnerChip owner={r.owner} proposed={r.owner_proposed} compact />
-          {closed && <span className="chip chip--matcha chip--sm">Closed</span>}
-        </div>
-        <h3 id={`risk-${r.key}`} className="risk__title">
-          {r.title}
-        </h3>
-        <dl className="facts facts--tight">
-          {d?.trigger && (
-            <div className="fact fact--wide">
-              <dt>What would set it off</dt>
-              <dd className="preline">{d.trigger}</dd>
-            </div>
+    <li className="risk">
+      <div className="risk__line">
+        <Seriousness level={d?.severity} />
+        <h3 className="risk__title">{displayTitle(r, lookup)}</h3>
+      </div>
+      {summary && <p className="risk__summary muted">{summary}</p>}
+      {hasDetails && (
+        <More label="Details" className="risk__more">
+          <Detail label="Warning sign" text={stripCodes(d?.trigger, lookup)} />
+          <Detail label="Our plan" text={stripCodes(d?.mitigation, lookup)} />
+          <Detail label="Backup" text={stripCodes(d?.fallback, lookup)} />
+          <Detail label="Escalate if" text={stripCodes(d?.escalation_trigger, lookup)} />
+          {owner && (
+            <p>
+              <span className="qrow__label">Owner: </span>
+              {owner}
+            </p>
           )}
-          {d?.mitigation && (
-            <div className="fact fact--wide">
-              <dt>What we’d do</dt>
-              <dd className="preline">{d.mitigation}</dd>
-            </div>
-          )}
-          {d?.fallback && (
-            <div className="fact fact--wide">
-              <dt>If that doesn’t work</dt>
-              <dd className="preline">{d.fallback}</dd>
-            </div>
-          )}
-          {d?.escalation_trigger && (
-            <div className="fact fact--wide">
-              <dt>Raise it with a professional or each other when</dt>
-              <dd className="preline">{d.escalation_trigger}</dd>
-            </div>
-          )}
-        </dl>
-        {(d?.linked_records ?? []).length > 0 && (
-          <p className="small muted">
-            Related work:{' '}
-            {d!.linked_records.map((k, i) => {
-              const rec = idx.byKey.get(k);
-              return (
-                <span key={k}>
+          {linked.length > 0 && (
+            <p>
+              <span className="qrow__label">Related: </span>
+              {linked.map((rec, i) => (
+                <span key={rec.id}>
                   {i > 0 && ', '}
-                  {rec ? <RecordLink id={rec.id}>{rec.title}</RecordLink> : k}
+                  <RecordLink id={rec.id}>{displayTitle(rec, lookup)}</RecordLink>
                 </span>
-              );
-            })}
-          </p>
-        )}
-      </Card>
+              ))}
+            </p>
+          )}
+        </More>
+      )}
     </li>
   );
 }
@@ -84,47 +101,32 @@ export function RisksTab() {
 }
 
 function Risks({ idx }: { idx: Indexes }) {
-  const [kind, setKind] = useState<KindFilter>('all');
-  const counts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const r of idx.risks) c[r.data?.raid_kind ?? 'risk'] = (c[r.data?.raid_kind ?? 'risk'] ?? 0) + 1;
-    return c;
-  }, [idx]);
-  const list = useMemo(() => {
-    const rank = (r: Risk) => {
-      const i = SEVERITY_ORDER.indexOf(r.data?.severity ?? 'low');
-      return i < 0 ? 99 : i;
-    };
-    return idx.risks
-      .filter((r) => kind === 'all' || (r.data?.raid_kind ?? 'risk') === kind)
-      .sort((a, b) => rank(a) - rank(b) || a.key.localeCompare(b.key, undefined, { numeric: true }));
-  }, [idx, kind]);
+  const [expanded, setExpanded] = useState(false);
+  const listId = useId();
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
+  const list = useMemo(() => sortRisks(idx.risks, lookup), [idx.risks, lookup]);
+  const visible = expanded ? list : list.slice(0, RISKS_SHOWN_FIRST);
 
   return (
-    <div className="stack">
-      <h2 className="visually-hidden">Risks and issues</h2>
-      <p className="muted">
-        A short list of what could go wrong or is being assumed, who is watching it, and what we’d do. Most severe first.
-      </p>
-      <FilterChips
-        label="Kind of item"
-        value={kind}
-        onChange={setKind}
-        options={[
-          { value: 'all', label: 'All', count: idx.risks.length },
-          ...(['risk', 'assumption', 'issue', 'dependency'] as const).map((k) => ({ value: k as KindFilter, label: RAID_KIND_LABEL[k], count: counts[k] ?? 0 })),
-        ]}
-      />
+    <div className="qtab">
+      <h2 className="visually-hidden">Risks</h2>
       {list.length === 0 ? (
-        <Card>
-          <EmptyState icon="shield" title="Nothing here." />
-        </Card>
+        <EmptyState icon="shield" title="No risks listed." />
       ) : (
-        <ul className="stack">
-          {list.map((r) => (
-            <RiskCard key={r.id} r={r} idx={idx} />
-          ))}
-        </ul>
+        <>
+          <ul id={listId} className="qlist">
+            {visible.map((r) => (
+              <RiskCard key={r.id} r={r} idx={idx} />
+            ))}
+          </ul>
+          {list.length > RISKS_SHOWN_FIRST && (
+            <div>
+              <Button variant="quiet" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded((v) => !v)}>
+                {expanded ? 'Show fewer' : `Show all (${list.length})`}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

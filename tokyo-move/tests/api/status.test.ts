@@ -15,20 +15,33 @@ const status = (c: any, id: string, version: number, body: Record<string, unknow
   c.post(`/api/records/${id}/status`, { baseVersion: version, ...body });
 
 describe('status rules (server-enforced)', () => {
-  it('completed requires non-empty evidence and records it with the session person', async () => {
+  it('completing needs no evidence, and history still records who completed it and when', async () => {
+    const h = await harness();
+    const c = await loginAs(h, 'jun');
+    for (const evidence of [undefined, '', '   ', { summary: '  ' }]) {
+      const m = (await c.get('/api/records/milestone:W06')).body.record;
+      const before = m.data.completion_evidence ?? [];
+      const res = await status(c, m.id, m.version, { status: 'completed', ...(evidence === undefined ? {} : { evidence }) });
+      expect(res.status, JSON.stringify(evidence)).toBe(200);
+      expect(res.body.record.status).toBe('completed');
+      expect(typeof res.body.undo_audit_id).toBe('string');
+      // A blank line is not stored as evidence.
+      expect(res.body.record.data.completion_evidence ?? []).toEqual(before);
+      const entry = (await c.get(`/api/audit?record_id=${m.id}`)).body.entries[0];
+      expect(entry).toMatchObject({ action: 'status_change', actor: 'jun' });
+      expect(entry.after.status).toBe('completed');
+      expect(entry.at).toBe('2026-10-29T20:00:00.000Z');
+      // Put it back so the next round starts from an open item.
+      const undo = await c.post(`/api/audit/${res.body.undo_audit_id}/undo`, {});
+      expect(undo.status).toBe(200);
+      expect(recordRow(h.db, m.id).status).toBe(m.status);
+    }
+  });
+
+  it('completed keeps evidence when given and records it with the session person', async () => {
     const h = await harness();
     const c = await loginAs(h, 'jun');
     const m = (await c.get('/api/records/milestone:W06')).body.record;
-    const audits = countRows(h.db, 'audit_log');
-    for (const evidence of [undefined, '', '   ', { summary: '  ' }]) {
-      const res = await status(c, m.id, m.version, { status: 'completed', ...(evidence === undefined ? {} : { evidence }) });
-      expect(res.status, JSON.stringify(evidence)).toBe(422);
-      expect(res.body.details.some((d: any) => d.path === 'evidence')).toBe(true);
-    }
-    expect(recordRow(h.db, m.id).status).toBe(m.status);
-    expect(recordRow(h.db, m.id).version).toBe(m.version);
-    expect(countRows(h.db, 'audit_log')).toBe(audits);
-
     const ok = await status(c, m.id, m.version, { status: 'completed', evidence: { summary: 'Confirmation email received', link: 'https://example.org/receipt' } });
     expect(ok.status).toBe(200);
     expect(ok.body.record.status).toBe('completed');
@@ -132,7 +145,7 @@ describe('per-traveler progress', () => {
     const c = await loginAs(h, 'avery');
     const m = await sharedMilestone(c);
     const audits = countRows(h.db, 'audit_log');
-    expect((await status(c, m.id, m.version, { traveler: 'avery', status: 'completed' })).status).toBe(422);
+    // Completing needs no evidence for a traveler either (checked last, below); a reason is still required.
     expect((await status(c, m.id, m.version, { traveler: 'avery', status: 'blocked' })).status).toBe(422);
     expect((await status(c, m.id, m.version, { traveler: 'avery', status: 'not_applicable', reason: ' ' })).status).toBe(422);
     expect(countRows(h.db, 'audit_log')).toBe(audits);
@@ -144,6 +157,10 @@ describe('per-traveler progress', () => {
     const reopened = await status(c, m.id, done.body.record.version, { traveler: 'avery', status: 'in_progress' });
     expect(reopened.body.record.data.traveler_progress.avery.evidence).toHaveLength(1);
     expect(reopened.body.record.data.traveler_progress.avery.status).toBe('in_progress');
+    const bare = await status(c, m.id, reopened.body.record.version, { traveler: 'avery', status: 'completed' });
+    expect(bare.status).toBe(200);
+    expect(bare.body.record.data.traveler_progress.avery).toMatchObject({ status: 'completed', updated_by: 'avery' });
+    expect(bare.body.record.data.traveler_progress.avery.evidence).toHaveLength(1);
   });
 
   it('refuses travelers who do not exist, are out of scope, or records without per-traveler progress', async () => {

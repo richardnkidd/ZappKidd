@@ -1,0 +1,302 @@
+/* Home and navigation package: the one-screen Home, the Decide tab badge, a shorter phone header. */
+
+/* ---------- Header and banner on phones: as short as is reasonable ---------- */
+@media (max-width: 1023.98px) {
+  .mode-banner {
+    padding: 2px var(--gutter);
+  }
+  .app-header {
+    min-height: 48px;
+    padding-block: var(--s-1);
+  }
+  /* The display time zone stays in the button's accessible name; on phones it is not printed. */
+  .app-header .account-btn__zone {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* ---------- Decide tab badge ---------- */
+.nav-badge {
+  position: absolute;
+  top: 2px;
+  left: calc(50% + 4px);
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  background: var(--ai);
+  color: var(--on-ai);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+  font-family: var(--font-ui);
+}
+@media (min-width: 1024px) {
+  .nav-badge {
+    position: static;
+    margin-left: auto;
+  }
+}
+
+/* ---------- Page heading: one small line, date and season ---------- */
+.home .page-head h1 {
+  font-family: var(--font-ui);
+  font-size: var(--fs-1);
+  font-weight: 400;
+  color: var(--ink-2);
+  letter-spacing: 0;
+}
+.home-season {
+  font-family: var(--font-jp);
+}
+.home.page {
+  gap: var(--s-4);
+}
+
+/* ---------- Layout: one column on phones, two on wide screens ---------- */
+.home-layout {
+  display: grid;
+  gap: var(--s-5);
+  min-width: 0;
+}
+.home-layout__main,
+.home-layout__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  min-width: 0;
+}
+@media (min-width: 1024px) {
+  .home-layout {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    align-items: start;
+    gap: var(--s-6);
+  }
+  .home-layout__main {
+    max-width: var(--measure);
+  }
+}
+
+/* ---------- Sections ---------- */
+.home-sec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  min-width: 0;
+}
+.home-sec__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 var(--s-3);
+}
+.home-sec__title {
+  font-size: var(--fs-3);
+}
+.home-sec__count {
+  font-family: var(--font-ui);
+  font-weight: 400;
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+}
+.home-sec__more,
+.home-pending .more-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* ---------- Your turn ---------- */
+.turn-list,
+.stuck-list,
+.traveller-list,
+.since-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.turn-list {
+  background: var(--surface);
+  border-radius: var(--r-card);
+}
+.turn-row + .turn-row {
+  border-top: 1px solid var(--line);
+}
+.turn-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  min-height: 56px;
+}
+.turn-row--decision {
+  padding: 0;
+}
+.turn-row__link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--s-2) var(--s-3);
+  color: var(--ink);
+  text-decoration: none;
+  border-radius: var(--r-card);
+}
+.turn-row__link:hover .turn-row__title {
+  text-decoration: underline;
+}
+.turn-row__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.turn-row__title {
+  font-size: var(--fs-1);
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+a.turn-row__title {
+  text-decoration: none;
+}
+a.turn-row__title:hover {
+  text-decoration: underline;
+}
+.turn-row__when {
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+}
+.turn-row__when.is-late {
+  color: var(--kaki);
+}
+.turn-row__go {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--s-3);
+  border-radius: var(--r-ctl);
+  background: var(--ai);
+  color: var(--on-ai);
+  font-weight: 600;
+  font-size: var(--fs-1);
+}
+.turn-row__done {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+}
+.turn-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.turn-note__text {
+  margin: 0;
+  font-weight: 600;
+}
+.turn-note__text:empty {
+  display: none;
+}
+.turn-note__undo {
+  min-height: 44px;
+}
+.turn-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--surface);
+  border-radius: var(--r-card);
+}
+.turn-empty p {
+  margin: 0;
+}
+
+/* ---------- Stuck ---------- */
+.stuck-row {
+  padding: var(--s-1) 0;
+  overflow-wrap: anywhere;
+}
+.stuck-row__why {
+  color: var(--ink-2);
+}
+
+/* ---------- Travellers ---------- */
+.traveller-list {
+  background: var(--surface);
+  border-radius: var(--r-card);
+}
+.traveller-list > li + li {
+  border-top: 1px solid var(--line);
+}
+.traveller {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: var(--s-1) var(--s-3);
+  border-radius: var(--r-card);
+  color: var(--ink);
+  text-decoration: none;
+}
+.traveller:hover .traveller__name {
+  text-decoration: underline;
+}
+.traveller__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.traveller__name {
+  font-weight: 600;
+}
+.traveller__name::after {
+  content: ' · ';
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.traveller__state {
+  color: var(--ink-2);
+}
+.traveller__state.is-stuck {
+  color: var(--ink);
+}
+
+/* ---------- Since you last looked ---------- */
+.since-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-radius: var(--r-card);
+  background: var(--ai-soft);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.since-list li {
+  padding: var(--s-1) var(--s-3);
+}
+
+.home-pending {
+  margin: 0;
+}

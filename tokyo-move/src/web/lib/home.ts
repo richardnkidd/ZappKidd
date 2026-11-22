@@ -2,11 +2,13 @@
  * Pure selection logic for the Home screen. No React, no fetching, so it can be unit-tested with synthetic records.
  * Date and deadline arithmetic comes from the shared engines; this file only chooses and groups what to show.
  */
-import type { ComputedDeadline, DeadlineState } from '@shared/engine-contracts';
+import type { ComputedDeadline, DeadlineState, GateStatus, TravelerReadiness } from '@shared/engine-contracts';
 import { addCalendarDays, diffDays, formatCivil, weekday } from '@shared/dates';
-import { PHASE_ORDER } from '@shared/labels';
-import type { BaseRecord, DeadlineKind, DeadlineRuleData, OwnerRef, PhaseKey, Priority } from '@shared/types';
+import { PHASE_ORDER, WORK_STATUS_LABEL } from '@shared/labels';
+import { displayQuestion, displayTitle, optionLabel, stripCodes, type KeyLookup } from '@shared/plain';
+import type { AuditEntry, BaseRecord, DeadlineKind, DeadlineRuleData, OwnerRef, PhaseKey, Priority, WorkStatus } from '@shared/types';
 import { compareDates } from './format';
+import { myTurnDecisions, type TurnInfo } from './turn';
 import { NO_WHEN, whenFor, type WhenInfo } from './when';
 import { commitmentIsLinked, dataOf, type AnyRecord, isOpenWork, normalizedOwner, unmetDependencyKeys, type Commitment, type Decision, type Directory, type Indexes, type Milestone } from './records';
 
@@ -458,4 +460,234 @@ export function selectPendingTasks(idx: Indexes, filter: OwnerFilter, ctx: Filte
     .filter((t) => t.sync_state === 'pending_capture' && t.status === 'open')
     .filter((t) => filter === 'all' || filter === 'waiting' || matchesOwnerFilter(filter, t.owner, null, ctx))
     .sort((a, b) => compareDates(a.due, b.due) || a.created_at.localeCompare(b.created_at));
+}
+
+/* ======================================================================================================
+ * The one-screen Home (approved changes 11, 12, 15, 18). Pure helpers: what goes in "Your turn", "Stuck",
+ * "Travellers" and the "since you last looked" line. The screen only lays these out.
+ * ==================================================================================================== */
+
+export interface TurnDecisionRow {
+  kind: 'decision';
+  id: string;
+  key: string;
+  recordId: string;
+  /** "Jun chose “Protect a safety fund”. Agree?" or "Decide: How much can we spend?" */
+  text: string;
+  /** True when the other adult already chose. */
+  partner: boolean;
+}
+
+export interface TurnTaskRow {
+  kind: 'task';
+  id: string;
+  recordId: string;
+  title: string;
+  version: number;
+  date: string | null;
+}
+
+export type TurnRow = TurnDecisionRow | TurnTaskRow;
+
+export interface YourTurnInput {
+  idx: Indexes;
+  meId: string | null;
+  nameOf: (id: string | null | undefined) => string;
+  today: string;
+  deadlinesByRecord?: Map<string, ComputedDeadline[]>;
+  lookup?: KeyLookup;
+  /** Total rows. Default 3. */
+  max?: number;
+}
+
+/** The wording of one decision row on Home. */
+export function decisionRowText(t: TurnInfo<Decision>, nameOf: (id: string | null | undefined) => string, lookup?: KeyLookup): string {
+  const d = t.record;
+  const question = displayQuestion(d, lookup) ?? displayTitle(d, lookup);
+  if (t.turn === 'mine_after_partner' && t.otherOptionId) {
+    const opt = (d.data?.options ?? []).find((o) => o.id === t.otherOptionId);
+    if (opt) return `${nameOf(t.otherId)} chose “${optionLabel(d, opt, lookup).replace(/[\s.]+$/, '')}”. Agree?`;
+  }
+  if (t.turn === 'disagree') return `You chose differently: ${question}`;
+  return `Decide: ${question}`;
+}
+
+/** Open plan items for me (mine or shared), most urgent first: overdue, then by date, then the rest in plan order. */
+export function urgentItems(input: YourTurnInput): TurnTaskRow[] {
+  const { idx, meId, today, deadlinesByRecord, lookup } = input;
+  const ctx: FilterContext = { meId, otherIds: [] };
+  const now = selectNow(idx, { today, filter: 'needs_me', ctx, deadlinesByRecord, limit: 200 });
+  const rows: (TurnTaskRow & { order: number })[] = [];
+  now.forEach((it, order) => {
+    if (it.kind !== 'milestone' || !it.recordId) return;
+    const rec = idx.byId.get(it.recordId);
+    if (!rec) return;
+    rows.push({ kind: 'task', id: rec.id, recordId: rec.id, title: displayTitle(rec, lookup), version: rec.version, date: it.when.primary?.date ?? null, order });
+  });
+  return rows.sort((a, b) => compareDates(a.date, b.date) || a.order - b.order).map(({ order: _order, ...r }) => r);
+}
+
+/**
+ * "Your turn": at most `max` rows (3). Decisions come from `myTurnDecisions` (never more than three); when there are
+ * also items to do, decisions take at most two rows so one item with a Done button always shows.
+ */
+export function selectYourTurn(input: YourTurnInput): { rows: TurnRow[]; decisions: number; items: number } {
+  const max = input.max ?? 3;
+  // Exactly the decisions the Decide tab badge counts (countMyTurn), so the two always agree.
+  const turns = myTurnDecisions(input.idx.decisions, input.meId);
+  const items = urgentItems(input);
+  const decisionSlots = Math.min(3, items.length > 0 ? max - 1 : max);
+  const decisionRows: TurnDecisionRow[] = turns.slice(0, decisionSlots).map((t) => ({
+    kind: 'decision',
+    id: t.record.id,
+    key: t.record.key,
+    recordId: t.record.id,
+    text: decisionRowText(t, input.nameOf, input.lookup),
+    partner: t.turn === 'mine_after_partner',
+  }));
+  const taskRows = items.slice(0, max - decisionRows.length);
+  return { rows: [...decisionRows, ...taskRows], decisions: turns.length, items: items.length };
+}
+
+export interface StuckRow {
+  id: string;
+  title: string;
+  /** What it waits on, without the leading "waiting on". */
+  waitingOn: string | null;
+}
+
+/**
+ * "Stuck": blocked plan work (status "blocked"; optional future work left out). The total is exactly what Plan shows
+ * for `/plan?view=list&status=blocked`.
+ */
+export function selectStuck(idx: Indexes, lookup?: KeyLookup): { rows: StuckRow[]; total: number } {
+  const blocked = idx.milestones
+    .filter((m) => m.status === 'blocked' && !m.data?.optional_future_work)
+    .sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
+  const rows = blocked.map((m) => ({ id: m.id, title: displayTitle(m, lookup), waitingOn: waitingOnText(m, idx, lookup) }));
+  return { rows, total: rows.length };
+}
+
+/** Prerequisite names ("Avery’s residence route and Check both passports"), else the written reason. */
+export function waitingOnText(m: Milestone, idx: Indexes, lookup?: KeyLookup): string | null {
+  const names = unmetDependencyKeys(m, idx)
+    .map((k) => idx.byKey.get(k))
+    .filter((r): r is BaseRecord => Boolean(r))
+    .map((r) => displayTitle(r, lookup));
+  if (names.length > 0) return names.length > 1 ? `${names[0]} and ${names.length - 1} more` : names[0]!;
+  const reason = stripCodes(m.data?.status_reason ?? '', lookup)
+    .replace(/^(waiting|waits)\s+(on|for)\s+/i, '')
+    .replace(/[.\s]+$/, '');
+  return reason ? reason.charAt(0).toLowerCase() + reason.slice(1) : null;
+}
+
+export interface TravellerChip {
+  personId: string;
+  /** Steps still to do before travel (blocked and open required gates; optional future work never counts). */
+  left: number;
+  /** The single thing holding them up, when there is one. */
+  stuckOn: string | null;
+  /** "4 left · stuck on visa", "Ready to go", "Nothing left". */
+  text: string;
+}
+
+const DONE_WORDS: Record<string, string> = { ready_to_release: 'Ready to go', released: 'Cleared to travel', arrived: 'Arrived', settled: 'Settled in' };
+
+export function travellerChip(r: TravelerReadiness, idx: Indexes, lookup?: KeyLookup): TravellerChip {
+  const keep = (g: GateStatus) => {
+    const rec = idx.byId.get(g.record_id);
+    return !(rec && dataOf<{ optional_future_work?: boolean }>(rec).optional_future_work);
+  };
+  const blockers = r.blockers.filter(keep);
+  const left = blockers.length + r.open.filter(keep).length;
+  const first = blockers[0];
+  const firstRec = first ? idx.byId.get(first.record_id) : undefined;
+  const stuckOn = first ? (firstRec ? displayTitle(firstRec, lookup) : stripCodes(first.title, lookup)) : null;
+  let text: string;
+  if (left === 0) text = DONE_WORDS[r.state] ?? 'Nothing left';
+  else text = `${left} left${stuckOn ? ` · stuck on ${stuckOn}` : ''}`;
+  return { personId: r.person_id, left, stuckOn, text };
+}
+
+/** Records the other adult changed after I last looked (the count on the Home line). */
+export function countSince(records: readonly { updated_by: string | null; updated_at: string }[], otherId: string | null, since: string | null): number {
+  if (!otherId || !since) return 0;
+  return records.filter((r) => r.updated_by === otherId && r.updated_at > since).length;
+}
+
+const SILENT_ACTIONS = new Set(['import_create', 'import_update', 'correction', 'restore', 'task_sync']);
+
+/** One history entry as an action by the other adult: "chose a different option on “How much can we spend?”". */
+export function describeSeenEntry(e: AuditEntry, idx: Indexes, meId: string | null, lookup?: KeyLookup): string | null {
+  if (SILENT_ACTIONS.has(e.action)) return null;
+  const rec = e.record_id ? idx.byId.get(e.record_id) : undefined;
+  const after = (e.after && typeof e.after === 'object' ? e.after : {}) as {
+    title?: unknown;
+    status?: unknown;
+    data?: { approvals?: { person_id: string; option_id: string }[] };
+  };
+  const name = rec
+    ? rec.type === 'decision'
+      ? (displayQuestion(rec, lookup) ?? displayTitle(rec, lookup))
+      : displayTitle(rec, lookup)
+    : typeof after.title === 'string'
+      ? stripCodes(after.title, lookup)
+      : null;
+  const q = name ? `“${name}”` : 'an item';
+  switch (e.action) {
+    case 'approve': {
+      const d = rec?.type === 'decision' ? (rec as unknown as Decision) : undefined;
+      const theirs = (after.data?.approvals ?? d?.data?.approvals ?? []).find((a) => a.person_id === e.actor);
+      const mine = (d?.data?.approvals ?? []).find((a) => a.person_id === meId);
+      if (theirs && mine && mine.option_id !== theirs.option_id) return `chose a different option on ${q}`;
+      const opt = theirs && d ? (d.data?.options ?? []).find((o) => o.id === theirs.option_id) : undefined;
+      return opt && d ? `chose “${optionLabel(d, opt, lookup).replace(/[\s.]+$/, '')}” on ${q}` : `made a choice on ${q}`;
+    }
+    case 'reject':
+      return `said no to ${q}`;
+    case 'defer':
+      return `put off ${q}`;
+    case 'reopen':
+      return `reopened ${q}`;
+    case 'status_change': {
+      const s = typeof after.status === 'string' ? after.status : null;
+      if (s === 'completed') return `finished ${q}`;
+      return s && s in WORK_STATUS_LABEL ? `marked ${q} as ${WORK_STATUS_LABEL[s as WorkStatus].toLowerCase()}` : `changed ${q}`;
+    }
+    case 'create':
+      return `added ${q}`;
+    case 'update':
+      return `edited ${q}`;
+    case 'undo':
+      return `undid a change to ${q}`;
+    case 'task_propose':
+      return 'suggested a new task';
+    case 'task_complete':
+      return `finished a task${name ? ` for ${q}` : ''}`;
+    case 'anchor_change':
+      return 'moved a travel date';
+    case 'review_complete':
+      return 'finished a review together';
+    default:
+      return `changed ${q}`;
+  }
+}
+
+export interface SinceLine {
+  id: string;
+  at: string;
+  recordId: string | null;
+  text: string;
+}
+
+/** What the other adult did since I last looked, newest first, one line each, without import noise. */
+export function describeSince(entries: readonly AuditEntry[], idx: Indexes, otherId: string | null, meId: string | null, lookup?: KeyLookup): SinceLine[] {
+  if (!otherId) return [];
+  return [...entries]
+    .filter((e) => e.actor === otherId)
+    .sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0))
+    .flatMap((e) => {
+      const text = describeSeenEntry(e, idx, meId, lookup);
+      return text ? [{ id: e.id, at: e.at, recordId: e.record_id, text }] : [];
+    });
 }

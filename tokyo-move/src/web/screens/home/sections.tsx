@@ -3,10 +3,12 @@
  * What goes in each comes from the pure helpers in lib/home.ts; this file only lays it out and handles the two
  * writes Home makes (one-tap Done with Undo, and marking the plan as seen).
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { KeyLookup } from '@shared/plain';
-import { ConflictBanner, ErrorBanner } from '../../components/Feedback';
+import { DoneButton, useDoneWithUndo } from '../../components/DoneWithUndo';
+import { ErrorBanner } from '../../components/Feedback';
+import { LineTime } from '../../components/Badges';
 import { Icon } from '../../components/Icon';
 import { PersonBadge } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
@@ -18,15 +20,11 @@ import {
   selectYourTurn,
   travellerChip,
   type SinceLine,
-  type TurnTaskRow,
 } from '../../lib/home';
 import type { Directory, Indexes } from '../../lib/records';
 import { api, describeError } from '../../net/client';
 import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
-import { useWrite } from '../../state/useWrite';
-
-const UNDO_MS = 10_000;
 
 interface Props {
   idx: Indexes;
@@ -72,75 +70,20 @@ function WhenText({ date, today }: { date: string | null; today: string }) {
   const d = dateLine(date, today);
   return (
     <span className={`turn-row__when${d.when === 'late' ? ' is-late' : ''}`}>
-      <time dateTime={date}>{d.when === 'late' ? d.dateText : d.text}</time>
-      {d.when === 'late' && <> · {d.text}</>}
+      <LineTime date={date} line={d} />
     </span>
   );
 }
 
 export function YourTurnSection({ idx, dir, lookup }: Props) {
   const { today, deadlines, deadlinesByRecord } = useData();
-  const { actions, refresh } = useSnapshot();
-  const w = useWrite();
   const meId = dir.me?.id ?? null;
   const { rows } = useMemo(
     () => selectYourTurn({ idx, meId, nameOf: dir.nameOf, today, deadlinesByRecord: deadlines.ok ? deadlinesByRecord : undefined, lookup }),
     [idx, meId, dir, today, deadlines, deadlinesByRecord, lookup],
   );
-
-  const [done, setDone] = useState<{ title: string; auditId: string | null } | null>(null);
-  const [message, setMessage] = useState('');
-  const [undoError, setUndoError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const undoRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
-
-  // The "Marked done" note stays for about ten seconds. If focus was on Undo when it goes, focus moves to the heading.
-  useEffect(() => {
-    if (!done) return;
-    undoRef.current?.focus();
-    const t = window.setTimeout(() => {
-      const hadFocus = document.activeElement === undoRef.current;
-      setDone(null);
-      setMessage('');
-      if (hadFocus) headingRef.current?.focus();
-    }, UNDO_MS);
-    return () => window.clearTimeout(t);
-  }, [done]);
-
-  const markDone = useCallback(
-    async (row: TurnTaskRow) => {
-      setBusyId(row.id);
-      setUndoError(null);
-      let auditId: string | null = null;
-      const ok = await w.run(async (baseVersion) => {
-        const res = await api.completeRecord(row.recordId, baseVersion);
-        auditId = res.undo_audit_id;
-        actions.adoptRecord(res.record);
-      }, row.version);
-      setBusyId(null);
-      if (ok) {
-        setMessage(`Marked done: ${row.title}`);
-        setDone({ title: row.title, auditId });
-        void refresh();
-      } else {
-        headingRef.current?.focus();
-      }
-    },
-    [w, actions, refresh],
-  );
-
-  const undo = useCallback(async () => {
-    if (!done?.auditId) return;
-    try {
-      await actions.undoAudit(done.auditId);
-      setMessage(`Undone: ${done.title} is open again`);
-      setDone(null);
-      headingRef.current?.focus();
-    } catch (e) {
-      setUndoError(describeError(e));
-    }
-  }, [done, actions]);
+  const done = useDoneWithUndo(headingRef);
 
   return (
     <HomeSection
@@ -156,28 +99,7 @@ export function YourTurnSection({ idx, dir, lookup }: Props) {
         ) : undefined
       }
     >
-      {w.conflict && <ConflictBanner conflict={w.conflict} busy={w.busy} onKeepTheirs={w.keepTheirs} onUseMine={() => void w.useMine()} />}
-      {w.error && (
-        <p className="field__error" role="alert">
-          {w.error}
-        </p>
-      )}
-      <div className="turn-note">
-        <p role="status" className="turn-note__text">
-          {message ? (done ? 'Marked done' : message) : ''}
-          {done && <span className="visually-hidden">: {done.title}</span>}
-        </p>
-        {done?.auditId && (
-          <button ref={undoRef} type="button" className="btn btn--quiet turn-note__undo" onClick={() => void undo()}>
-            Undo
-          </button>
-        )}
-        {undoError && (
-          <p className="field__error" role="alert">
-            {undoError}
-          </p>
-        )}
-      </div>
+      {done.note}
       {rows.length === 0 ? (
         <div className="turn-empty">
           <p>Nothing needs you right now.</p>
@@ -205,17 +127,12 @@ export function YourTurnSection({ idx, dir, lookup }: Props) {
                   </RecordLink>
                   <WhenText date={row.date} today={today} />
                 </span>
-                <button
-                  type="button"
-                  className="btn btn--secondary turn-row__done"
-                  aria-label={`Mark ${row.title} done`}
-                  disabled={busyId !== null}
-                  aria-busy={busyId === row.id || undefined}
-                  onClick={() => void markDone(row)}
-                >
-                  <Icon name="check" size={18} />
-                  Done
-                </button>
+                <DoneButton
+                  title={row.title}
+                  disabled={done.busyId !== null}
+                  busy={done.busyId === row.recordId}
+                  onClick={() => void done.markDone({ recordId: row.recordId, version: row.version, title: row.title })}
+                />
               </li>
             ),
           )}
@@ -236,7 +153,7 @@ export function StuckSection({ idx, lookup }: Omit<Props, 'dir'>) {
       count={total}
       className="sec-stuck"
       action={
-        <Link to="/plan?view=list&status=blocked" className="more-link home-sec__more" aria-label={`See all ${total} stuck`}>
+        <Link to="/plan?view=workstream&status=blocked" className="more-link home-sec__more" aria-label={`See all ${total} stuck`}>
           See all
         </Link>
       }

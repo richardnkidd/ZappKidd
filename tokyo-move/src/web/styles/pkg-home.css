@@ -193,27 +193,6 @@ a.turn-row__title:hover {
   font-weight: 600;
   font-size: var(--fs-1);
 }
-.turn-row__done {
-  flex: none;
-  min-height: 44px;
-  min-width: 44px;
-}
-.turn-note {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  flex-wrap: wrap;
-}
-.turn-note__text {
-  margin: 0;
-  font-weight: 600;
-}
-.turn-note__text:empty {
-  display: none;
-}
-.turn-note__undo {
-  min-height: 44px;
-}
 .turn-empty {
   display: flex;
   flex-wrap: wrap;

@@ -16,3 +16,4 @@ export * from './Layout';
 export * from './More';
 export * from './People';
 export * from './RecordLink';
+export * from './DoneWithUndo';

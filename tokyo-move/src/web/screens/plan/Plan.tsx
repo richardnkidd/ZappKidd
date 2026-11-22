@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { DataGate } from '../../components/DataGate';
 import { SegmentedControl } from '../../components/Controls';
@@ -59,6 +59,8 @@ export function Plan() {
 
   const { deadlinesByRecord, deadlines, today } = useData();
   const [expandedBoard, setExpandedBoard] = useState<Record<string, boolean>>({});
+  // Where focus goes after a one-tap Done note ends or a save fails: the heading of the view being shown.
+  const viewHeading = useRef<HTMLHeadingElement>(null);
 
   return (
     <div className="page plan">
@@ -84,15 +86,15 @@ export function Plan() {
               >
                 <WorkloadLine idx={idx} dir={dir} />
               </PlanFilterBar>
-              <h2 className="visually-hidden">{VIEW_OPTIONS.find((o) => o.value === view)?.label}</h2>
+              <h2 className="visually-hidden" ref={viewHeading} tabIndex={-1}>{VIEW_OPTIONS.find((o) => o.value === view)?.label}</h2>
               {shown.length === 0 ? (
                 <Card>
                   <EmptyState icon="plan" title="Nothing matches." action={<Button variant="secondary" onClick={() => update({ ...DEFAULT_FILTERS }, view)}>Show everything</Button>} />
                 </Card>
               ) : view === 'workstream' ? (
-                <WorkstreamView items={shown} idx={idx} today={today} filtered={quickFilterOf(filters) !== 'all'} />
+                <WorkstreamView items={shown} idx={idx} today={today} filtered={quickFilterOf(filters) !== 'all'} focusRef={viewHeading} />
               ) : view === 'list' ? (
-                <ListView items={shown} idx={idx} today={today} />
+                <ListView items={shown} idx={idx} today={today} focusRef={viewHeading} />
               ) : view === 'board' ? (
                 <BoardView items={shown} idx={idx} today={today} expanded={expandedBoard} setExpanded={setExpandedBoard} />
               ) : (

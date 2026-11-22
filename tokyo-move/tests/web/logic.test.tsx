@@ -313,6 +313,8 @@ describe('Plan filters, sorting and grouping', () => {
     expect(qs.has('traveler')).toBe(false);
     expect(parseFilters(qs)).toEqual(f);
     expect(parseFilters(new URLSearchParams('owner=bogus&phase=zzz&status=nope'))).toEqual(DEFAULT_FILTERS);
+    // The default view is still written, so a link never falls back to a remembered board or timeline.
+    expect(serializeFilters({ ...DEFAULT_FILTERS, status: 'blocked' }, 'workstream').toString()).toBe('view=workstream&status=blocked');
   });
 });
 
@@ -463,7 +465,7 @@ describe('history in plain language', () => {
   it('names who did what to which item, without IDs', () => {
     const line = describeAudit(entry({ action: 'status_change', after: { status: 'blocked' } }), idx, DIR);
     expect(line.who).toBe('Bo');
-    expect(line.what).toBe('marked “Book the movers” as Blocked');
+    expect(line.what).toBe('marked “Book the movers” as Stuck');
     const edit = describeAudit(entry({ before: { data: { next_action: 'a', priority: 'now' } }, after: { data: { next_action: 'b', priority: 'now' } } }), idx, DIR);
     expect(edit.what).toBe('changed the next action on “Book the movers”');
     expect(describeAudit(entry({ action: 'approve' }), idx, DIR).what).toBe('approved “Book the movers”');

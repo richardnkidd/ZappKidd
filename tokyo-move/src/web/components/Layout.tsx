@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ElementType, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ElementType, type ReactNode, type Ref } from 'react';
 import { Icon, type IconName } from './Icon';
 
 let firstTitleMounted = false;
@@ -59,15 +59,17 @@ interface SectionProps {
   children: ReactNode;
   className?: string;
   headingLevel?: 2 | 3;
+  /** Lets a screen move focus to the heading after an action removes the focused control. */
+  headingRef?: Ref<HTMLHeadingElement>;
 }
 
-export function Section({ title, count, action, intro, children, className = '', headingLevel = 2 }: SectionProps) {
+export function Section({ title, count, action, intro, children, className = '', headingLevel = 2, headingRef }: SectionProps) {
   const id = useId();
   const H = headingLevel === 2 ? 'h2' : 'h3';
   return (
     <section className={`section ${className}`.trim()} aria-labelledby={id}>
       <div className="section__head">
-        <H id={id} className="section__title">
+        <H id={id} className="section__title" ref={headingRef} tabIndex={headingRef ? -1 : undefined}>
           {title}
           {count !== undefined && <span className="count">{count}</span>}
         </H>

@@ -49,7 +49,7 @@ test.describe('Home', () => {
     for (const [id, name] of [['avery', 'Avery'], ['jun', 'Jun'], ['mochi', 'Mochi']]) {
       const chip = travellers.getByRole('link', { name: new RegExp(`^${name}:`) });
       await expect(chip).toHaveAttribute('href', `/ready/${id}`);
-      await expect(chip).toHaveAccessibleName(new RegExp(`^${name}: (\\d+ left|Ready to go|Cleared to travel|Arrived|Settled in|Nothing left)`));
+      await expect(chip).toHaveAccessibleName(new RegExp(`^${name}: (\\d+ left|Ready to go|Cleared to travel|Arrived|Settled in|Nothing left|Not set up yet)`));
       await expect(chip).not.toContainText('Preparing');
     }
 
@@ -90,8 +90,9 @@ test.describe('Home', () => {
       await expect(row.getByRole('link')).toHaveAccessibleName(/^(Decide: .+|Avery chose “[^”]+”\. Agree\?|You chose differently: .+)$/);
     }
     if (d04?.status === 'proposed' && (d04.data.approvals as any[]).some((a) => a.person_id === 'avery') && !(d04.data.approvals as any[]).some((a) => a.person_id === 'jun')) {
-      const agree = turn.getByRole('link', { name: /^Avery chose “.+”\. Agree\?/ });
-      await expect(agree).toHaveAttribute('href', '/decide#decision-D04');
+      // Other specs on this server can add decisions Avery answered, so pick D04's row by where it goes.
+      const agree = turn.locator('a[href="/decide#decision-D04"]');
+      await expect(agree).toHaveAccessibleName(/^Avery chose “.+”\. Agree\?/);
       await agree.click();
       await expect(page).toHaveURL(/\/decide#decision-D04$/);
       await expect(page.getByRole('heading', { level: 1, name: 'Decide' })).toBeVisible();
@@ -156,11 +157,16 @@ test.describe('Home', () => {
       for (const row of await rows.all()) await expect(row).toHaveText(/^.+ — (waiting on .+|no reason written yet)$/);
       const firstTitle = await rows.first().getByRole('link').innerText();
       const seeAll = stuck.getByRole('link', { name: `See all ${count} stuck` });
-      await expect(seeAll).toHaveAttribute('href', '/plan?view=list&status=blocked');
+      // The List view with "Stuck" chosen: the same word as Home, the same count, and only blocked items.
+      await expect(seeAll).toHaveAttribute('href', '/plan?view=workstream&status=blocked');
       await seeAll.click();
       await expect(page.getByRole('heading', { level: 1, name: 'Plan' })).toBeVisible();
       await loaded(page);
+      await expect(page.getByRole('group', { name: 'Plan view' }).getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Stuck', exact: true })).toHaveAttribute('aria-pressed', 'true');
       await expect(page.getByRole('status').filter({ hasText: /^Showing \d+ of \d+$/ })).toHaveText(new RegExp(`^Showing ${count} of `));
+      const cards = page.getByRole('main').getByRole('listitem').filter({ has: page.locator('a[href^="/r/"]') });
+      await expect(cards).toHaveCount(count);
       // A list of only the blocked items, starting near the top: not a board with the column screens down.
       const first = page.getByRole('main').getByRole('link', { name: firstTitle, exact: true }).first();
       await expect(first).toBeVisible();

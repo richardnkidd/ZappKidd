@@ -238,8 +238,8 @@ export const api = {
       }),
     ),
   /** One-tap "Done" (Home): completes an item without evidence and returns the history entry that undoes it. */
-  completeRecord: async (id: string, baseVersion: number): Promise<{ record: BaseRecord; undo_audit_id: string | null }> => {
-    const body = await send<{ record?: BaseRecord; undo_audit_id?: string }>('POST', `/api/records/${q(id)}/status`, { baseVersion, status: 'completed' });
+  completeRecord: async (id: string, baseVersion: number, traveler: string | null = null): Promise<{ record: BaseRecord; undo_audit_id: string | null }> => {
+    const body = await send<{ record?: BaseRecord; undo_audit_id?: string }>('POST', `/api/records/${q(id)}/status`, { baseVersion, status: 'completed', ...(traveler ? { traveler } : {}) });
     return { record: unwrapRecord(body), undo_audit_id: body?.undo_audit_id ?? null };
   },
   /** Mark the plan as seen now (the "since you last looked" line on Home). */

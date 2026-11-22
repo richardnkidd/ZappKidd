@@ -258,3 +258,10 @@
   gap: var(--s-1) var(--s-2);
   font-size: var(--fs-1);
 }
+.step__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  position: relative;
+  z-index: 2;
+}

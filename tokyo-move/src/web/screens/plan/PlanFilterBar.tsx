@@ -22,12 +22,12 @@ interface Props {
 
 const QUICK: { value: QuickFilter | 'custom'; label: string }[] = [
   { value: 'mine', label: 'Mine' },
-  { value: 'blocked', label: 'Blocked' },
+  { value: 'blocked', label: WORK_STATUS_LABEL.blocked },
   { value: 'all', label: 'All' },
 ];
 
 /**
- * One simple control (Mine, Blocked, All) and, on the same line as the count, a "More filters" button that opens the
+ * One simple control (Mine, Stuck, All) and, on the same line as the count, a "More filters" button that opens the
  * full set. The count line says how many items are shown, once.
  */
 export function PlanFilterBar({ filters, dir, onChange, onReset, activeCount, shown, total, hiddenOptional, children }: Props) {

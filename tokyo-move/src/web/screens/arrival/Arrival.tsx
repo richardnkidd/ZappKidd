@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import type { ComputedDeadline } from '@shared/engine-contracts';
 import { ARRIVAL_WINDOW_LABEL, ARRIVAL_WINDOW_ORDER, ANCHOR_CONFIDENCE_LABEL, CADENCE_LABEL } from '@shared/labels';
@@ -19,7 +19,8 @@ import { DeadlineRow, ruleOf } from '../../components/DeadlineRow';
 import { RecordLink } from '../../components/RecordLink';
 import { deadlineVerification } from '../../lib/home';
 import { splitTitleAction } from '../../lib/prose';
-import { dataOf, type AnyRecord, type Directory, type Indexes } from '../../lib/records';
+import { dataOf, isOpenWork, type AnyRecord, type Directory, type Indexes } from '../../lib/records';
+import { DoneButton, useDoneWithUndo, type DoneWithUndo } from '../../components/DoneWithUndo';
 import { useData } from '../../state/data';
 import { loadPref, savePref } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
@@ -54,7 +55,7 @@ export function arrivalFor(idx: Indexes, personId: string) {
 
 const norm = (t: string) => t.trim().replace(/[.\s]+$/, '').toLowerCase();
 
-function ArrivalItem({ item, personId, today, lookup, markShared }: { item: ReturnType<typeof arrivalFor>[number]; personId: string; today: string; lookup: KeyLookup | undefined; markShared: boolean }) {
+function ArrivalItem({ item, personId, today, lookup, markShared, done }: { item: ReturnType<typeof arrivalFor>[number]; personId: string; today: string; lookup: KeyLookup | undefined; markShared: boolean; done: DoneWithUndo }) {
   const plain = usePlain();
   const [open, setOpen] = useState(false);
   const d = item.data;
@@ -85,9 +86,19 @@ function ArrivalItem({ item, personId, today, lookup, markShared }: { item: Retu
             </p>
           )}
         </div>
-        <Button variant="quiet" small className="row-1__side" onClick={() => setOpen(true)} aria-label={`Update status: ${split.title}`}>
-          Update
-        </Button>
+        <span className="row-1__side step__actions">
+          {isOpenWork(item.status) && (
+            <DoneButton
+              title={split.title}
+              disabled={done.busyId !== null}
+              busy={done.busyId === item.record.id}
+              onClick={() => void done.markDone({ recordId: item.record.id, version: item.record.version, title: split.title, traveler: item.shared ? personId : null })}
+            />
+          )}
+          <Button variant="quiet" small onClick={() => setOpen(true)} aria-label={`Update status: ${split.title}`}>
+            Update
+          </Button>
+        </span>
       </div>
       {hasMore && (
         <More label="Details" hint={split.title}>
@@ -401,6 +412,8 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   // A step shared with the other adult is marked only when some steps are not shared.
   const markShared = items.some((it) => !it.shared);
+  const stepsHeading = useRef<HTMLHeadingElement>(null);
+  const done = useDoneWithUndo(stepsHeading);
 
   if (travelers.length === 0) return <EmptyState icon="plane" title="No travelers are set up yet." />;
 
@@ -409,7 +422,8 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
       <SegmentedControl label="Traveler" value={who?.id ?? ''} onChange={setPerson} options={travelers.map((p) => ({ value: p.id, label: p.display_name }))} />
       {who && (
         <>
-          <Section title={`${who.display_name}’s arrival`} headingLevel={2}>
+          <Section title={`${who.display_name}’s arrival`} headingLevel={2} headingRef={stepsHeading}>
+            {done.note}
             {items.some((it) => it.shared) && <p className="quiet-line">Shared steps are done together. Updating one changes only yours.</p>}
             {items.length === 0 ? (
               <Card>
@@ -425,7 +439,7 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
                       <h3 className="group-head">{ARRIVAL_WINDOW_LABEL[k] ?? k}</h3>
                       <ul className="step-list">
                         {list.map((it) => (
-                          <ArrivalItem key={it.record.id} item={it} personId={who.id} today={today} lookup={lookup} markShared={markShared} />
+                          <ArrivalItem key={it.record.id} item={it} personId={who.id} today={today} lookup={lookup} markShared={markShared} done={done} />
                         ))}
                       </ul>
                     </section>

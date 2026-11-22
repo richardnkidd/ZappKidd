@@ -961,3 +961,50 @@ legend {
     flex: 1 1 100%;
   }
 }
+
+/* ---------- One-tap Done with Undo (components/DoneWithUndo.tsx): Home, Plan rows, Arrival steps ---------- */
+.done-btn {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+}
+.done-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.done-note__text {
+  margin: 0;
+  font-weight: 600;
+}
+/* With nothing to say, the note takes no space but stays in the accessibility tree, so the live region announces. */
+.done-note:not(:has(button, [role='alert'], .done-note__text:not(:empty))),
+.plan-done-note:not(:has(button, [role='alert'], .done-note__text:not(:empty))) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.plan-done-note {
+  grid-column: 1 / -1;
+}
+.done-note__undo {
+  min-height: 44px;
+}
+/* A card with one control beside it (ItemCard `action`). The control sits above the card-wide title link. */
+.item--with-action {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+.item--with-action > .item__main {
+  flex: 1;
+}
+.item__side {
+  position: relative;
+  z-index: 2;
+  flex: none;
+}

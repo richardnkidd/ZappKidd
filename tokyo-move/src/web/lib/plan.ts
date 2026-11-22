@@ -42,7 +42,9 @@ export function parseFilters(params: URLSearchParams): PlanFilters {
 export function serializeFilters(f: PlanFilters, view: PlanView, base?: URLSearchParams): URLSearchParams {
   const p = new URLSearchParams(base);
   const set = (k: string, v: string, dflt: string) => (v === dflt ? p.delete(k) : p.set(k, v));
-  set('view', view, 'workstream');
+  // The view is always written: with no view in the address, Plan falls back to the last one chosen, which could
+  // turn a link to a filtered list into a board.
+  p.set('view', view);
   set('owner', f.owner, 'all');
   set('traveler', f.traveler, 'all');
   set('phase', f.phase, 'all');

@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { Link } from 'react-router';
 import { PHASE_LABEL, ANCHOR_CONFIDENCE_LABEL } from '@shared/labels';
 import type { AnchorData, HouseholdSettings, WorkStatus } from '@shared/types';
@@ -6,6 +6,7 @@ import { AnchorDialog } from '../../components/AnchorDialog';
 import { DateText, DeadlineBadge, OptionalTag, StatusBadge } from '../../components/Badges';
 import { Button, SegmentedControl } from '../../components/Controls';
 import { Disclosure } from '../../components/Disclosure';
+import { DoneButton, useDoneWithUndo, type DoneWithUndo } from '../../components/DoneWithUndo';
 import { Icon } from '../../components/Icon';
 import { ItemCard } from '../../components/ItemCard';
 import { Card, Section } from '../../components/Layout';
@@ -26,14 +27,15 @@ function useLookup(idx: Indexes) {
 }
 
 /** One slim row: title, next step, date and person. Status is a quiet icon, only when it says something (not for "planned"). */
-function PlanItemCard({ it, today, lookup, showStatus = true }: { it: PlanItemData; today: string; lookup: KeyLookup | undefined; showStatus?: boolean }) {
+function PlanItemCard({ it, today, lookup, showStatus = true, done }: { it: PlanItemData; today: string; lookup: KeyLookup | undefined; showStatus?: boolean; done?: DoneWithUndo }) {
   const { m } = it;
+  const title = displayTitle(m, lookup);
   // A check-in is a reminder to look again. It never reads as a deadline, so it is told in words, never "N days late".
   const checkIn = it.when.primary?.kind === 'review_date' ? it.when.primary : null;
   return (
     <ItemCard
       recordId={m.id}
-      title={displayTitle(m, lookup)}
+      title={title}
       owner={m.owner}
       ownerProposed={m.owner_proposed}
       nextAction={displayNext(m, lookup)}
@@ -44,6 +46,16 @@ function PlanItemCard({ it, today, lookup, showStatus = true }: { it: PlanItemDa
       today={today}
       optional={m.data?.optional_future_work}
       tone={m.status === 'blocked' ? 'blocked' : 'default'}
+      action={
+        done && isOpenWork(m.status) ? (
+          <DoneButton
+            title={title}
+            disabled={done.busyId !== null}
+            busy={done.busyId === m.id}
+            onClick={() => void done.markDone({ recordId: m.id, version: m.version, title })}
+          />
+        ) : undefined
+      }
     />
   );
 }
@@ -54,8 +66,9 @@ function PlanItemCard({ it, today, lookup, showStatus = true }: { it: PlanItemDa
  * Groups, each a heading with a count. Every group starts closed except the one that holds the next thing to do
  * (or all of them, when a filter has left only a few items). Inside a group, past-due items come first.
  */
-export function WorkstreamView({ items, idx, today, filtered = false }: { items: PlanItemData[]; idx: Indexes; today: string; filtered?: boolean }) {
+export function WorkstreamView({ items, idx, today, filtered = false, focusRef }: { items: PlanItemData[]; idx: Indexes; today: string; filtered?: boolean; focusRef: RefObject<HTMLElement | null> }) {
   const lookup = useLookup(idx);
+  const done = useDoneWithUndo(focusRef);
   const { groups, nextId } = useMemo(() => {
     const sorted = sortPlanItems(items, 'date', (o) => o ?? '');
     const g = groupPlan(sorted, idx).groups.map((x) => ({ ...x, items: sortForGroup(x.items, today) }));
@@ -63,6 +76,7 @@ export function WorkstreamView({ items, idx, today, filtered = false }: { items:
   }, [items, idx, today]);
   return (
     <div className="stack grid-wide grid-wide--2">
+      <div className="plan-done-note">{done.note}</div>
       {groups.map((g) => {
         const open = g.items.filter((i) => isOpenWork(i.m.status));
         const blocked = g.items.filter((i) => i.m.status === 'blocked').length;
@@ -72,13 +86,13 @@ export function WorkstreamView({ items, idx, today, filtered = false }: { items:
           <Disclosure
             key={`${g.key || 'other'}-${filtered ? 'f' : 'a'}`}
             title={g.title}
-            meta={`${open.length} to do${blocked ? ` · ${blocked} blocked` : ''}`}
+            meta={`${open.length} to do${blocked ? ` · ${blocked} stuck` : ''}`}
             defaultOpen={hasNext || filtered}
           >
             {open.length > 0 ? (
               <ul className="item-list">
                 {open.map((it) => (
-                  <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
+                  <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} done={done} />
                 ))}
               </ul>
             ) : (
@@ -106,21 +120,23 @@ export function WorkstreamView({ items, idx, today, filtered = false }: { items:
  * "By date": what is past its date, then what is coming up, then what has no date yet.
  * This is where Home's "Coming up" and "Past their date" links land: `/plan?view=list`.
  */
-export function ListView({ items, idx, today }: { items: PlanItemData[]; idx: Indexes; today: string }) {
+export function ListView({ items, idx, today, focusRef }: { items: PlanItemData[]; idx: Indexes; today: string; focusRef: RefObject<HTMLElement | null> }) {
   const lookup = useLookup(idx);
+  const done = useDoneWithUndo(focusRef);
   const parts = useMemo(() => splitByDate(items, today), [items, today]);
   const block = (id: string, title: string, list: PlanItemData[]) =>
     list.length === 0 ? null : (
       <Section title={title} count={list.length} headingLevel={3} className={`bydate bydate--${id}`}>
         <ul className="item-list">
           {list.map((it) => (
-            <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
+            <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} done={done} />
           ))}
         </ul>
       </Section>
     );
   return (
     <div className="bydate-wrap stack stack--loose">
+      <div className="plan-done-note">{done.note}</div>
       {block('past', 'Past their date', parts.past)}
       {block('coming', 'Coming up', parts.coming)}
       {block('undated', 'No date yet', parts.undated)}

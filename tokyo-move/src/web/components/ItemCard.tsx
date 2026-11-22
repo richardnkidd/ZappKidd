@@ -39,6 +39,8 @@ export interface ItemCardProps {
    * Deprecated: kept so a screen that needs the full chips can say so.
    */
   variant?: 'quiet' | 'full';
+  /** One control beside the card, such as the one-tap Done button. It sits above the card-wide link. */
+  action?: ReactNode;
 }
 
 function WhenLine({ c, today, full }: { c: WhenCandidate; today?: string; full: boolean }) {
@@ -81,7 +83,7 @@ export function ItemCard(p: ItemCardProps) {
     </span>
   ) : null;
   return (
-    <li className={`item item--card item--${p.tone ?? 'default'} ${p.className ?? ''}`.trim()}>
+    <li className={`item item--card item--${p.tone ?? 'default'}${p.action ? ' item--with-action' : ''} ${p.className ?? ''}`.trim()}>
       <div className="item__main">
         <div className="item__head">
           {p.recordId ? (
@@ -109,6 +111,7 @@ export function ItemCard(p: ItemCardProps) {
           <OwnerChip owner={p.owner} proposed={p.ownerProposed} compact variant={full ? 'chip' : 'quiet'} />
         </div>
       </div>
+      {p.action && <div className="item__side">{p.action}</div>}
     </li>
   );
 }

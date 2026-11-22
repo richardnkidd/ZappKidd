@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { DECISION_STATE_LABEL } from '@shared/labels';
-import type { BaseRecord, DecisionState } from '@shared/types';
+import { COMMITMENT_STATE_LABEL, DECISION_STATE_LABEL } from '@shared/labels';
+import type { BaseRecord, CommitmentState, DecisionState } from '@shared/types';
 import { StatusBadge } from '../../components/Badges';
 import { displayTitle, keyLookup, stripCodes } from '@shared/plain';
 import { Button, ButtonLink } from '../../components/Controls';
@@ -30,6 +30,14 @@ const LINK_KEYS: [string, string][] = [
 ];
 
 const SNAKE = /^[a-z0-9]+(_[a-z0-9]+)+$/;
+/** Fields that hold person ids: shown as names. */
+const PERSON_KEYS = new Set(['traveler_scope', 'person_id', 'for_whom']);
+
+function people(v: unknown, dir: Directory): string | null {
+  const ids = Array.isArray(v) ? v : typeof v === 'string' && v.trim() ? [v] : [];
+  const names = ids.filter((x): x is string => typeof x === 'string').map((id) => (dir.personById(id) ? dir.nameOf(id) : id));
+  return names.length ? names.join(', ') : null;
+}
 
 function scalar(v: unknown): string | null {
   if (typeof v === 'string') return v.trim() ? (SNAKE.test(v) ? v.replace(/_/g, ' ') : v) : null;
@@ -49,7 +57,7 @@ export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: I
   const data = (record.data ?? {}) as Record<string, unknown>;
   const rows = Object.entries(data)
     .filter(([k]) => !SKIP_KEYS.has(k))
-    .map(([k, v]) => [k, scalar(v)] as const)
+    .map(([k, v]) => [k, k === 'commitment_state' && typeof v === 'string' ? (COMMITMENT_STATE_LABEL[v as CommitmentState] ?? scalar(v)) : PERSON_KEYS.has(k) ? people(v, dir) : scalar(v)] as const)
     .filter((r): r is readonly [string, string] => r[1] !== null);
   const linkTo =
     record.type === 'decision'

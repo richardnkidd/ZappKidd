@@ -316,7 +316,7 @@ export async function proposeTask(deps: Deps, ctx: AuthContext, rawBody: unknown
       )
       .run(id, ctx.householdId, adapter.name, body.record_id ?? null, body.title, due, dueBasis, body.owner ?? null, body.notes ?? null, at, at);
     const link = taskLinkFromRow(getTaskLinkRow(deps.db, ctx.householdId, id) as TaskLinkRow);
-    audit(deps, ctx, 'task_propose', null, link, 'proposed in Kadode');
+    audit(deps, ctx, 'task_propose', null, link, 'suggested in Kadode');
     return link;
   })();
 
@@ -418,7 +418,7 @@ export async function retryTask(deps: Deps, ctx: AuthContext, id: string, rawBod
   const row = loadLink(deps, ctx, id);
   assertWritableLink(adapter, row);
   if (body.baseVersion !== undefined && row.version !== body.baseVersion) throw taskConflict(row, {}, null, 'This task changed since you opened it.');
-  if (!adapter.canWrite) throw forbidden('Not authorized: this build cannot write to the task system. The action stays pending capture.');
+  if (!adapter.canWrite) throw forbidden('Not authorized: this build cannot write to the task system. It waits to be added to the task list.');
   if (row.sync_state === 'synced') return { task: taskLinkFromRow(row), outcome: 'synced' };
   if (row.sync_state === 'conflict') {
     throw taskConflict(row, {}, null, 'The task changed in the task system. Refresh it first, then re-apply your change.');

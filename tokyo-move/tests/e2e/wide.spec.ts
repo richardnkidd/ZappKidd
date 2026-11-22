@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, loaded, test } from './support/fixtures';
 
 /**
- * Large desktop monitors (1440px and wider): the content grows to use the screen, Home has three columns, and nothing
+ * Large desktop monitors (1440px and wider): the content grows to use the screen, Home keeps its two columns, and nothing
  * ever scrolls sideways at any common desktop width. Phones and tablets are covered by the other specs.
  */
 
@@ -44,42 +44,46 @@ async function left(page: Page, name: string | RegExp, level = 2): Promise<numbe
 }
 
 test.describe('Large desktops', () => {
-  test('Home has three columns at 1920px (this week | decisions and blocked | who is ready and coming up)', async ({ page, signIn }) => {
+  /** Home's two columns: "Your turn" and "Stuck" on the left; "Travellers" and the since line on the right. */
+  async function expectTwoColumns(page: Page, gap: number) {
+    const turn = await left(page, /^Your turn/);
+    const stuck = await left(page, /^Stuck/);
+    const travellers = await left(page, 'Travellers');
+    expect(stuck, 'Stuck sits under Your turn').toBe(turn);
+    expect(travellers, 'Travellers is in its own column on the right').toBeGreaterThan(turn + gap);
+    // Never a third column: every section heading starts at one of the two edges.
+    const edges = await page.getByRole('main').getByRole('heading', { level: 2 }).evaluateAll((hs) => hs.map((h) => Math.round(h.getBoundingClientRect().x)));
+    for (const x of edges) expect([turn, travellers], `a heading at ${x}px`).toContain(x);
+    const since = page.getByRole('region', { name: 'Since you last looked' });
+    if (await since.count()) expect(Math.round((await since.boundingBox())!.x)).toBe(travellers);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  }
+
+  test('Home is two columns at 1920px too: there is no three-column version', async ({ page, signIn }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await signIn(page, 'avery', '/');
     await open(page, '/');
-    const thisWeek = await left(page, 'This week');
-    const decisions = await left(page, /^Needs a decision/);
-    const ready = await left(page, /^Who.s ready/);
-    // Three distinct, increasing column edges...
-    expect(decisions).toBeGreaterThan(thisWeek + 200);
-    expect(ready).toBeGreaterThan(decisions + 200);
-    // ...with the rest of each column under its first heading.
-    expect(await left(page, /^Blocked/)).toBe(decisions);
-    expect(await left(page, /^(Recent changes|Since your last review)/)).toBe(decisions); // named by whether a review has been saved yet
-    expect(await left(page, 'Coming up')).toBe(ready);
-    // The content uses the screen: the third column ends well past where the old 1100px page stopped.
-    const last = await page.getByRole('heading', { level: 2, name: 'Coming up' }).evaluate((el) => (el.closest('section')?.getBoundingClientRect().right ?? 0));
-    expect(last).toBeGreaterThan(1700);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+    await expectTwoColumns(page, 300);
   });
 
-  test('Home keeps two columns from 1024px to 1439px', async ({ page, signIn }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await signIn(page, 'avery', '/');
+  test('Home is two columns from 1024px', async ({ page, signIn }) => {
+    for (const width of [1024, 1280, 1439]) {
+      await page.setViewportSize({ width, height: 800 });
+      await signIn(page, 'avery', '/');
+      await open(page, '/');
+      await expectTwoColumns(page, 250);
+    }
+    // Below 1024px Home is one column.
+    await page.setViewportSize({ width: 1000, height: 800 });
     await open(page, '/');
-    const decisions = await left(page, /^Needs a decision/);
-    const ready = await left(page, /^Who.s ready/);
-    const thisWeek = await left(page, 'This week');
-    expect(decisions).toBe(thisWeek); // this week and decisions share the main column
-    expect(ready).toBeGreaterThan(decisions + 300);
+    expect(await left(page, 'Travellers')).toBe(await left(page, /^Your turn/));
   });
 
   test('the board shows every status column side by side, and the timeline chart uses the whole box', async ({ page, signIn }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await signIn(page, 'avery', '/plan?view=board');
     await open(page, '/plan?view=board');
-    const names = ['Planned', 'In progress', 'Blocked', 'Waiting on someone else', 'Done'];
+    const names = ['Not started', 'Doing', 'Stuck', 'Waiting on someone', 'Done'];
     const boxes = [];
     for (const n of names) {
       const col = page.getByRole('region', { name: new RegExp(`^${n}`) }).first();

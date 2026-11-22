@@ -19,10 +19,10 @@ import type {
 import type { DeadlineState, ReadinessState } from './engine-contracts';
 
 export const WORK_STATUS_LABEL: Record<WorkStatus, string> = {
-  planned: 'Planned',
-  in_progress: 'In progress',
-  blocked: 'Blocked',
-  waiting_external: 'Waiting on someone else',
+  planned: 'Not started',
+  in_progress: 'Doing',
+  blocked: 'Stuck',
+  waiting_external: 'Waiting on someone',
   completed: 'Done',
   eliminated: 'Dropped',
   not_applicable: 'Not needed',
@@ -42,7 +42,7 @@ export const WORK_STATUS_ORDER: readonly WorkStatus[] = [
 export const DEADLINE_KIND_LABEL: Record<DeadlineKind, string> = {
   legal: 'Legal deadline',
   contractual: 'Contract date',
-  user_committed: 'We committed',
+  user_committed: 'Our date',
   internal_target: 'Our target',
   estimate: 'Estimate',
   review_date: 'Check-in',
@@ -52,16 +52,16 @@ export const DEADLINE_KIND_LABEL: Record<DeadlineKind, string> = {
 export const DEADLINE_KIND_HELP: Record<DeadlineKind, string> = {
   legal: 'Set by a rule or authority. Missing it can have consequences.',
   contractual: 'Set by a contract or agreement with someone else.',
-  user_committed: 'A date one of us has committed to.',
+  user_committed: 'A date we set for ourselves.',
   internal_target: 'A date we chose to aim for. It can move.',
   estimate: 'A best guess. It will firm up as we learn more.',
   review_date: 'A moment to look at this again. It is not a deadline.',
 };
 
 export const QUESTION_DISPOSITION_LABEL: Record<QuestionDisposition, string> = {
-  question: 'Open question',
-  carry_forward: 'Carried forward — no change',
-  waiting_blocked: 'Waiting / blocked',
+  question: 'Not answered yet',
+  carry_forward: 'Kept for later',
+  waiting_blocked: 'Waiting on something',
   already_answered: 'Already answered',
   not_applicable: 'Not applicable',
   explicitly_excluded: 'Excluded on purpose',
@@ -84,11 +84,11 @@ export function audienceLabel(audience: string): string {
 }
 
 export const DECISION_STATE_LABEL: Record<DecisionState, string> = {
-  open: 'Open question',
-  proposed: 'Suggested',
-  approved: 'Household-approved',
-  rejected: 'Rejected',
-  deferred: 'Deferred',
+  open: 'Not decided yet',
+  proposed: 'Waiting for a second answer',
+  approved: 'Decided',
+  rejected: 'Not doing this',
+  deferred: 'Put off',
   superseded: 'Replaced',
 };
 
@@ -181,9 +181,9 @@ export const SEVERITY_ORDER: readonly RiskData['severity'][] = ['critical', 'hig
 
 export const RAID_KIND_LABEL: Record<RiskData['raid_kind'], string> = {
   risk: 'Risk',
-  assumption: 'Assumption',
+  assumption: 'Something we count on',
   issue: 'Issue',
-  dependency: 'Dependency',
+  dependency: 'Waits on others',
 };
 
 /**
@@ -206,7 +206,7 @@ export const VERIFICATION_SHORT: Record<DeadlineRuleData['verification'], string
 };
 
 export const COMMITMENT_STATE_LABEL: Record<CommitmentState, string> = {
-  not_committed: 'Not committed',
+  not_committed: 'Not agreed yet',
   estimate: 'Estimate',
   quote: 'Quote',
   approved_commitment: 'Approved',
@@ -241,7 +241,7 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   import_update: 'Updated from the plan',
   correction: 'Corrected after review',
   restore: 'Restored from backup',
-  task_propose: 'Proposed a task',
+  task_propose: 'Suggested a task',
   task_sync: 'Refreshed the task list copy',
   task_complete: 'Completed a task',
   anchor_change: 'Moved a travel date',
@@ -259,7 +259,7 @@ export const FIELD_LABEL: Record<string, string> = {
   plain_options: 'plain option names',
   title: 'title',
   owner: 'owner',
-  owner_proposed: 'owner (proposed)',
+  owner_proposed: 'suggested owner',
   status: 'status',
   next_action: 'next action',
   priority: 'priority',
@@ -271,13 +271,13 @@ export const FIELD_LABEL: Record<string, string> = {
   effort_estimate: 'effort',
   target_window: 'target window',
   contingency: 'fallback',
-  dependencies: 'dependencies',
+  dependencies: 'what it waits on',
   traveler_progress: "each person's progress",
   rationale: 'rationale',
   approvals: 'approvals',
   decided_option_id: 'chosen option',
   mitigation: 'mitigation',
-  severity: 'severity',
+  severity: 'how serious',
   body: 'note',
 };
 
@@ -418,4 +418,8 @@ export const DATA_FIELD_LABEL: Record<string, string> = {
   recorded_date: 'Recorded date',
   meaning: 'What it means',
   workstream_key: 'Workstream',
+  dependencies: 'Waits on',
+  disposition: 'What happens to it',
+  commitment_state: 'Stage',
+  traveler_scope: 'For',
 };

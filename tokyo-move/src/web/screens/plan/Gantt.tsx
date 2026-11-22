@@ -250,7 +250,7 @@ function markerLabels(axis: GanttAxis, markers: DepartureMarker[], checkIns: Sha
       key: r.key,
       x,
       text: r.text,
-      hidden: r.kind === 'checkin' ? '' : `, ${civil(r.date, 'short')}${r.offRange ? (r.offRange === 'before' ? ' (before the chart starts)' : ' (after the chart ends)') : ''}`,
+      hidden: r.kind === 'checkin' ? '' : `, ${civil(r.date, 'weekday')}${r.offRange ? (r.offRange === 'before' ? ' (before the chart starts)' : ' (after the chart ends)') : ''}`,
       kind: r.kind,
       id: r.id,
       lane,
@@ -588,7 +588,7 @@ function ItemPopover({ g, idx, today, target, ...shell }: PopoverBase & { g: Gan
 function CheckInPopover({ c, ...shell }: PopoverBase & { c: SharedCheckIn }) {
   const sorted = useMemo(() => [...c.items].sort((a, b) => a.title.localeCompare(b.title)), [c]);
   return (
-    <PopoverShell subject={`checkin:${c.date}`} title={`Check-in · ${civil(c.date, 'short')}`} {...shell}>
+    <PopoverShell subject={`checkin:${c.date}`} title={`Check-in · ${civil(c.date, 'weekday')}`} {...shell}>
       <div className="gpop__meta">
         <DeadlineBadge kind="review_date" />
         <span className="small faint">Not scheduled. Not a deadline.</span>
@@ -859,7 +859,7 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
                   <button type="button" className="ggroup__toggle" aria-expanded={open} onClick={() => setCollapsed((c) => ({ ...c, [groupKey(grp.key)]: open }))}>
                     <Icon name="chevron-right" size={16} className="ggroup__chev" />
                     <span className="ggroup__title">{grp.title}</span>
-                    <span className="ggroup__meta">{`${plural(grp.items.length, 'item')} · ${todo} to do${blocked ? ` · ${blocked} blocked` : ''}`}</span>
+                    <span className="ggroup__meta">{`${plural(grp.items.length, 'item')} · ${todo} to do${blocked ? ` · ${blocked} stuck` : ''}`}</span>
                   </button>
                   <span className={`ggroup__area${labelled ? ' ggroup__area--axis' : ''}`} aria-hidden="true">
                     {labelled &&

@@ -228,7 +228,7 @@ function incomeView(funding: BaseRecord<'funding', FundingData>[], fx: number | 
     const converted = validAmount(d.amount) ? toUsd(d.amount, fx) : null;
     const monthly = d.monthly !== false;
     if (status === 'planning_zero') {
-      return { person_id: person, status, monthly_usd: 0, counted: true, note: 'A planning assumption of zero earned income. It is not a prediction.' };
+      return { person_id: person, status, monthly_usd: 0, counted: true, note: 'Counted as zero for planning. It is not a prediction.' };
     }
     if (status === 'confirmed_none') {
       return { person_id: person, status, monthly_usd: 0, counted: true, note: 'Confirmed: no earned income.' };

@@ -21,11 +21,25 @@ async function startEditingNextAction(page: Page, text: string) {
   await expect(page.getByText('Unsaved changes').first()).toBeVisible();
 }
 
-async function restoreNextAction(api: Api, id: string, original: string) {
+async function restoreNextAction(api: Api, id: string, original: string, plainNext: string | null = null) {
   const rec = await api.record(id);
-  if (rec.data.next_action !== original) {
-    await api.patch(`/api/records/${enc(id)}`, { baseVersion: rec.version, changes: { data: { next_action: original } }, reason: 'e2e cleanup' });
+  const changes: Record<string, unknown> = {};
+  if (rec.data.next_action !== original) changes.next_action = original;
+  if (plainNext !== null && rec.data.plain_next !== plainNext) changes.plain_next = plainNext;
+  if (Object.keys(changes).length > 0) {
+    await api.patch(`/api/records/${enc(id)}`, { baseVersion: rec.version, changes: { data: changes }, reason: 'e2e cleanup' });
   }
+}
+
+/**
+ * A milestone with a plain next step shows that instead of the imported next action, and editing it replaces both.
+ * These tests are about one text field, so they clear the plain wording first (and put it back afterwards).
+ */
+async function withoutPlainNext(api: Api, id: string): Promise<string | null> {
+  const rec = await api.record(id);
+  const plainNext = typeof rec.data.plain_next === 'string' && rec.data.plain_next ? (rec.data.plain_next as string) : null;
+  if (plainNext) await api.patch(`/api/records/${enc(id)}`, { baseVersion: rec.version, changes: { data: { plain_next: null } }, reason: 'e2e setup' });
+  return plainNext;
 }
 
 test.describe('Edit conflicts', () => {
@@ -122,6 +136,7 @@ test.describe('Edit conflicts', () => {
   test('"Combine them" puts both versions in the editor to tidy by hand, and saving keeps both', async ({ openAs, api }, testInfo) => {
     const id = COMBINE[testInfo.project.name]!;
     const avery = await api('avery');
+    const plainNext = await withoutPlainNext(avery, id);
     const original = (await avery.record(id)).data.next_action as string;
     const theirs = unique('Jun: confirm the carrier rules', testInfo);
     const mine = unique('Avery: ask about the crate size', testInfo);
@@ -153,7 +168,7 @@ test.describe('Edit conflicts', () => {
       expect(saved).toContain(theirs);
       expect(saved).toContain(mine);
     } finally {
-      await restoreNextAction(avery, id, original);
+      await restoreNextAction(avery, id, original, plainNext);
     }
   });
 
@@ -211,7 +226,7 @@ test.describe('Edit conflicts', () => {
       await loaded(a.page);
       await a.page.getByRole('button', { name: 'Change status' }).click();
       const dialog = a.page.getByRole('dialog', { name: 'Change status' });
-      await dialog.getByRole('radio', { name: /^In progress/ }).check();
+      await dialog.getByRole('radio', { name: /^Doing/ }).check();
 
       // Meanwhile Jun blocks the same item (through the API, as a second device would).
       const jun = await api('jun');

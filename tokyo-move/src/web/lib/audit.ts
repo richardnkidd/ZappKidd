@@ -98,7 +98,7 @@ export function describeAudit(e: AuditEntry, idx: Indexes, dir: Directory): Audi
       break;
     case 'task_propose': {
       const t = asObj(e.after)?.title;
-      what = `proposed a task${typeof t === 'string' ? `: “${truncate(t, 70)}”` : ''}`;
+      what = `suggested a task${typeof t === 'string' ? `: “${truncate(t, 70)}”` : ''}`;
       break;
     }
     case 'task_complete':
@@ -162,7 +162,7 @@ const GROUP_WORDS: Record<string, (n: number) => string> = {
   update: (n) => `edited ${n} items`,
   status_change: (n) => `changed the status of ${n} items`,
   approve: (n) => `approved ${n} decisions`,
-  task_propose: (n) => `proposed ${n} tasks`,
+  task_propose: (n) => `suggested ${n} tasks`,
   task_complete: (n) => `completed ${n} tasks`,
 };
 const SIX_HOURS = 6 * 3_600_000;

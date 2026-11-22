@@ -102,7 +102,7 @@ test.describe('Plan: views and filters', () => {
     await expect(note).toHaveCount(0);
   });
 
-  test('Mine, Blocked and All are the one simple control, and the count matches the list', async ({ page, signIn, api }) => {
+  test('Mine, Stuck and All are the one simple control, and the count matches the list', async ({ page, signIn, api }) => {
     await signIn(page, 'avery', '/plan?view=list');
     await loaded(page);
     const quick = page.getByRole('group', { name: 'Show' });
@@ -123,8 +123,8 @@ test.describe('Plan: views and filters', () => {
     expect(shownIds).toHaveLength(mine);
     for (const id of shownIds) expect(byId.get(id).owner, id).toBe('avery');
 
-    await quick.getByRole('button', { name: 'Blocked' }).click();
-    await expect(quick.getByRole('button', { name: 'Blocked' })).toHaveAttribute('aria-pressed', 'true');
+    await quick.getByRole('button', { name: 'Stuck' }).click();
+    await expect(quick.getByRole('button', { name: 'Stuck' })).toHaveAttribute('aria-pressed', 'true');
     const blockedIds = (snap.records as any[]).filter((r) => r.type === 'milestone' && r.status === 'blocked' && !r.data.optional_future_work).map((r) => r.id as string).sort();
     await expect(count).toHaveText(`Showing ${blockedIds.length} of ${initial[2]}`);
     expect(await milestoneIds(page)).toEqual(blockedIds);
@@ -136,7 +136,7 @@ test.describe('Plan: views and filters', () => {
   test('a link with ?status=blocked lands on the blocked items, open, at the top, with a matching count', async ({ page, signIn, api }) => {
     await signIn(page, 'avery', '/plan?status=blocked');
     await loaded(page);
-    await expect(page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Blocked' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Stuck' })).toHaveAttribute('aria-pressed', 'true');
     const snap = await (await api('avery')).snapshot();
     const blocked = (snap.records as any[]).filter((r) => r.type === 'milestone' && r.status === 'blocked' && !r.data.optional_future_work);
     expect(blocked.length).toBeGreaterThan(0);
@@ -158,7 +158,7 @@ test.describe('Plan: views and filters', () => {
     await page.getByRole('combobox', { name: 'Owner' }).selectOption({ label: 'Mine' });
     await expect(count).not.toHaveText(`Showing ${initial[1]} of ${initial[2]}`);
     // A custom mix is not one of the three simple choices: none of them looks pressed, and the button counts what is set.
-    await page.getByRole('combobox', { name: 'Status' }).selectOption({ label: 'Blocked' });
+    await page.getByRole('combobox', { name: 'Status' }).selectOption({ label: 'Stuck' });
     await expect(page.getByText('Nothing matches.')).toBeVisible();
     await expect(page.getByRole('group', { name: 'Show' }).locator('[aria-pressed="true"]')).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^More filters \(2\)/ })).toBeVisible();
@@ -348,13 +348,13 @@ test.describe('Status rules', () => {
       await page.getByRole('button', { name: 'Change status' }).click();
       const dialog = page.getByRole('dialog', { name: 'Change status' });
       // The four most-used statuses come first, one short line each; the others are behind "More".
-      for (const main of [/^Planned/, /^In progress/, /^Blocked/, /^Done/]) await expect(dialog.getByRole('radio', { name: main })).toBeVisible();
-      await expect(dialog.getByRole('radio', { name: /^Waiting on someone else/ })).toBeHidden();
+      for (const main of [/^Not started/, /^Doing/, /^Stuck/, /^Done/]) await expect(dialog.getByRole('radio', { name: main })).toBeVisible();
+      await expect(dialog.getByRole('radio', { name: /^Waiting on someone/ })).toBeHidden();
       await dialog.getByRole('button', { name: 'More' }).click();
-      await expect(dialog.getByRole('radio', { name: /^Waiting on someone else/ })).toBeVisible();
+      await expect(dialog.getByRole('radio', { name: /^Waiting on someone/ })).toBeVisible();
       await expect(dialog.getByRole('radio', { name: /^Dropped/ })).toBeVisible();
       await dialog.getByRole('button', { name: 'More' }).click();
-      await dialog.getByRole('radio', { name: /^Blocked/ }).check();
+      await dialog.getByRole('radio', { name: /^Stuck/ }).check();
       await dialog.getByRole('button', { name: 'Save status' }).click();
       await expect(dialog.getByRole('alert')).toContainText('Please say why');
       await expect(dialog.getByRole('textbox', { name: 'What is it waiting on?' })).toHaveAttribute('aria-invalid', 'true');
@@ -369,7 +369,7 @@ test.describe('Status rules', () => {
       await expect(page.getByRole('button', { name: 'Change status' })).toBeFocused();
       await expect(page.getByRole('status').filter({ hasText: /^Saved/ })).toBeVisible();
       await expect(page.getByText(reason)).toBeVisible();
-      await expect(page.getByText(/Why it.s blocked/)).toBeVisible();
+      await expect(page.getByText(/Why it.s stuck/)).toBeVisible();
       const blocked = await jun.record(id);
       expect(blocked.status).toBe('blocked');
       expect(blocked.data.status_reason).toBe(reason);
@@ -527,23 +527,18 @@ test.describe('Propose an action on a read-only task list', () => {
     const avery = await api('avery', 'snapshot');
     const proposals = await makeProposals(avery, testInfo);
 
-    // 1. The Home list of waiting proposals: every one is labelled, and the date of a past one is told as history.
+    // 1. Home says how many are waiting, in one line, and never lists a proposal as plan work, late, or "in your task list".
     await signIn(page, 'avery', '/');
     await loaded(page);
-    await page.getByRole('group', { name: 'Show items for' }).getByRole('button', { name: 'Everything', exact: true }).click();
-    const waiting = page.getByRole('region', { name: /^Waiting to be added to your task list/ });
-    await expect(waiting).toBeVisible();
-    for (const p of proposals) {
-      const row = waiting.getByRole('listitem').filter({ hasText: p.title });
-      await expect(row, p.label).toBeVisible();
-      await expect(row).toContainText('Waiting to be added');
-      await expect(row).not.toContainText(IN_LIST);
-      await expect(row).not.toContainText(LATE);
-      if (p.label === 'past') await expect(row).toContainText(/date was/i);
-    }
+    const pending = ((await avery.get('/api/tasks')).task_links as any[]).filter((t) => t.sync_state === 'pending_capture' && t.status === 'open').length;
+    expect(pending).toBeGreaterThanOrEqual(proposals.length);
+    await expect(page.getByRole('main').getByRole('link', { name: `${pending} tasks waiting to be added` })).toBeVisible();
+    const home = await page.getByRole('main').innerText();
+    for (const p of proposals) expect(home, `${p.label} is not listed on Home as work`).not.toContain(p.title);
+    expect(home).not.toMatch(IN_LIST);
 
-    // 2. They are not plan work: not under "This week", the decisions or the blocked items.
-    for (const section of [/^This week/, /^Needs a decision/, /^Blocked/]) {
+    // 2. They are not plan work: not under "Your turn" or "Stuck".
+    for (const section of [/^Your turn/, /^Stuck/]) {
       const region = page.getByRole('region', { name: section });
       if ((await region.count()) === 0) continue;
       for (const p of proposals) await expect(region, `${p.label} is not listed under ${String(section)}`).not.toContainText(p.title);
@@ -575,13 +570,17 @@ test.describe('Propose an action on a read-only task list', () => {
   test('a pending proposal never turns up in "Coming up" as a committed date, and is never "past its date"', async ({ page, signIn, api }, testInfo) => {
     const avery = await api('avery', 'snapshot');
     const proposals = await makeProposals(avery, testInfo);
-    await signIn(page, 'avery', '/');
+    // "Coming up" and "Past their date" live in Plan's By date view now.
+    await signIn(page, 'avery', '/plan?view=list');
     await loaded(page);
-    await page.getByRole('group', { name: 'Show items for' }).getByRole('button', { name: 'Everything', exact: true }).click();
     const coming = page.getByRole('region', { name: /^Coming up/ });
     await expect(coming).toBeVisible();
-    for (const p of proposals) {
-      await expect(coming, `"${p.title}" (${p.label}) is only a proposal; it has no date of its own to count down to`).not.toContainText(p.title);
+    for (const section of [/^Coming up/, /^Past their date/]) {
+      const region = page.getByRole('region', { name: section });
+      if ((await region.count()) === 0) continue;
+      for (const p of proposals) {
+        await expect(region, `"${p.title}" (${p.label}) is only a proposal; it has no date of its own to count down to`).not.toContainText(p.title);
+      }
     }
   });
   test('stays "Waiting to be added to your task list" and nothing pretends it was created', async ({ page, signIn, api }, testInfo) => {
@@ -607,10 +606,10 @@ test.describe('Propose an action on a read-only task list', () => {
     const created = ((await avery.get('/api/tasks')).task_links as any[]).find((t) => t.title === title);
     expect(created.sync_state).toBe('pending_capture');
     expect(created.canonical_id).toBeNull();
-    // The footer on Home is honest about the task list copy being read-only.
-    await page.goto('/');
+    // The Data page is honest about the task list copy being read-only.
+    await page.goto('/data');
     await loaded(page);
-    await expect(page.getByText(/Task list copy .* read-only/)).toBeVisible();
+    await expect(page.getByText(/Read-only copy as of .+\. New actions wait to be added\./)).toBeVisible();
   });
 });
 

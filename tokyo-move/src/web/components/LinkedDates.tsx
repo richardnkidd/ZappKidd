@@ -14,11 +14,10 @@ export function TaskDateLine({ t, today, asOfDay }: { t: TaskLink; today?: strin
   if (t.sync_state === 'pending_capture') {
     return (
       <p className="linked-line">
-        <span className="linked-line__label">Proposed for your task list · not added yet</span>
-        <span className="chip chip--kin chip--sm">Waiting to be added</span>
+        <span className="linked-line__label">Waiting to be added to your task list</span>
         {past ? (
           <span className="faint">
-            Still waiting to be added — its date was <time dateTime={t.due}>{civil(t.due, 'short')}</time>
+            Its date was <time dateTime={t.due}>{civil(t.due, 'weekday')}</time>
           </span>
         ) : (
           <DateText date={t.due} today={today} />
@@ -33,8 +32,8 @@ export function TaskDateLine({ t, today, asOfDay }: { t: TaskLink; today?: strin
       <DateText date={t.due} today={today} state={state} />
       {t.sync_state === 'snapshot' && (
         <span className="faint small">
-          (copy as of {asOfDay ? civil(asOfDay, 'short') : 'an unknown date'}
-          {state === 'historical' ? ' — check the task list' : ''})
+          {' · '}copy from {asOfDay ? civil(asOfDay, 'weekday') : 'an unknown date'}
+          {state === 'historical' ? '. Check the task list.' : ''}
         </span>
       )}
     </p>

@@ -13,6 +13,7 @@ import { DataGate } from '../../components/DataGate';
 import { DeadlineRow } from '../../components/DeadlineRow';
 import { Disclosure } from '../../components/Disclosure';
 import { ErrorBanner } from '../../components/Feedback';
+import { InfoNote } from '../../components/InfoNote';
 import { Card, EmptyState, PageTitle, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
@@ -246,19 +247,23 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
 
     </>
   );
-  const holdingBlock = (
+  // When nothing is waiting, one short line says so. Sections with nothing in them are left out.
+  const nothingWaiting = blockers.length === 0 && !next && open.length === 0 && conditional.length === 0;
+  const holdingBlock = nothingWaiting ? (
+    <p className="muted">Nothing is waiting on {person.display_name}.</p>
+  ) : (
     <>
-      <Section title="Holding things up" count={blockers.length || undefined}>
-        <GateList gates={blockers} empty="Nothing is stuck right now." showReason="blocker" idx={idx} first={3} />
-      </Section>
+      {blockers.length > 0 && (
+        <Section title="Holding things up" count={blockers.length}>
+          <GateList gates={blockers} empty="" showReason="blocker" idx={idx} first={3} />
+        </Section>
+      )}
 
-      <Section title="What unlocks this">
-        {next ? (
+      {next && (
+        <Section title="What unlocks this">
           <GateList gates={[next]} empty="" idx={idx} />
-        ) : (
-          <p className="muted">There is no single next step to name right now.</p>
-        )}
-      </Section>
+        </Section>
+      )}
 
       {conditional.length > 0 && (
         <Section title="Not sure yet if it applies" count={conditional.length}>
@@ -266,9 +271,11 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
         </Section>
       )}
 
-      <Section title="Still to do" count={open.length || undefined}>
-        <GateList gates={open} empty="Nothing else is waiting to be started." idx={idx} first={3} />
-      </Section>
+      {open.length > 0 && (
+        <Section title="Still to do" count={open.length}>
+          <GateList gates={open} empty="" idx={idx} first={3} />
+        </Section>
+      )}
 
     </>
   );
@@ -328,7 +335,10 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
           </span>
           <ReadinessChip state={r.state} />
         </div>
-        <p className="ready__headline">{plain(r.headline)}</p>
+        <p className="ready__headline">
+          {plain(r.headline)}
+          <InfoNote label="How steps are counted">Optional future work is never counted here. Only the steps this traveler needs for the move are.</InfoNote>
+        </p>
         {explanation && <p className="muted">{explanation}</p>}
       </Card>
 
@@ -353,8 +363,6 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
           {restBlock}
         </>
       )}
-
-      <p className="small muted">Optional future work is never counted here. Only the steps this traveler needs for the move are.</p>
 
       <p>
         <Link to="/" className="more-link">

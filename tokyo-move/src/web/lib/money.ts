@@ -78,7 +78,7 @@ export function scenarioExplanation(s: ScenarioSettings): string {
   const parts: string[] = [];
   if (s.extra_us_months > 0) parts.push(`${s.extra_us_months} more ${s.extra_us_months === 1 ? 'month' : 'months'} of continuing US costs`);
   if (s.fx_factor !== 1) parts.push(fxChangePhrase(s.fx_factor));
-  if (parts.length === 0) return 'Costs as they are known today, with nothing extra assumed.';
+  if (parts.length === 0) return 'Costs as known today, nothing extra.';
   return `Same plan, but with ${parts.join(' and ')}.`;
 }
 
@@ -105,20 +105,23 @@ export interface CashStatement {
   detail: string | null;
 }
 
+/** Cost lines with no usable amount yet, across the four counted sections. One number, used everywhere on Money. */
+export function missingLineCount(model: CashModel): number {
+  return model.one_time_unpaid.unknown_count + model.tokyo_monthly.unknown_count + model.us_monthly.unknown_count + model.staged_overlap.unknown_count;
+}
+
 /** The engine's state in plain words. It never says "affordable" while anything is unknown. */
 export function cashStatement(model: CashModel, incomeNotCounted: number): CashStatement {
-  const amounts = model.one_time_unpaid.unknown_count + model.tokyo_monthly.unknown_count + model.us_monthly.unknown_count + model.staged_overlap.unknown_count;
+  const amounts = missingLineCount(model);
   switch (model.state) {
     case 'incomplete': {
-      const bits: string[] = [];
-      if (amounts > 0) bits.push(`${amounts} ${amounts === 1 ? 'amount' : 'amounts'}`);
-      if (incomeNotCounted > 0) bits.push(`${incomeNotCounted === 1 ? 'one income' : `${incomeNotCounted} incomes`}`);
-      const what = bits.length ? bits.join(' and ') : 'some details';
-      return {
-        tone: 'kin',
-        headline: "Can't conclude yet",
-        detail: `Totals count only what is known. Missing: ${what}.`,
-      };
+      const detail =
+        amounts > 0
+          ? `${amounts} ${amounts === 1 ? 'line still needs' : 'lines still need'} an amount.`
+          : incomeNotCounted > 0
+            ? 'Some income is not counted yet.'
+            : 'Some details are still missing.';
+      return { tone: 'kin', headline: 'Not enough numbers yet', detail };
     }
     case 'cash_view_ready_income_unverified':
       return {
@@ -129,7 +132,7 @@ export function cashStatement(model: CashModel, incomeNotCounted: number): CashS
     default:
       return {
         tone: 'matcha',
-        headline: model.headroom_usd !== null ? `Everything is known for this view. Headroom: ${fmtUsd(model.headroom_usd)}` : 'Everything is known for this view.',
+        headline: 'Everything is known for this view.',
         detail: null,
       };
   }

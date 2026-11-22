@@ -13,6 +13,20 @@ import { useSnapshot } from '../../state/snapshot';
 
 const zoneLabel = (z: IanaZone) => ZONE_OPTIONS.find((o) => o.zone === z)?.label ?? z;
 
+/** A time zone as people say it: "Hawaii time". */
+export function zonePhrase(zone: IanaZone): string {
+  switch (zone) {
+    case 'Pacific/Honolulu':
+      return 'Hawaii time';
+    case 'Asia/Tokyo':
+      return 'Japan time';
+    case 'America/New_York':
+      return 'New York time';
+    default:
+      return zoneLabel(zone);
+  }
+}
+
 function Display() {
   const { zone, setZone, theme, setTheme } = usePrefs();
   const me = useMe();
@@ -55,6 +69,7 @@ function Display() {
         </Select>
       </Field>
       <div>
+        <p className="muted small">Dates are shown in {zonePhrase(zone)}.</p>
         <p className="muted small">
           Household setting: {household ? zoneLabel(household) : zoneLabel(me.household.display_timezone)}.
         </p>

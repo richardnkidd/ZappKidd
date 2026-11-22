@@ -609,7 +609,7 @@ test.describe('Propose an action on a read-only task list', () => {
     // The Data page is honest about the task list copy being read-only.
     await page.goto('/data');
     await loaded(page);
-    await expect(page.getByText(/Read-only copy as of .+\. New actions wait to be added\./)).toBeVisible();
+    await expect(page.getByText(/Copy from .+\. You can only read it\./)).toBeVisible();
   });
 });
 

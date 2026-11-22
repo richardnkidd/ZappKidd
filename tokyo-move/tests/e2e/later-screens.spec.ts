@@ -53,11 +53,12 @@ test.describe('Money', () => {
     const main = page.getByRole('main');
 
     // Honest about what is not known (the demo has a yen amount but no exchange rate, and unverified income).
-    await expect(main).toContainText(/Can.t conclude yet/);
-    // Said once, in one short line: totals count only what is known, and what is missing.
-    await expect(main).toContainText(/Totals count only what is known/);
-    // A missing amount is "Not known yet", never 0 (the headroom is unknown while anything is missing).
-    await expect(main.getByText('Headroom').locator('xpath=..')).toContainText('Not known yet');
+    await expect(main).toContainText(/Not enough numbers yet/);
+    // Said once, in one short line: how many lines still need an amount.
+    await expect(main).toContainText(/\d+ lines? still needs? an amount/);
+    // A missing amount is "Not known yet", never 0 (what is left over is unknown while anything is missing).
+    await expect(main.getByText('Left over').locator('xpath=..')).toContainText('Not known yet');
+    await expect(main.getByText('Other bills we already owe')).toHaveCount(0);
     // The cash picture comes before the exchange-rate card, and the figures are the biggest text on the page.
     const cash = main.getByRole('region', { name: 'The cash picture' });
     const rateCard = page.getByRole('region', { name: 'Exchange rate' });
@@ -82,7 +83,7 @@ test.describe('Money', () => {
 
     // Scenarios: one is chosen at a time; the explanation changes with it.
     const group = page.getByRole('group', { name: 'Scenario' });
-    const status = page.getByRole('status').filter({ hasText: /nothing extra assumed|more months|fewer yen|stress/i });
+    const status = page.getByRole('status').filter({ hasText: /nothing extra|more months|fewer yen|stress/i });
     await expect(group.getByRole('button', { name: 'Planning' })).toHaveAttribute('aria-pressed', 'true');
     for (const name of ['Condo delay', 'Delay + stronger yen', 'Planning']) {
       await group.getByRole('button', { name }).click();
@@ -96,7 +97,7 @@ test.describe('Money', () => {
     await group.getByRole('button', { name: 'Condo delay' }).click();
     await expect(status).toContainText(/months/);
     await group.getByRole('button', { name: 'Planning' }).click();
-    await expect(status).toContainText(/nothing extra assumed/);
+    await expect(status).toContainText(/nothing extra/);
 
     // Time span: 90 days or three years.
     const span = page.getByRole('group', { name: 'Time span' });
@@ -168,7 +169,8 @@ test.describe('Documents', () => {
     const first = rowOf(page).first();
     await expect(first.getByRole('link').first()).toBeVisible();
     await expect(first.getByRole('button', { name: /^Update status: / })).toBeVisible();
-    await expect(page.getByText(/^Held by: /)).toHaveCount(1);
+    await expect(page.getByText(/^(Held by: |Holder not set yet)/)).toHaveCount(1);
+    await expect(page.getByRole('main')).not.toContainText(/Each document holder/);
     expect(await page.getByRole('main').innerText()).not.toMatch(/\(proposed\)/i);
     await first.getByRole('button', { name: /^Details/ }).click();
     await expect(first.getByRole('list', { name: 'Where this document is' })).toContainText(/Requested/);

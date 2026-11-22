@@ -317,7 +317,7 @@ function TaskListStatus({ idx }: { idx: Indexes }) {
     return c;
   }, [idx]);
   if (!adapter) return <p className="muted">Task list not connected.</p>;
-  const asOf = adapter.as_of ? instant(adapter.as_of.length === 10 ? `${adapter.as_of}T12:00:00Z` : adapter.as_of, zone, 'short') : 'an unknown date';
+  const asOf = adapter.as_of ? instant(adapter.as_of.length === 10 ? `${adapter.as_of}T12:00:00Z` : adapter.as_of, zone, 'short') : null;
   const sync = async () => {
     setBusy(true);
     setMsg(null);
@@ -336,7 +336,7 @@ function TaskListStatus({ idx }: { idx: Indexes }) {
       {adapter.can_write ? (
         <p>{adapter.note || 'Connected. You can write to it.'}</p>
       ) : (
-        <p>Read-only copy as of {asOf}. New actions wait to be added.</p>
+        <p>{asOf ? `Copy from ${asOf}. You can only read it.` : 'You can only read this copy.'}</p>
       )}
       {states.size > 0 && (
         <ul className="plain-list small muted">

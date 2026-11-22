@@ -27,7 +27,7 @@ import { useData } from '../../state/data';
 import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
-import { decisionStatus } from '../decide/decisionText';
+import { agreeLabel, decisionStatus, initialChoice, shortLabel } from '../decide/decisionText';
 import { ApproveDialog, ReasonDialog } from '../decide/decisionDialogs';
 import { relevanceScore } from '../decide/QuestionsTab';
 import { isPlanQuestion, questionState } from '../../lib/questions';
@@ -212,6 +212,14 @@ function StepThisWeek({ idx, dir, session, setSession }: { idx: Indexes; dir: Di
   );
 }
 
+/** The same wording as the decision card: "Agree: <the choice>" when one is ready, else "Choose: <the decision>". */
+function agreeText(d: Decision, dir: Directory, lookup: ReturnType<typeof keyLookup>, title: string): string {
+  const chosenId = initialChoice(d, dir.me?.id ?? null, dir);
+  const option = (d.data?.options ?? []).find((o) => o.id === chosenId);
+  if (option) return agreeLabel(optionLabel(d, option, lookup));
+  return `Choose: ${shortLabel(title, 4)}`;
+}
+
 function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: Directory; session: Session; setSession: (f: (s: Session) => Session) => void }) {
   const { today } = useData();
   const { snapshot } = useSnapshot();
@@ -269,8 +277,8 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
                   </p>
                 ) : (
                   <div className="row-actions" style={{ marginTop: 0 }}>
-                    <Button variant="secondary" onClick={() => setApproving(d)} aria-label={`Agree: ${title}`}>
-                      Agree
+                    <Button variant="secondary" onClick={() => setApproving(d)}>
+                      {agreeText(d, dir, lookup, title)}
                     </Button>
                     <Button variant="quiet" onClick={() => setReasoning({ d, mode: 'defer' })} aria-label={`Not now: ${title}`}>
                       Not now
@@ -315,7 +323,7 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
   );
 }
 
-function QuestionRow({ q, onOutcome, done }: { q: Question; onOutcome: (outcome: string) => void; done: string | null }) {
+function QuestionRow({ q, lookup, onOutcome, done }: { q: Question; lookup?: ReturnType<typeof keyLookup>; onOutcome: (outcome: string) => void; done: string | null }) {
   const { actions } = useSnapshot();
   const w = useWrite();
   const [answer, setAnswer] = useState('');
@@ -331,7 +339,7 @@ function QuestionRow({ q, onOutcome, done }: { q: Question; onOutcome: (outcome:
   };
   return (
     <Card className="stack">
-      <h3 className="decision__title">{displayQuestion(q) ?? displayTitle(q)}</h3>
+      <h3 className="decision__title">{displayQuestion(q, lookup) ?? displayTitle(q, lookup)}</h3>
       {q.data?.known && (
         <More label="What we know">
           <p className="small preline">{stripCodes(q.data.known)}</p>
@@ -379,18 +387,29 @@ function StepQuestions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
       .map((x) => x.q);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx.questions.length]);
+  const [all, setAll] = useState(false);
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   if (picks.length === 0) return <EmptyState icon="check" title="No questions waiting." />;
+  const FIRST = 3;
+  // A question answered a moment ago stays in view, so focus is not lost.
+  const visible = all ? picks : picks.filter((q, i) => i < FIRST || session.questions.some((o) => o.id === q.id));
   return (
     <div className="stack">
-      <p className="muted">Up to five. Answer, keep open, or skip.</p>
-      {picks.map((q) => (
+      <p className="muted">Answer, keep open, or skip.</p>
+      {visible.map((q) => (
         <QuestionRow
           key={q.id}
           q={q}
+          lookup={lookup}
           done={session.questions.find((o) => o.id === q.id)?.outcome ? `Recorded as ${session.questions.find((o) => o.id === q.id)!.outcome}.` : null}
-          onOutcome={(outcome) => setSession((s) => ({ ...s, questions: [...s.questions.filter((x) => x.id !== q.id), { id: q.id, title: displayQuestion(q) ?? displayTitle(q), outcome }] }))}
+          onOutcome={(outcome) => setSession((s) => ({ ...s, questions: [...s.questions.filter((x) => x.id !== q.id), { id: q.id, title: displayQuestion(q, lookup) ?? displayTitle(q, lookup), outcome }] }))}
         />
       ))}
+      {picks.length > visible.length && (
+        <Button variant="quiet" onClick={() => setAll(true)}>
+          Show all ({picks.length})
+        </Button>
+      )}
     </div>
   );
 }
@@ -757,9 +776,6 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
   return (
     <div className="stack stack--loose">
       <nav aria-label="Review steps">
-        <p className="review-compact" aria-hidden="true">
-          Step {step + 1} of {STEPS.length} · {STEPS[step]}
-        </p>
         <div className="review-bar" aria-hidden="true">
           {STEPS.map((s, i) => (
             <span key={s} className={`review-bar__seg${i < step ? ' is-past' : ''}${i === step ? ' is-current' : ''}`} />

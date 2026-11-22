@@ -27,3 +27,17 @@ export function clearDraft(key: string): void {
     /* ignore */
   }
 }
+
+/** "Discard and leave": every draft in this tab goes at once, before the page changes (not later, when it unmounts). */
+export function clearAllDrafts(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const k = window.sessionStorage.key(i);
+      if (k && k.startsWith(PREFIX)) keys.push(k);
+    }
+    for (const k of keys) window.sessionStorage.removeItem(k);
+  } catch {
+    /* ignore */
+  }
+}

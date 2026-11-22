@@ -304,6 +304,7 @@ function buildMilestones(): BundleRecord[] {
       traveler_scope: ['avery'], phase: 'p1_now_nov2026', priority: 'now', source_status: 'No arrangements yet', review_date: '2026-11-11',
     }),
     ms('W05', 'Explore optional freelance work only if Jun later chooses work', 'planned', 'jun', {
+      plain_title: 'Look at freelance work, only if Jun wants it',
       work_area: 'Future work', workstream_key: 'S05', next_action: 'Nothing to do now. Revisit only if Jun decides to explore work.',
       optional_future_work: true, conditional: 'Only if Jun later chooses to work.', source_status: 'Deferred — conditional',
       dependencies: ['W03'], phase: 'p7_three_year', priority: 'someday', target_window: 'No initial move deadline',
@@ -316,6 +317,7 @@ function buildMilestones(): BundleRecord[] {
       deadline: { date: '2026-11-11', kind: 'user_committed', basis: 'The household agreed to check this by the first review.', source_ids: [], jurisdiction: 'household', timezone: 'Pacific/Honolulu', verified_on: null, traveler: 'household' },
     }),
     ms('W07', 'Build the route-specific immigration document set', 'in_progress', 'together', {
+      plain_title: 'Gather the papers for each visa',
       plain_next: "List the papers the adviser asked for.",
       work_area: 'Documents', workstream_key: 'S04', next_action: 'List documents per adult once each route is known.',
       completion_criteria: 'Adviser-accepted checklist per adult.', dependencies: ['W02', 'W03', 'W06'], dependency_scope: { W02: ['avery'], W03: ['jun'] },
@@ -342,6 +344,7 @@ function buildMilestones(): BundleRecord[] {
       phase: 'p2_nov_dec2026', priority: 'soon', completion_criteria: 'Complete sourced inputs and a recorded funding decision.',
     }),
     ms('W11', 'Verify foreign-residence account policies', 'planned', 'jun', {
+      plain_title: "Check Jun's bank accounts work from Japan",
       work_area: 'Banking', workstream_key: 'S08', next_action: 'List accounts and check each institution\'s policy for Japan residents.',
       dependencies: ['W01', 'W08'], traveler_scope: ['jun'], phase: 'p3_jan_mar2027', priority: 'later',
     }),
@@ -360,17 +363,20 @@ function buildMilestones(): BundleRecord[] {
       traveler_scope: ['mochi'], phase: 'p3_jan_mar2027', priority: 'later', source_ids: ['P01'],
     }),
     ms('W15', 'Prepare the pet import notification and get a response', 'planned', 'jun', {
+      plain_title: 'Tell Japan that Mochi is coming',
       work_area: 'Pet', workstream_key: 'S09', next_action: 'Prepare using the actual arrival airport and date.', dependencies: ['W13', 'W14'],
       traveler_scope: ['mochi'], phase: 'p4_stage_minus_90', priority: 'later', source_ids: ['P01'],
       target_window: 'Internal 60 days before arrival; official minimum 40 days before.',
       deadline: ruleDeadline('RULE-PET-NOTICE-PREP', 'mochi', 'TP', -60, 'internal_target', 'Internal target: 60 days before Mochi\'s Japan arrival.', { source_ids: ['P01'], jurisdiction: 'JP' }),
     }),
     ms('W16', 'Complete the export exam and certification', 'planned', 'jun', {
+      plain_title: "Mochi's export vet visit",
       work_area: 'Pet', workstream_key: 'S09', next_action: 'Book the accredited vet and endorsement well ahead.', dependencies: ['W13', 'W15'],
       traveler_scope: ['mochi'], phase: 'p5_final_60_30_14', priority: 'later', collaborators: ['Veterinarian'], source_ids: ['P01'],
       deadline: ruleDeadline('RULE-PET-EXAM-WINDOW', 'mochi', 'DP', -10, 'legal', 'The exam window opens 10 days before boarding.', { source_ids: ['P01'], jurisdiction: 'US-HI', timezone: 'Pacific/Honolulu' }),
     }),
     ms('W17', "Reconcile both adults' current treatment needs", 'planned', 'together', {
+      plain_title: 'List the medicines we each take',
       work_area: 'Care', workstream_key: 'S10', next_action: 'Each adult confirms current medicines with their own clinician.', collaborators: ['Clinicians'],
       traveler_scope: ['avery', 'jun'], phase: 'p2_nov_dec2026', priority: 'soon', completion_criteria: 'Clinician-approved list for each adult.',
     }),
@@ -384,6 +390,7 @@ function buildMilestones(): BundleRecord[] {
       phase: 'p3_jan_mar2027', priority: 'later',
     }),
     ms('W20', 'Cancel the gym membership', 'eliminated', 'jun', {
+      plain_title: 'Cancel the gym',
       work_area: 'US accounts', workstream_key: 'S12', next_action: 'None.', status_reason: 'Superseded: the membership is being transferred instead.',
       phase: 'p4_stage_minus_90', source_status: 'Dropped',
     }),
@@ -553,8 +560,9 @@ function buildDecisions(): BundleRecord[] {
   ];
 }
 
-function risk(key: string, title: string, kind: RiskData['raid_kind'], severity: RiskData['severity'], linked: string[]): BundleRecord {
+function risk(key: string, title: string, kind: RiskData['raid_kind'], severity: RiskData['severity'], linked: string[], plainTitle?: string): BundleRecord {
   const data: RiskData = {
+    ...(plainTitle ? { plain_title: plainTitle } : {}),
     raid_kind: kind, trigger: `What would show that "${title.toLowerCase()}" is happening (fictional).`, mitigation: 'Check early and keep alternatives open.',
     fallback: 'Delay the affected stage and use funded temporary arrangements.', review_basis: 'Each commitment gate', severity, escalation_trigger: severity === 'critical' ? 'Any sign of delay beyond one month.' : null,
     linked_records: linked,
@@ -564,11 +572,11 @@ function risk(key: string, title: string, kind: RiskData['raid_kind'], severity:
 
 function buildRisks(): BundleRecord[] {
   return [
-    risk('R01', "Avery's route is not established in time", 'risk', 'critical', ['W02', 'W04']),
-    risk('R02', 'Initial funding assumes only verified income', 'assumption', 'high', ['W09', 'W10']),
-    risk('R03', "Mochi's records are incomplete", 'issue', 'high', ['W12', 'W13']),
-    risk('R04', "Jun's route depends on Avery's route", 'dependency', 'medium', ['W03', 'W02']),
-    risk('R05', 'Storage contract differs from the recorded dates', 'risk', 'low', ['W23']),
+    risk('R01', "Avery's route is not established in time", 'risk', 'critical', ['W02', 'W04'], "Avery's visa may come too late"),
+    risk('R02', 'Initial funding assumes only verified income', 'assumption', 'high', ['W09', 'W10'], 'We only count income we can prove'),
+    risk('R03', "Mochi's records are incomplete", 'issue', 'high', ['W12', 'W13'], "Mochi's vet records have gaps"),
+    risk('R04', "Jun's route depends on Avery's route", 'dependency', 'medium', ['W03', 'W02'], "Jun's visa waits on Avery's"),
+    risk('R05', 'Storage contract differs from the recorded dates', 'risk', 'low', ['W23'], 'The storage dates may be wrong'),
   ];
 }
 
@@ -585,13 +593,13 @@ function doc(key: string, title: string, d: Partial<DocumentData>): BundleRecord
 
 function buildDocuments(): BundleRecord[] {
   return [
-    doc('DOC01', 'Move scope and decision receipt', { for_whom: 'Household', source_status: 'Scope confirmed', received_at: '2026-10-20', reviewed_at: '2026-10-20', linked_records: ['W01'] }),
+    doc('DOC01', 'Move scope and decision receipt', { plain_title: 'Our signed move plan', for_whom: 'Household', source_status: 'Scope confirmed', received_at: '2026-10-20', reviewed_at: '2026-10-20', linked_records: ['W01'] }),
     doc('DOC02', 'Passports and renewal receipts', { traveler_scope: ['avery', 'jun'], requested_at: '2026-10-22', linked_records: ['W06'], expiry: null }),
     doc('DOC03', 'Marriage and civil records with translations', { for_whom: 'Both adults', traveler_scope: ['avery', 'jun'], linked_records: ['W07'] }),
-    doc('DOC04', "Avery's employer support letter", { for_whom: 'Avery', traveler_scope: ['avery'], requested_at: '2026-10-24', linked_records: ['W04'], refresh_trigger: 'Refresh near filing' }),
-    doc('DOC05', "Jun's nonworking route determination", { for_whom: 'Jun', traveler_scope: ['jun'], linked_records: ['W03'] }),
+    doc('DOC04', "Avery's employer support letter", { plain_title: "Avery's letter from work", for_whom: 'Avery', traveler_scope: ['avery'], requested_at: '2026-10-24', linked_records: ['W04'], refresh_trigger: 'Refresh near filing' }),
+    doc('DOC05', "Jun's nonworking route determination", { plain_title: "Jun's visa decision", for_whom: 'Jun', traveler_scope: ['jun'], linked_records: ['W03'] }),
     doc('DOC06', "Mochi's vet records and microchip details", { for_whom: 'Mochi', traveler_scope: ['mochi'], requested_at: '2026-10-18', received_at: '2026-10-25', source_status: 'Received; not yet reviewed', linked_records: ['W12'], expiry: '2027-03-31' }),
-    doc('DOC07', "Mochi's export certificate", { for_whom: 'Mochi', traveler_scope: ['mochi'], needed_by: 'Within the boarding window', linked_records: ['W16'], refresh_trigger: 'Reissue if travel dates change' }),
+    doc('DOC07', "Mochi's export certificate", { plain_title: "Mochi's travel certificate", for_whom: 'Mochi', traveler_scope: ['mochi'], needed_by: 'Within the boarding window', linked_records: ['W16'], refresh_trigger: 'Reissue if travel dates change' }),
     doc('DOC08', 'Storage contract', { for_whom: 'Household', received_at: '2026-10-15', reviewed_at: '2026-10-26', accepted_by: null, linked_records: ['W23'] }),
   ];
 }
@@ -665,12 +673,12 @@ function arrival(key: string, windowText: string, wk: ArrivalData['window_key'],
 
 function buildArrival(): BundleRecord[] {
   return [
-    arrival('A01', 'T: arrival day for each adult', 'arrival_day', 'Inspect and keep each adult\'s landing and residence documents.', ['avery', 'jun'], { source_ids: ['I01'] }),
-    arrival('A02', 'TP: Mochi arrival day', 'arrival_day', 'Complete the quarantine inspection with Mochi and the endorsed certificate.', ['mochi'], { source_ids: ['P01'] }),
+    arrival('A01', 'T: arrival day for each adult', 'arrival_day', 'Inspect and keep each adult\'s landing and residence documents.', ['avery', 'jun'], { source_ids: ['I01'], plain_title: 'Keep our landing papers safe' }),
+    arrival('A02', 'TP: Mochi arrival day', 'arrival_day', 'Complete the quarantine inspection with Mochi and the endorsed certificate.', ['mochi'], { source_ids: ['P01'], plain_title: "Mochi's quarantine check" }),
     arrival('A03', 'T to T+3: settling target', 'first_week', 'Check home access, food, water, phone and emergency contacts.', ['avery', 'jun']),
-    arrival('A04', 'Within 14 days of residence', 'first_week', 'File the residence notification at the ward office.', ['avery', 'jun'], { source_ids: ['TA01'], status_reason: null }),
+    arrival('A04', 'Within 14 days of residence', 'first_week', 'File the residence notification at the ward office.', ['avery', 'jun'], { source_ids: ['TA01'], status_reason: null, plain_title: 'Register our address at the ward office' }),
     arrival('A05', 'Day 30', 'day_30', 'Review costs against the plan and fix gaps.', ['avery', 'jun']),
-    arrival('A06', 'Day 90', 'day_90', 'Decide whether the settling period is closed.', ['avery', 'jun']),
+    arrival('A06', 'Day 90', 'day_90', 'Decide whether the settling period is closed.', ['avery', 'jun'], { plain_title: 'Decide if we have settled in' }),
   ];
 }
 

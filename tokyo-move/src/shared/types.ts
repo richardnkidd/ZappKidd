@@ -405,7 +405,7 @@ export interface RiskData extends PlainFields {
 
 /* ---------- Documents ---------- */
 
-export interface DocumentData {
+export interface DocumentData extends PlainFields {
   sensitivity?: Sensitivity;
   /** Travelers who carry or need this document on arrival (for the arrival pack). */
   carry_on_arrival?: string[];
@@ -507,7 +507,7 @@ export interface ScenarioSettings {
 
 /* ---------- Arrival / horizon / future work ---------- */
 
-export interface ArrivalData {
+export interface ArrivalData extends PlainFields {
   window: string; // source text
   window_key: 'arrival_day' | 'first_week' | 'day_30' | 'day_60' | 'day_90' | 'ongoing';
   trigger: string;

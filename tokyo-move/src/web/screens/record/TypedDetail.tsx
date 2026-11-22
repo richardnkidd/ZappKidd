@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { displayTitle } from '@shared/plain';
 import { zoneLabel } from '@shared/dates';
 import { ANCHOR_CONFIDENCE_LABEL, JURISDICTION_LABEL, PLAN_RULE_STATUS_LABEL, RULE_BOUND_LABEL, reviewerLabel, VERIFICATION_LABEL } from '@shared/labels';
 import type { AnchorData, DeadlineRuleData, ExistingCommitmentData, ReviewSessionData } from '@shared/types';
@@ -31,7 +32,7 @@ function AnchorDetail({ record, dir }: { record: AnyRecord; dir: Directory }) {
   const [edit, setEdit] = useState(false);
   return (
     <Card className="stack">
-      <p>{d.meaning || record.title}</p>
+      <p>{d.meaning || displayTitle(record)}</p>
       <p>
         <DateText date={d.date ?? null} />
         {d.confidence && d.confidence !== 'awaiting' && <span className="chip chip--neutral chip--sm"> {ANCHOR_CONFIDENCE_LABEL[d.confidence] ?? d.confidence}</span>}
@@ -60,7 +61,7 @@ function RuleDetail({ record, idx }: { record: AnyRecord; idx: Indexes }) {
   const source = safeHref(d.source_url);
   return (
     <Card className="stack">
-      <p>{d.label || record.title}</p>
+      <p>{d.label || displayTitle(record)}</p>
       <div className="item__meta">
         {d.kind && <DeadlineBadge kind={d.kind} />}
         {d.jurisdiction && <span className="chip chip--neutral chip--sm">{JURISDICTION_LABEL[d.jurisdiction] ?? d.jurisdiction}</span>}
@@ -93,7 +94,7 @@ function RuleDetail({ record, idx }: { record: AnyRecord; idx: Indexes }) {
           <div className="fact fact--wide">
             <dt>Other end of the window</dt>
             <dd>
-              <RecordLink id={pair.id}>{pair.title}</RecordLink>
+              <RecordLink id={pair.id}>{displayTitle(pair)}</RecordLink>
             </dd>
           </div>
         )}
@@ -101,7 +102,7 @@ function RuleDetail({ record, idx }: { record: AnyRecord; idx: Indexes }) {
           <div className="fact fact--wide">
             <dt>Replaced by</dt>
             <dd>
-              <RecordLink id={replacedBy.id}>{replacedBy.title}</RecordLink>
+              <RecordLink id={replacedBy.id}>{displayTitle(replacedBy)}</RecordLink>
             </dd>
           </div>
         )}

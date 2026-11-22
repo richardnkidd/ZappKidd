@@ -6,7 +6,7 @@
  * Original text is untouched in Source & history.
  */
 import { isCivilDate } from '@shared/dates';
-import { KEY_SHAPE, PAREN_KEYS, looksLikeKey as sharedLooksLike } from '@shared/plain';
+import { KEY_SHAPE, PAREN_KEYS, looksLikeKey as sharedLooksLike, displayTitle } from '@shared/plain';
 import { civil } from './format';
 import type { Indexes } from './records';
 
@@ -57,10 +57,10 @@ export function proseTokens(raw: string | null | undefined, idx: Indexes | null 
         last = offset + m.length;
         if (rec) {
           flush();
-          out.push({ kind: 'link', id: rec.id, title: rec.title });
+          out.push({ kind: 'link', id: rec.id, title: displayTitle(rec) });
         }
       } else if (rec) {
-        links.push({ id: rec.id, title: rec.title });
+        links.push({ id: rec.id, title: displayTitle(rec) });
       }
       return m;
     });

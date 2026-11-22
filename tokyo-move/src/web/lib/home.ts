@@ -138,7 +138,7 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
       id: m.id,
       recordId: m.id,
       kind: 'milestone',
-      title: m.title,
+      title: displayTitle(m),
       owner: m.owner,
       ownerProposed: m.owner_proposed,
       nextAction: m.data?.next_action || null,
@@ -164,7 +164,7 @@ export function selectNow(idx: Indexes, opts: NowOptions): NowItem[] {
       id: c.id,
       recordId: c.id,
       kind: 'commitment',
-      title: c.title,
+      title: displayTitle(c),
       owner: c.owner,
       ownerProposed: c.owner_proposed,
       nextAction: c.data.meaning || null,
@@ -291,7 +291,7 @@ export function selectBlocked(idx: Indexes, filter: OwnerFilter, ctx: FilterCont
     if (m.data?.optional_future_work) continue;
     if (m.status !== 'blocked' && m.status !== 'waiting_external') continue;
     if (!matchesOwnerFilter(filter, m.owner, m.status, ctx, m)) continue;
-    const waitingOn = unmetDependencyKeys(m, idx).map((k) => ({ key: k, title: idx.byKey.get(k)?.title ?? k }));
+    const waitingOn = unmetDependencyKeys(m, idx).map((k) => ({ key: k, title: ((r) => (r ? displayTitle(r) : k))(idx.byKey.get(k)) }));
     out.push({ record: m, reason: m.data?.status_reason?.trim() || null, waitingOn, kind: m.status === 'blocked' ? 'blocked' : 'waiting' });
   }
   return out.sort((a, b) => (a.kind === b.kind ? a.record.key.localeCompare(b.record.key, undefined, { numeric: true }) : a.kind === 'blocked' ? -1 : 1));

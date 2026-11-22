@@ -40,6 +40,7 @@ export const STAGE_LABEL: Record<string, string> = {
   estimate: 'Estimate',
   quote: 'Quote',
   approved_commitment: 'Approved',
+  not_committed: 'Not agreed yet',
   paid: 'Paid',
   partially_paid: 'Partly paid',
   unknown: 'Not known yet',

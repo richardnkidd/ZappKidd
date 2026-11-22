@@ -295,13 +295,14 @@ describe('couple review summary', () => {
 
 describe('printable arrival pack', () => {
   const deadlines = collectDeadlines({ records, people, task_links: taskLinks, today: TODAY });
+  // The copies below take their own titles, so the demo record's plain title is cleared on each.
   const base = records.find((r) => r.type === 'arrival')!;
   const sensitiveRecords = [
     ...records,
-    { ...base, id: 'arrival:ASENS', key: 'ASENS', title: 'Open a local account', data: { ...(base.data as object), window_key: 'first_week', action: 'Open an account', traveler_scope: [], sensitivity: 'financial' } } as BaseRecord,
-    { ...base, id: 'arrival:AHEALTH', key: 'AHEALTH', title: 'Register with a clinic', data: { ...(base.data as object), window_key: 'first_week', action: 'Register', traveler_scope: [], sensitivity: 'medical' } } as BaseRecord,
+    { ...base, id: 'arrival:ASENS', key: 'ASENS', title: 'Open a local account', data: { ...(base.data as object), plain_title: null, window_key: 'first_week', action: 'Open an account', traveler_scope: [], sensitivity: 'financial' } } as BaseRecord,
+    { ...base, id: 'arrival:AHEALTH', key: 'AHEALTH', title: 'Register with a clinic', data: { ...(base.data as object), plain_title: null, window_key: 'first_week', action: 'Register', traveler_scope: [], sensitivity: 'medical' } } as BaseRecord,
     // Words that used to look sensitive, but the record is not marked: it stays in the main pack.
-    { ...base, id: 'arrival:AVET', key: 'AVET', title: 'Show the vaccination papers at the airport', data: { ...(base.data as object), window_key: 'arrival_day', action: 'Show the vaccination and insurance papers', traveler_scope: [], sensitivity: null, review_note: 'Keep the originals in hand luggage.' } } as BaseRecord,
+    { ...base, id: 'arrival:AVET', key: 'AVET', title: 'Show the vaccination papers at the airport', data: { ...(base.data as object), plain_title: null, window_key: 'arrival_day', action: 'Show the vaccination and insurance papers', traveler_scope: [], sensitivity: null, review_note: 'Keep the originals in hand luggage.' } } as BaseRecord,
   ];
   const sidx = buildIndexes(sensitiveRecords, taskLinks);
   const adult = people.find((p) => p.kind === 'adult')!;

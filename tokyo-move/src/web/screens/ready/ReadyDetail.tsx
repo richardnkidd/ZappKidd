@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { displayTitle } from '@shared/plain';
 import { Link, useParams } from 'react-router';
 import type { ComputedDeadline, GateStatus, TravelerReadiness } from '@shared/engine-contracts';
 import { travelerDeadlines } from '@shared/deadlines';
@@ -57,7 +58,7 @@ function GateList({
                   {waiting.map((r, i) => (
                     <span key={r.id}>
                       {i > 0 && ', '}
-                      <RecordLink id={r.id}>{r.title}</RecordLink>
+                      <RecordLink id={r.id}>{displayTitle(r)}</RecordLink>
                     </span>
                   ))}
                 </p>
@@ -281,10 +282,10 @@ function ReadyBody({ personId, idx, dir }: { personId: string; idx: Indexes; dir
               return (
                 <li key={n.record_id} className="gate">
                   <RecordLink id={n.record_id} className="gate__title">
-                    {n.title}
+                    {rec ? displayTitle(rec) : n.title}
                   </RecordLink>
                   <p className="small muted">{plain(n.reason)}</p>
-                  {rec && <AppliesToControl record={rec} personId={personId} name={person.display_name} onSaved={() => setNotice(`Saved. “${n.title}” has moved out of this list.`)} />}
+                  {rec && <AppliesToControl record={rec} personId={personId} name={person.display_name} onSaved={() => setNotice(`Saved. “${rec ? displayTitle(rec) : n.title}” has moved out of this list.`)} />}
                 </li>
               );
             })}

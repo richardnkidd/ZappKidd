@@ -77,6 +77,7 @@ test.describe('Time zones', () => {
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       // Start every page from Honolulu (the household's own zone) and record the dates.
       await chooseZone(page, 'Honolulu (HST)');
+      await expect(page.locator('main time[datetime]').first()).toBeAttached();
       const baseline = await dateOnlyTimes(page);
       expect(Object.keys(baseline).length, `${path} shows at least one date-only value`).toBeGreaterThan(0);
 
@@ -119,11 +120,16 @@ test.describe('Time zones', () => {
   test('the zone choice is remembered for this person, and the dates are the same', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/plan?view=list');
     await loaded(page);
+    // The list draws once the data is in; wait for its dates before reading them (loaded() alone can run first).
+    const dates = page.locator('main time[datetime]');
+    await expect(dates.first()).toBeAttached();
     const baseline = await dateOnlyTimes(page);
+    expect(Object.keys(baseline).length).toBeGreaterThan(0);
     await chooseZone(page, 'Tokyo (JST)');
     await page.reload();
     await loaded(page);
     await expect(page.getByRole('button', { name: /Tokyo time/ })).toBeVisible();
+    await expect(dates.first()).toBeAttached();
     expect(await dateOnlyTimes(page)).toEqual(baseline);
   });
 

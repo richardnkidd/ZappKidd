@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { baseUrlFor } from './support/env';
-import { addDays, expect, loaded, test, todayInZone, type Api } from './support/fixtures';
+import { addDays, expect, loaded, openMore, test, todayInZone, type Api } from './support/fixtures';
 
 /**
  * Readiness and dates:
@@ -271,6 +271,8 @@ test.describe('The pet’s dates', () => {
 
       await example.click();
       await expect(needed).toHaveValue('2027-07-01');
+      // The answer comes first; every moved date sits behind "See every date and cost".
+      await openMore(page, 'See every date and cost');
       await expect(page.getByRole('region', { name: /^What would move/ })).toBeVisible();
 
       // Never saved: the plan still has no arrival dates, and a reload forgets the example.

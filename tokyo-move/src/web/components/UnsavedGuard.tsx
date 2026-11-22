@@ -3,6 +3,7 @@ import { useBlocker } from 'react-router';
 import { Button } from './Controls';
 import { Dialog } from './Dialog';
 import { useSnapshot } from '../state/snapshot';
+import { clearAllDrafts } from '../lib/drafts';
 
 /**
  * Stops a page change (a link, the back button) while a form holds unsaved text, and asks. Closing the tab or reloading
@@ -38,7 +39,13 @@ export function UnsavedGuard() {
           <Button variant="primary" onClick={() => blocker.reset?.()}>
             Keep editing
           </Button>
-          <Button variant="quiet" onClick={() => blocker.proceed?.()}>
+          <Button
+            variant="quiet"
+            onClick={() => {
+              clearAllDrafts();
+              blocker.proceed?.();
+            }}
+          >
             Discard and leave
           </Button>
         </>

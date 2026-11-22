@@ -153,7 +153,7 @@ export function PropertyCard({ record, idx, headingLevel = 3 }: { record: AnyRec
       </H>
       {d.known_context && <p className="preline">{stripCodes(d.known_context, lookup)}</p>}
       {hasMore && (
-        <More label="More" hint={d.obligation || record.title}>
+        <More label="More" hint={d.obligation || displayTitle(record)}>
           <dl className="facts facts--tight">
             {d.people_resources && (
               <div className="fact">

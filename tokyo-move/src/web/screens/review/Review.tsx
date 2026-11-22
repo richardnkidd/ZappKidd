@@ -27,7 +27,7 @@ import { useData } from '../../state/data';
 import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
-import { approvalSummary } from '../decide/decisionText';
+import { decisionStatus } from '../decide/decisionText';
 import { ApproveDialog, ReasonDialog } from '../decide/decisionDialogs';
 import { relevanceScore } from '../decide/QuestionsTab';
 import { isPlanQuestion, questionState } from '../../lib/questions';
@@ -197,7 +197,7 @@ function StepThisWeek({ idx, dir, session, setSession }: { idx: Indexes; dir: Di
                 rec={m}
                 dir={dir}
                 done={false}
-                onAccepted={() => setSession((s) => ({ ...s, accepted: [...s.accepted, { id: m.id, title: m.title, owner: dir.ownerLabel(m.owner) }] }))}
+                onAccepted={() => setSession((s) => ({ ...s, accepted: [...s.accepted, { id: m.id, title: displayTitle(m), owner: dir.ownerLabel(m.owner) }] }))}
               />
             ))}
           </ul>
@@ -237,19 +237,19 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
   const lookup = keyLookup(idx.byKey);
   return (
     <div className="stack">
-      <p className="muted">Up to three. Agree, or put one off.</p>
+      <p className="muted">Up to three. Agree, or say not now.</p>
       <ul className="stack">
         {shown.map((d) => {
           const out = session.decisions.find((o) => o.id === d.id);
-          const summary = approvalSummary(d, dir);
+          const status = decisionStatus(d, dir.me?.id ?? null, dir);
           const question = displayQuestion(d, lookup);
           const title = displayTitle(d, lookup);
           return (
             <li key={d.id}>
               <Card tone={d.status === 'proposed' ? 'proposal' : 'default'} className="stack">
                 <h3 className="decision__title">{question ?? title}</h3>
-                <p className={`approval approval--${summary.state}`}>
-                  <Icon name={summary.state === 'agreed' ? 'check' : 'clock'} size={16} /> {summary.text}
+                <p className={`dcard__status dcard__status--${status.kind}`}>
+                  <Icon name={status.icon} size={16} /> {status.text}
                 </p>
                 {(d.data?.options ?? []).length > 0 && (
                   <More label={`Choices (${d.data.options.length})`} hint={title}>
@@ -272,8 +272,11 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
                     <Button variant="secondary" onClick={() => setApproving(d)} aria-label={`Agree: ${title}`}>
                       Agree
                     </Button>
-                    <Button variant="quiet" onClick={() => setReasoning({ d, mode: 'defer' })} aria-label={`Put off: ${title}`}>
-                      Put off
+                    <Button variant="quiet" onClick={() => setReasoning({ d, mode: 'defer' })} aria-label={`Not now: ${title}`}>
+                      Not now
+                    </Button>
+                    <Button variant="quiet" onClick={() => setReasoning({ d, mode: 'reject' })} aria-label={`None of these work: ${title}`}>
+                      None of these work
                     </Button>
                     <RecordLink id={d.id} className="more-link">
                       Open details
@@ -303,8 +306,8 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
           mode={reasoning.mode}
           onClose={() => setReasoning(null)}
           onDone={() => {
-            const d = reasoning.d;
-            setSession((s) => ({ ...s, decisions: [...s.decisions.filter((x) => x.id !== d.id), { id: d.id, title: displayTitle(d), outcome: 'put off for now' }] }));
+            const { d, mode } = reasoning;
+            setSession((s) => ({ ...s, decisions: [...s.decisions.filter((x) => x.id !== d.id), { id: d.id, title: displayTitle(d), outcome: mode === 'reject' ? 'none of these work' : 'put off for now' }] }));
           }}
         />
       )}
@@ -412,7 +415,7 @@ function StepWrapUp({ session, idx, dir, since, prepare, onSaved }: { session: S
     () =>
       idx.decisions
         .filter((d) => since !== null && d.status === 'approved' && d.data?.decided_at && d.data.decided_at > since && !session.decisions.some((o) => o.id === d.id))
-        .map((d) => ({ id: d.id, title: d.title })),
+        .map((d) => ({ id: d.id, title: displayTitle(d) })),
     [idx, since, session.decisions],
   );
   const { text, recordIds } = buildReviewSummary({
@@ -476,7 +479,7 @@ function StepWrapUp({ session, idx, dir, since, prepare, onSaved }: { session: S
             {recordIds.map((id, i) => (
               <span key={id}>
                 {i > 0 && ', '}
-                <RecordLink id={id}>{idx.byId.get(id)?.title ?? 'A record'}</RecordLink>
+                <RecordLink id={id}>{((r) => (r ? displayTitle(r) : 'A record'))(idx.byId.get(id))}</RecordLink>
               </span>
             ))}
           </p>
@@ -576,7 +579,7 @@ function ReviewStart({
                   <li key={r.id} className="audit-line">
                     <span className="audit-line__text">
                       <RecordLink id={r.id} className="audit-line__link">
-                        {r.title}
+                        {displayTitle(r)}
                       </RecordLink>
                       {d.participants?.length ? <span className="muted"> · with {d.participants.map((p) => dir.nameOf(p)).join(' and ')}</span> : null}
                     </span>

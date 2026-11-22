@@ -108,7 +108,7 @@ export function ContactCard({ record, idx, headingLevel = 3 }: { record: AnyReco
       </H>
       {d.role && <p className="muted">{stripCodes(d.role, lookup)}</p>}
       {hasMore && (
-        <More label="More" hint={d.name || record.title}>
+        <More label="More" hint={d.name || displayTitle(record)}>
           <div className="stack stack--tight">
             {unusual && (
               <p className="boundary">
@@ -154,7 +154,7 @@ function RelationshipDialog({ record, onClose }: { record: AnyRecord; onClose: (
       open
       onClose={onClose}
       title="Change relationship"
-      description={d.name || record.title}
+      description={d.name || displayTitle(record)}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>
@@ -367,7 +367,7 @@ export function FindingCard({ record, idx, headingLevel = 3 }: { record: AnyReco
       </H>
       {d.impact && <p className="preline">{stripCodes(d.impact, lookup)}</p>}
       {hasMore && (
-        <More label="More" hint={record.title}>
+        <More label="More" hint={displayTitle(record)}>
           <dl className="facts facts--tight">
             {d.recommendation && (
               <div className="fact fact--wide">
@@ -440,7 +440,7 @@ function DispositionDialog({ record, onClose }: { record: AnyRecord; onClose: ()
       open
       onClose={onClose}
       title="What should happen with this finding?"
-      description={record.title}
+      description={displayTitle(record)}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>

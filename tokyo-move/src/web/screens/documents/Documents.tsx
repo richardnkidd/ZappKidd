@@ -275,7 +275,7 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
       open
       onClose={onClose}
       title="Update this document"
-      description={`${record.title}. Status, dates and a link only. Never the document.`}
+      description={`${displayTitle(record)}. Status, dates and a link only. Never the document.`}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>

@@ -1,4 +1,5 @@
 import { Button } from '../../components/Controls';
+import { displayTitle } from '@shared/plain';
 import { ConflictBanner } from '../../components/Feedback';
 import type { AnyRecord } from '../../lib/records';
 import { dataOf } from '../../lib/records';
@@ -31,7 +32,7 @@ export function AppliesToControl({ record, personId, name, onSaved, compact = fa
     // One line of Yes / No / Not sure; the question is the group's name for screen readers.
     return (
       <div className="applies applies--compact">
-        <div role="group" aria-label={`Does “${record.title}” apply to ${name}?`} className="applies__choices">
+        <div role="group" aria-label={`Does “${displayTitle(record)}” apply to ${name}?`} className="applies__choices">
           {CHOICES.map((c) => (
             <Button key={c.value} variant="secondary" small className="applies__btn" aria-pressed={now === c.value} disabled={w.busy} onClick={() => choose(c.value)}>
               {c.label}

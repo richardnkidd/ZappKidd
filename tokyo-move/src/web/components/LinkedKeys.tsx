@@ -1,4 +1,5 @@
 import { Fragment } from 'react';
+import { displayTitle } from '@shared/plain';
 import type { Indexes } from '../lib/records';
 import { RecordLink } from './RecordLink';
 
@@ -12,7 +13,7 @@ export function LinkedKeys({ keys, idx, label = 'Related' }: { keys: readonly st
       {found.map((r, i) => (
         <Fragment key={r.id}>
           {i > 0 && ', '}
-          <RecordLink id={r.id}>{r.title}</RecordLink>
+          <RecordLink id={r.id}>{displayTitle(r)}</RecordLink>
         </Fragment>
       ))}
     </p>

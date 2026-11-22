@@ -165,12 +165,12 @@ function Dependencies({ record, idx, dir, level }: { record: Milestone; idx: Ind
   const direct = record.data?.dependencies ?? [];
 
   const links = chain.ok
-    ? chain.value.map((c) => ({ key: c.key, title: c.title, met: c.met, depth: c.depth, status: c.status, reason: (c as { reason?: string }).reason ?? null }))
+    ? chain.value.map((c) => ({ key: c.key, title: ((r) => (r ? displayTitle(r) : c.title))(idx.byKey.get(c.key)), met: c.met, depth: c.depth, status: c.status, reason: (c as { reason?: string }).reason ?? null }))
     : direct
         .filter((k) => !who || !scope[k] || scope[k]!.includes(who))
         .map((k) => {
           const r = idx.byKey.get(k);
-          return { key: k, title: r?.title ?? k, met: r ? ['completed', 'not_applicable', 'eliminated'].includes(r.status) : false, depth: 1, status: r?.status ?? '', reason: null as string | null };
+          return { key: k, title: r ? displayTitle(r) : k, met: r ? ['completed', 'not_applicable', 'eliminated'].includes(r.status) : false, depth: 1, status: r?.status ?? '', reason: null as string | null };
         });
   const related = ((record.data as { related?: unknown })?.related ?? []) as unknown;
   const relatedKeys = Array.isArray(related) ? related.filter((x): x is string => typeof x === 'string') : [];

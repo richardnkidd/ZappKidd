@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { displayTitle } from '@shared/plain';
 import { isCivilDate } from '@shared/dates';
 import type { CostData, CostPhase, Currency, FundingData, Money } from '@shared/types';
 import { Button, Field, Select, TextArea, TextInput } from '../../components/Controls';
@@ -116,7 +117,7 @@ export function CostLineDialog({ open, onClose, record }: { open: boolean; onClo
       open={open}
       onClose={onClose}
       title="Edit this amount"
-      description={record.title}
+      description={displayTitle(record)}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>

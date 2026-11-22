@@ -1,4 +1,5 @@
 import type { AuditEntry, WorkStatus } from '@shared/types';
+import { displayTitle } from '@shared/plain';
 import { FIELD_LABEL, WORK_STATUS_LABEL } from '@shared/labels';
 import type { Directory, Indexes } from './records';
 import { civil, truncate } from './format';
@@ -63,7 +64,7 @@ function joinList(items: string[]): string {
 export function describeAudit(e: AuditEntry, idx: Indexes, dir: Directory): AuditLine {
   const rec = e.record_id ? idx.byId.get(e.record_id) : undefined;
   const afterTitle = asObj(e.after)?.title;
-  const title = rec?.title ?? (typeof afterTitle === 'string' ? afterTitle : null);
+  const title = rec ? displayTitle(rec) : typeof afterTitle === 'string' ? afterTitle : null;
   const quoted = title ? `“${truncate(title, 70)}”` : 'an item';
   const who = dir.nameOf(e.actor);
   let what: string;

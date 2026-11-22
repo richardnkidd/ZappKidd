@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { displayTitle } from '@shared/plain';
 import { isCivilDate } from '@shared/dates';
 import { previewAnchorChange } from '@shared/deadlines';
 import type { AnchorData } from '@shared/types';
@@ -56,7 +57,7 @@ export function AnchorDialog({ record, onClose }: { record: AnyRecord; onClose: 
     <Dialog
       open
       onClose={onClose}
-      title={a.meaning || record.title}
+      title={a.meaning || displayTitle(record)}
       description="Check what moves before you save. Each traveler’s dates are separate: changing one person’s date never moves another’s."
       footer={
         <>

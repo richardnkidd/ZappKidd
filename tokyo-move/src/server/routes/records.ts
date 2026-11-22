@@ -4,12 +4,15 @@ import { requireAuth } from '../auth/context';
 import { parseWith } from '../http/validate';
 import { listRecordRows, rowToRecord } from '../domain/records-repo';
 import { changeStatus, createRecord, getRecordDetail, patchRecord } from '../domain/records-service';
-import { approveDecision, deferDecision, rejectDecision } from '../domain/decisions-service';
+import { approveDecision, deferDecision, rejectDecision, reopenDecision } from '../domain/decisions-service';
 import { listRecordsQuery } from '../domain/schemas';
-import { buildSnapshot } from '../domain/snapshot-service';
+import { buildSnapshot, markSeen } from '../domain/snapshot-service';
 
 export function registerRecordRoutes(app: FastifyInstance, deps: Deps): void {
   app.get('/api/snapshot', async (request) => buildSnapshot(deps, requireAuth(request)));
+
+  /** Mark the plan as seen now; returns the previous value. Not a record change, so it is not audited. */
+  app.post('/api/me/seen', async (request) => markSeen(deps, requireAuth(request)));
 
   app.get('/api/records', async (request) => {
     const ctx = requireAuth(request);
@@ -31,9 +34,9 @@ export function registerRecordRoutes(app: FastifyInstance, deps: Deps): void {
     record: patchRecord(deps, requireAuth(request), request.params.id, request.body),
   }));
 
-  app.post<{ Params: { id: string } }>('/api/records/:id/status', async (request) => ({
-    record: changeStatus(deps, requireAuth(request), request.params.id, request.body),
-  }));
+  app.post<{ Params: { id: string } }>('/api/records/:id/status', async (request) =>
+    changeStatus(deps, requireAuth(request), request.params.id, request.body),
+  );
 
   app.post<{ Params: { id: string } }>('/api/decisions/:id/approve', async (request) =>
     approveDecision(deps, requireAuth(request), request.params.id, request.body),
@@ -43,5 +46,8 @@ export function registerRecordRoutes(app: FastifyInstance, deps: Deps): void {
   );
   app.post<{ Params: { id: string } }>('/api/decisions/:id/defer', async (request) =>
     deferDecision(deps, requireAuth(request), request.params.id, request.body),
+  );
+  app.post<{ Params: { id: string } }>('/api/decisions/:id/reopen', async (request) =>
+    reopenDecision(deps, requireAuth(request), request.params.id, request.body),
   );
 }

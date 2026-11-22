@@ -501,7 +501,18 @@ export function applyDecisionEvaluation(state: RecordState, people: Person[], no
 
 /* ---------- status ---------- */
 
-export function changeStatus(deps: Deps, ctx: AuthContext, id: string, rawBody: unknown): ApiRecord {
+/**
+ * Result of a status change. `previous_status` is the status before this change (for a per-traveler change, that
+ * traveler's earlier status, or null when they had none). `undo_audit_id` is the history entry that
+ * POST /api/audit/:id/undo restores; it works while nobody else has changed the record.
+ */
+export interface StatusChangeResult {
+  record: ApiRecord;
+  previous_status: string | null;
+  undo_audit_id: string;
+}
+
+export function changeStatus(deps: Deps, ctx: AuthContext, id: string, rawBody: unknown): StatusChangeResult {
   const body = parseWith(statusBody, rawBody);
   const people = listPeople(deps.db, ctx.householdId);
   const reason = body.reason?.trim() ? body.reason.trim() : null;
@@ -546,6 +557,7 @@ export function changeStatus(deps: Deps, ctx: AuthContext, id: string, rawBody: 
     const next: RecordState = clone(cur);
     const edited = new Set(cur.locally_edited);
     const at = deps.now().toISOString();
+    let previousStatus: string | null = cur.status;
     const newEvidence: CompletionEvidence | null =
       body.status === 'completed' && summary ? { at, by: ctx.personId, summary, link: evidenceIn?.link ?? null } : null;
 
@@ -557,7 +569,8 @@ export function changeStatus(deps: Deps, ctx: AuthContext, id: string, rawBody: 
         throw validation('This item does not apply to that traveler', [issue('traveler', 'Not in this item\'s traveler scope')]);
       }
       const progressMap = isPlainObject(cur.data.traveler_progress) ? { ...(cur.data.traveler_progress as Record<string, unknown>) } : {};
-      const prev = isPlainObject(progressMap[person.id]) ? (progressMap[person.id] as { evidence?: CompletionEvidence[] }) : {};
+      const prev = isPlainObject(progressMap[person.id]) ? (progressMap[person.id] as { evidence?: CompletionEvidence[]; status?: string }) : {};
+      previousStatus = typeof prev.status === 'string' ? prev.status : null;
       const prevEvidence = Array.isArray(prev.evidence) ? prev.evidence : [];
       progressMap[person.id] = {
         status: body.status,
@@ -585,12 +598,12 @@ export function changeStatus(deps: Deps, ctx: AuthContext, id: string, rawBody: 
     }
 
     next.locally_edited = [...edited];
-    const { row: updated } = writeRecordState(deps.db, ctx, row, next, {
+    const { row: updated, auditId } = writeRecordState(deps.db, ctx, row, next, {
       action: 'status_change',
       reason: reason ?? null,
       now: deps.now(),
     });
-    return rowToRecord(updated, false);
+    return { record: rowToRecord(updated, false), previous_status: previousStatus, undo_audit_id: auditId };
   });
   return run();
 }

@@ -653,8 +653,8 @@ export function parseSourcePackage(dir: string, opts: ParseOptions = {}): Import
       decided_option_id: null,
       decided_at: null,
       history_note: confirmed
-        ? 'The source plan records this as confirmed in a household follow-up; no approval has been recorded in the app yet. Only the imported recommendation is shown; add alternatives when you have considered them.'
-        : 'Only the imported recommendation is recorded. Add alternatives here when you have considered them.',
+        ? 'The source plan records this as confirmed in a household follow-up; no approval has been recorded in the app yet.'
+        : null,
       related,
     };
     return mk('decision', key, data.question, state, data, r, { owner: owner.owner, owner_proposed: owner.owner_proposed });

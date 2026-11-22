@@ -6,7 +6,7 @@ import { isCivilDate } from '../../shared/dates';
 import { listPeople } from '../auth/users';
 import { listRecordRows, rowToRecord } from './records-repo';
 import { listTaskLinkRows, taskLinkFromRow } from './task-links-repo';
-import { getSetting } from './settings-repo';
+import { getSetting, setSetting } from './settings-repo';
 import { adapterStatus } from './tasks-service';
 import { lastCompletedReviewAt } from './reviews-service';
 import { pendingUpdate } from './pending-update';
@@ -117,6 +117,22 @@ export function buildSettings(deps: Deps, ctx: AuthContext): HouseholdSettings {
   return settings;
 }
 
+const seenKey = (personId: string): string => `_seen.${personId}`;
+
+/** When this person last marked the plan as seen (internal setting, never listed or editable elsewhere). */
+export function lastSeenAt(deps: Deps, ctx: AuthContext): string | null {
+  const v = getSetting<{ at?: unknown } | null>(deps.db, ctx.householdId, seenKey(ctx.personId), null);
+  return v && typeof v.at === 'string' ? v.at : null;
+}
+
+/** Mark the plan as seen now. Returns the earlier value so the caller can still show what changed since then. */
+export function markSeen(deps: Deps, ctx: AuthContext): { previous_seen_at: string | null; last_seen_at: string } {
+  const previous = lastSeenAt(deps, ctx);
+  const now = deps.now().toISOString();
+  setSetting(deps.db, ctx.householdId, seenKey(ctx.personId), { at: now });
+  return { previous_seen_at: previous, last_seen_at: now };
+}
+
 export function buildSnapshot(deps: Deps, ctx: AuthContext): Snapshot {
   const imported = lastImport(deps, ctx.householdId);
   const pending = pendingUpdate(deps, imported);
@@ -130,6 +146,7 @@ export function buildSnapshot(deps: Deps, ctx: AuthContext): Snapshot {
     last_review_completed_at: lastCompletedReviewAt(deps, ctx.householdId),
     scenarios: mergeScenarios(getSetting<unknown>(deps.db, ctx.householdId, 'scenarios', [])),
     settings: buildSettings(deps, ctx),
+    last_seen_at: lastSeenAt(deps, ctx),
     ...(pending ? { pending_update: pending } : {}),
   };
 }

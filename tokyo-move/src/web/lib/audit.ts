@@ -90,6 +90,9 @@ export function describeAudit(e: AuditEntry, idx: Indexes, dir: Directory): Audi
     case 'defer':
       what = `deferred ${quoted}`;
       break;
+    case 'reopen':
+      what = `reopened ${quoted}`;
+      break;
     case 'undo':
       what = `undid a change to ${quoted}`;
       break;

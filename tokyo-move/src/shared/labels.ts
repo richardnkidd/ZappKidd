@@ -246,10 +246,17 @@ export const AUDIT_ACTION_LABEL: Record<AuditAction, string> = {
   task_complete: 'Completed a task',
   anchor_change: 'Moved a travel date',
   review_complete: 'Finished a review',
+  reopen: 'Reopened',
 };
 
 /** Friendly names for edited fields, used when describing history. Keys are record field names. */
 export const FIELD_LABEL: Record<string, string> = {
+  plain_title: 'plain title',
+  plain_question: 'plain question',
+  plain_summary: 'plain summary',
+  plain_delay: 'what happens if we wait',
+  plain_next: 'plain next step',
+  plain_options: 'plain option names',
   title: 'title',
   owner: 'owner',
   owner_proposed: 'owner (proposed)',

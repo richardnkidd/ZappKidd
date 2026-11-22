@@ -229,9 +229,30 @@ export interface DeadlineRuleData {
   superseded_by?: string | null;
 }
 
+/* ---------- Plain wording (optional, written by people or by corrections) ---------- */
+
+/**
+ * Optional plain-language fields in a record's `data`. The interface prefers them and falls back to imported text
+ * (see src/shared/plain.ts). They never replace the imported fields, so the source wording stays intact.
+ */
+export interface PlainFields {
+  /** Short human title (12 words or fewer). Shown wherever the title is shown. */
+  plain_title?: string | null;
+  /** Decisions and questions: one sentence ending in "?". */
+  plain_question?: string | null;
+  /** The "why" (25 words or fewer). */
+  plain_summary?: string | null;
+  /** Decisions: "If we don't decide" (15 words or fewer). */
+  plain_delay?: string | null;
+  /** Milestones: the next step (12 words or fewer). */
+  plain_next?: string | null;
+  /** Decisions: option id to short label (20 words or fewer each). */
+  plain_options?: Record<string, string> | null;
+}
+
 /* ---------- Milestones (roadmap) ---------- */
 
-export interface MilestoneData {
+export interface MilestoneData extends PlainFields {
   work_area: string;
   workstream_key: string | null;
   next_action: string;
@@ -314,7 +335,7 @@ export interface DecisionOption {
   source: 'imported' | 'household' | 'reviewer';
 }
 
-export interface DecisionData {
+export interface DecisionData extends PlainFields {
   question: string;
   options: DecisionOption[];
   recommended_option_id: string | null;
@@ -348,7 +369,7 @@ export type QuestionDisposition =
   | 'not_applicable'
   | 'explicitly_excluded';
 
-export interface QuestionData {
+export interface QuestionData extends PlainFields {
   workstream_key: string | null;
   topic: string;
   disposition: QuestionDisposition;
@@ -371,7 +392,7 @@ export interface QuestionData {
 
 /* ---------- Risks / RAID ---------- */
 
-export interface RiskData {
+export interface RiskData extends PlainFields {
   raid_kind: 'risk' | 'assumption' | 'issue' | 'dependency';
   trigger: string;
   mitigation: string;
@@ -669,7 +690,8 @@ export interface TaskLink {
 export type AuditAction =
   | 'create' | 'update' | 'status_change' | 'approve' | 'reject' | 'defer'
   | 'undo' | 'import_create' | 'import_update' | 'correction' | 'restore'
-  | 'task_propose' | 'task_sync' | 'task_complete' | 'anchor_change' | 'review_complete';
+  | 'task_propose' | 'task_sync' | 'task_complete' | 'anchor_change' | 'review_complete'
+  | 'reopen';
 
 export interface AuditEntry {
   id: string;
@@ -737,6 +759,11 @@ export interface Snapshot {
    * only read when Kadode starts, so this is the cue to close and start it again. Never names or shows the files.
    */
   pending_update?: { changed: number };
+  /**
+   * When the signed-in person last marked the plan as seen (POST /api/me/seen), or null if never. Reading the snapshot
+   * does not change it. Used for "since you last looked".
+   */
+  last_seen_at?: string | null;
 }
 
 /**

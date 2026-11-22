@@ -200,6 +200,21 @@ and with what result, so that a later reader can see why each statement in the g
 | Lump-sum pension withdrawal capped at 60 months. | Confirmed | Taking it voids totalization credit. |
 | The cap has risen to eight years. | Contradicted | Planned, not in force. |
 
+## Addendum, later on 22 November 2026
+
+A second checking pass added or corrected the following in the guide. These rows are not in the tally above.
+
+| Claim | Verdict | What the source says |
+|---|---|---|
+| Guide: methylphenidate needs nothing below 2.16 g. | Corrected | For more than one month's supply the official page says to contact the import-confirmation office. |
+| A stimulant raw material permit covers repeated entries. | Contradicted | One entry per permit. Leaving and re-entering with the medicine needs an export permit and a new import permit. |
+| Vyvanse can be continued locally by an adult. | Unverified | Label: childhood ADHD; not established at 18 and over; continuation allowed for those who started under 18; registry required. |
+| Concerta is a ready fallback for adults. | Corrected | Labelled for adults, but on limited shipment since September 2025; in June 2026 the maker asked prescribers not to start new patients. |
+| Guide: register the dog at the ward within 30 days. | Corrected | In wards using the microchip scheme (Minato confirmed) the national database entry is the registration. |
+| A dog arriving as accompanied baggage must land in office hours. | Contradicted | "Available anytime" for accompanied baggage; fixed hours apply to cargo. |
+| Pet food may be carried in with the animal. | Contradicted | Food containing meat cannot be brought in. |
+| Holders of Diplomat or Official status follow the resident procedures. | Contradicted | They are not issued residence cards and are outside the resident-register law. |
+
 ## What the review got right, and where it fell short
 
 The review's central judgment was sound: the original was not fit to circulate as evidence-based. Its corrections

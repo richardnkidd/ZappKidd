@@ -6,7 +6,7 @@
 |---|---|
 | **Status** | Final, validated edition. Supersedes the two input reports it was built from. |
 | **Review date** | 22 November 2026. Every dated rule below was true on that date and can go stale. |
-| **Written for** | American adults moving to Tokyo as mid-to-long-term residents, with a dog. Tourists, digital nomads and students follow different rules. [ISA-nomad] |
+| **Written for** | American adults moving to Tokyo as mid-to-long-term residents, with a dog. Tourists, digital nomads and students follow different rules. [ISA-nomad] So do holders of Diplomat or Official status, who sit outside the residence system: for them the parts on visa category, immigration fees, address registration, national insurance and pension, Japanese tax and banking do not apply, and the mission's own procedures replace them. |
 | **Built from** | (1) *Integrating Into Tokyo: An Evidence-Based Guide for Americans Moving to Japan* (the long original, 237 web citations) and (2) *Tokyo Integration Guide: QA and Revision* (a 21 November 2026 review that corrected it). |
 | **What this edition adds** | 134 claims re-checked on 22 November 2026, most against the official source itself, the practical detail the review removed restored where it survived checking, and four topics neither input covered: the dog, cross-border tax position, the permanent-residence consequences of the visa category, and a lead-time map. |
 | **Companion file** | [tokyo-integration-guide-validation.md](tokyo-integration-guide-validation.md): the claim-by-claim log, with what was confirmed, corrected, contradicted or left unverified. |
@@ -268,7 +268,7 @@ Check each medicine by active ingredient. **V** [NCD] [MHLW-import]
 |---|---|---|
 | Amphetamine and methamphetamine products (Adderall, Dexedrine) | Cannot be imported, "even for treatment purposes". A US prescription gives no protection. | Work with the prescriber on a different treatment well before the move. |
 | Lisdexamfetamine (Vyvanse) | A stimulant raw material. Allowed only with advance permission from the Narcotics Control Department. | Apply at least 14 days before arrival. Plan on the email route. |
-| Methylphenidate (Concerta) | A psychotropic. No permission needed up to 2.16 g in total, non-injection. Above that, carry a doctor's certificate. | Count the total milligrams being carried. |
+| Methylphenidate (Concerta) | A psychotropic. No permission needed up to 2.16 g in total, non-injection. Above that, carry a doctor's certificate. For more than one month's supply the official page says to contact the import-confirmation office. | Count the total milligrams being carried. |
 | Other psychotropics | Permission-free up to set totals: zolpidem 300 mg, alprazolam 72 mg, diazepam 1.2 g, lorazepam 90 mg, clonazepam 180 mg, modafinil 6 g. | Check each one against the official table. |
 | Narcotics (many opioid painkillers) | Permission required. Classification is by ingredient, so "opioids" as a class is too loose. | Check the ingredient, then apply. |
 | Ordinary prescription medicines | Up to one month's supply needs no procedure. More needs an Import Confirmation, applied for online and issued in a few business days. | Apply for anything over a month. |
@@ -287,6 +287,15 @@ Further points:
   oils, 0.1 ppm for water-based drinks, 1 ppm for other products. The NCD's CBD page also says CBN was made a
   designated substance from 1 June 2026, which catches many US sleep products. Leave all of it behind. **V**
   [NPA-cannabis] [NCD]
+- **A permit covers one entry.** Leaving Japan with the medicine and coming back needs an export permit and a new
+  import permit each time. It cannot be mailed, and nobody else may carry it, family included. **V** [NCD]
+- **Continuing treatment after arrival is a separate problem from getting the first supply in.** Vyvanse is sold in
+  Japan, but its label covers childhood ADHD: it says efficacy and safety are not established at 18 and over, allows
+  patients who started as children to continue, and requires prescriber, pharmacy and patient to be enrolled in a
+  distribution registry. Concerta is labelled for adults under the same registry, but has been on limited shipment
+  since September 2025, and in June 2026 its maker asked prescribers not to start new patients. Atomoxetine and
+  guanfacine are labelled for adults with no registry. Which of these suits a person is a medical decision; the
+  planning point is to settle it with the prescriber months before the move. **V** [PMDA-vyvanse] [MHLW-concerta]
 - Line up a Japanese clinic for refills before the supply brought from the US runs out. **J**
 
 ### 3.5 Driving
@@ -340,12 +349,19 @@ Things that catch people out:
 - A December 2025 notice warns that some microchip number prefixes are duplicated across manufacturers and may force
   re-chipping and a restart. Check the chip number against that notice early.
 - Fix the flight and the airport before filing the notification. The arrival date can be moved later, not earlier.
-- Hawaii and Guam are "designated regions": a dog resident there for 180 days needs no antibody test or wait. That
-  does not apply to the mainland.
+- Hawaii and Guam are "designated regions": a dog resident there for 180 days needs no rabies vaccination, antibody
+  test or wait. The chip, the 40-day notification and the examination within 10 days still apply, and the flight
+  must not pass through a non-designated region such as the mainland. None of this applies to a mainland dog.
+- For a dog travelling as accompanied baggage the quarantine service says it "is available anytime"; fixed
+  reception hours apply to cargo. If someone other than the owner presents the dog, family included, a power of
+  attorney is needed. [AQS-qa]
+- Pet food containing meat cannot be brought in. A prescription diet has to be sourced in Japan. [AQS-qa]
 - "What if the dog arrives later?" is a legitimate option when the 180 days cannot be met: the dog waits it out in the
   US and follows with a second trip or a pet shipper, rather than waiting in quarantine.
 
-After arrival in Tokyo: register the dog with the ward within 30 days using the import quarantine certificate;
+After arrival in Tokyo: register the dog within 30 days using the import quarantine certificate. In wards that have
+adopted the microchip scheme, Minato among them, entering the chip in the Environment Ministry's database is the
+registration and no ward visit is needed (¥400 online) [Minato-dog];
 vaccinate against rabies once a year between 1 April and 30 June; keep the tags on the dog. The Tokyo ordinance
 requires a dog to be tethered or on a lead, a bite to be reported within 24 hours, and the dog to be checked by a vet
 for rabies within 48 hours. **V** [TMG-dog]
@@ -826,6 +842,8 @@ not be opened and a report of it was used.
 - **[NCD]** Narcotics Control Department, application guidance. https://www.ncd.mhlw.go.jp/en/application2.html ; quantity table https://www.ncd.mhlw.go.jp/dl_data/keitai/total.pdf ; online trial https://www.ncd.mhlw.go.jp/en/application3.html
 - **[MHLW-import]** Ministry of Health, Labour and Welfare, importing medicines Q&A. https://www.mhlw.go.jp/content/001686827.pdf
 - **[NPA-cannabis]** National Police Agency, cannabis portal. https://www.npa.go.jp/bureau/sosikihanzai/yakubutujyuki/illegal_cannabis/
+- **[PMDA-vyvanse]** PMDA, Vyvanse prescribing information, revised October 2026. https://www.pmda.go.jp/PmdaSearch/iyakuDetail/ResultDataSetPDF/400256_1179059M1024_2_04
+- **[MHLW-concerta]** MHLW, supply notice on methylphenidate extended-release tablets, 27 May 2026. https://www.mhlw.go.jp/content/001705377.pdf
 
 **Driving and cycling**
 
@@ -870,6 +888,8 @@ not be opened and a report of it was used.
 - **[AQS-designated]** AQS, designated regions. https://www.maff.go.jp/aqs/english/animal/dog/import-free.html
 - **[APHIS]** USDA APHIS, pet travel from the US to Japan. https://www.aphis.usda.gov/pet-travel/us-to-another-country-export/pet-travel-us-japan
 - **[TMG-dog]** Tokyo Metropolitan Government, dog registration and ordinance. https://www.hokeniryo.metro.tokyo.lg.jp/kankyo/aigo/dog/dog02.html
+- **[AQS-qa]** AQS, questions and answers on dogs and cats. https://www.maff.go.jp/aqs/english/qanda/dogcata.html
+- **[Minato-dog]** Minato City, dog registration (updated 1 April 2025); Environment Ministry microchip registry. https://www.env.go.jp/nature/dobutsu/aigo/pickup/chip.html
 
 **Tax and social security**
 

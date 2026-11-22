@@ -8,6 +8,7 @@ import './styles/components.css';
 import './styles/screens.css';
 import './styles/pages.css';
 import './styles/gantt.css';
+import './styles/pkg-foundations.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

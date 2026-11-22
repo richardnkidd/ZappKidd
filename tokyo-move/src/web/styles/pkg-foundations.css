@@ -1,0 +1,364 @@
+/*
+ * Foundations package: quiet badges, the slim list card, the info control, the "More" disclosure, readability and
+ * touch-target fixes. Loaded after the screen stylesheets so these rules settle ties with the older screen rules.
+ * Weights are 400 and 600 only. Nothing here is under 14px except monogram letters (decorative, 11px minimum).
+ */
+
+/* ---------- Readability ---------- */
+
+/* Prose never runs wider than about 68 characters, however wide the screen. */
+.item__action,
+.clamp,
+.lane__what,
+.gate__why,
+.more__body > p,
+.info-note__body {
+  max-width: var(--measure);
+}
+
+code {
+  font-size: max(0.9em, var(--fs-0));
+}
+
+/* Long words and dates wrap instead of pushing a row wider than the screen (200% text, 320px). */
+.lane__row,
+.lane__what,
+.lane__when,
+.coming__body,
+.item__meta-start,
+.item__when,
+.owner {
+  min-width: 0;
+}
+.lane__row,
+.lane__what {
+  overflow-wrap: anywhere;
+}
+.lane__when {
+  flex-wrap: wrap;
+  row-gap: var(--s-1);
+}
+.date-text,
+.date-text time {
+  overflow-wrap: break-word;
+}
+
+/* ---------- Touch targets: 44px on phones ---------- */
+a.coming__title,
+.gate__title,
+.cond-row__title,
+.more-link,
+a.item__title,
+.csv-list a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.cond-row__title {
+  display: block;
+  line-height: 44px; /* one line, cut with an ellipsis, 44px tall */
+  min-height: 44px;
+  max-width: 100%;
+}
+.coming {
+  padding-block: var(--s-1);
+}
+.coming__body {
+  gap: 0;
+}
+.gate {
+  padding-block: var(--s-1);
+}
+.cond-row {
+  padding-block: var(--s-1);
+}
+.csv-list {
+  display: flex;
+  flex-direction: column;
+}
+.btn--sm,
+.applies--compact .applies__btn,
+.sort-btn {
+  min-height: 44px;
+}
+.item .btn--sm {
+  min-width: 44px;
+}
+
+/* ---------- Monograms ---------- */
+.pbadge--together {
+  background: var(--stone-soft);
+  color: var(--ink-2);
+}
+.pbadge--together .icon {
+  vertical-align: 0;
+}
+
+/* ---------- Quiet status, kind and owner ---------- */
+.status-icon {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--ink-2);
+}
+.status-icon .icon {
+  flex: none;
+}
+.status-icon__label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  margin-left: 6px;
+  font-size: var(--fs-1);
+}
+.status-icon--ai {
+  color: var(--ai);
+}
+.status-icon--matcha {
+  color: var(--matcha);
+}
+.status-icon--kaki {
+  color: var(--kaki);
+}
+.status-icon--kin {
+  color: var(--kin);
+}
+.status-icon .icon {
+  vertical-align: 0;
+}
+
+.kind-flag {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  order: -1; /* before the date inside a flex row */
+  color: var(--ink-2);
+}
+.kind-flag--legal {
+  color: var(--kaki);
+}
+.kind-flag .icon {
+  vertical-align: 0;
+}
+
+.kind-word {
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+  font-style: italic;
+}
+.owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+  line-height: 1.3;
+}
+.owner__name {
+  overflow-wrap: anywhere;
+}
+.owner__note {
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+}
+.owner__note::before {
+  content: '· ';
+}
+.owner--proposed .pbadge {
+  border-style: dashed;
+}
+.owner--unassigned {
+  color: var(--ink-2);
+}
+.optional-text {
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+/* The one chip a card may carry: whose turn it is. */
+.chip--turn {
+  background: var(--ai);
+  border-color: var(--ai);
+  color: var(--on-ai);
+  font-weight: 600;
+  flex: none;
+}
+.chip--turn .icon {
+  vertical-align: 0;
+}
+
+/* ---------- Info control (a small button that reveals a caveat) ---------- */
+.info-note {
+  display: contents;
+}
+.info-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  /* a real 44px target; the negative margin keeps it from making the line taller */
+  width: 44px;
+  height: 44px;
+  margin: -10px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-2);
+  vertical-align: middle;
+}
+.info-btn:hover {
+  background: var(--stone-soft);
+  color: var(--ink);
+}
+.info-btn[aria-expanded='true'] {
+  color: var(--ai);
+  background: var(--ai-soft);
+}
+.info-btn .icon {
+  vertical-align: 0;
+}
+.info-note__body {
+  display: block;
+  flex: 0 0 100%;
+  margin-top: var(--s-1);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+  font-weight: 400;
+  line-height: 1.4;
+  pointer-events: auto;
+}
+.verify-note--short {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  max-width: none;
+}
+.verify-note--short .verify-note__text {
+  color: var(--ink-2);
+}
+.item .info-btn,
+.item .info-note__body {
+  position: relative;
+  z-index: 2;
+}
+.item .info-btn {
+  position: relative;
+}
+
+/* ---------- "More": one quiet disclosure for everything that is not the main point ---------- */
+.more__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--s-2);
+  margin-left: calc(var(--s-2) * -1);
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--ai);
+  font-size: var(--fs-1);
+  font-weight: 600;
+}
+.more__btn:hover {
+  background: var(--ai-soft);
+}
+.more__chev {
+  transition: transform 150ms;
+}
+.more__btn[aria-expanded='true'] .more__chev {
+  transform: rotate(180deg);
+}
+.more__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-1) 0 var(--s-3);
+}
+.clamp__more {
+  margin-top: calc(var(--s-1) * -1);
+}
+.item .more,
+.item .clamp__more {
+  position: relative;
+  z-index: 2;
+}
+
+/* ---------- Slim list card: title, next step, one meta line ---------- */
+.item--card {
+  padding: var(--s-3) var(--s-4);
+}
+.item--card .item__main {
+  gap: var(--s-1);
+}
+.item__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.item--card .item__title {
+  font-weight: 600;
+  font-size: var(--fs-2);
+  line-height: 1.3;
+}
+.item--card a.item__title {
+  display: inline-block;
+  min-height: 0;
+  padding-block: var(--s-1);
+}
+.item--card .item__action {
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+  line-height: 1.4;
+}
+.item--card .item__meta {
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
+  margin-top: var(--s-1);
+}
+.item__meta-start {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-3);
+  font-size: var(--fs-1);
+  color: var(--ink-2);
+}
+.item__meta-start .item__when {
+  font-size: var(--fs-1);
+  gap: var(--s-1) var(--s-2);
+}
+.item--card .item__meta > .owner,
+.item--card .item__meta > .chip--owner {
+  margin-left: auto;
+}
+/* The date is plain; it takes colour only when late or soon. */
+.item--card .date-text {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.item--card .date-text--past {
+  color: var(--kaki);
+  font-weight: 600;
+}
+.item--card .date-text--soon {
+  color: var(--kin);
+  font-weight: 600;
+}
+.item__src,
+.item__nodate {
+  font-size: var(--fs-0);
+}
+
+/* ---------- Saved message: above the bottom navigation, with room left for it on phones ---------- */
+@media (max-width: 1023.98px) {
+  body:has(.save-indicator) .app-main {
+    padding-bottom: calc(var(--nav-h) + var(--s-7) + 44px);
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 
@@ -22,19 +22,38 @@ interface DialogProps {
   children: ReactNode;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  /**
+   * Where focus goes when the dialog closes and the control that opened it is gone (for example the card left the list
+   * after the answer was saved). A ref or a CSS selector. Default: the page's h1.
+   */
+  fallbackFocus?: RefObject<HTMLElement | null> | string;
+}
+
+/** Move focus to a sensible place instead of letting it fall to <body>. Returns true when something took focus. */
+export function focusFallback(target?: RefObject<HTMLElement | null> | string): boolean {
+  let el: HTMLElement | null = null;
+  if (typeof target === 'string') el = document.querySelector<HTMLElement>(target);
+  else if (target) el = target.current;
+  if (!el || !document.contains(el)) el = document.querySelector<HTMLElement>('h1');
+  if (!el) return false;
+  if (!el.hasAttribute('tabindex') && !/^(A|BUTTON|INPUT|SELECT|TEXTAREA|SUMMARY)$/.test(el.tagName)) el.setAttribute('tabindex', '-1');
+  el.focus({ preventScroll: false });
+  return document.activeElement === el;
 }
 
 /**
  * Modal dialog: traps focus, closes on Escape and on backdrop click, restores focus to the opener, and makes the
  * rest of the app inert while open. Bottom sheet on phones, centred card on larger screens.
  */
-export function Dialog({ open, onClose, title, description, children, footer, size = 'md' }: DialogProps) {
+export function Dialog({ open, onClose, title, description, children, footer, size = 'md', fallbackFocus }: DialogProps) {
   const titleId = useId();
   const descId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
+  const fallbackRef = useRef(fallbackFocus);
+  fallbackRef.current = fallbackFocus;
 
   useEffect(() => {
     if (!open) return;
@@ -60,7 +79,16 @@ export function Dialog({ open, onClose, title, description, children, footer, si
         document.body.classList.remove('is-modal-open');
       }
       const opener = openerRef.current;
-      if (opener && document.contains(opener)) opener.focus();
+      if (opener && document.contains(opener)) {
+        opener.focus();
+        // The opener can still be removed a moment later (the list refreshes after a save): check once more.
+        window.setTimeout(() => {
+          const a = document.activeElement;
+          if (!a || a === document.body) focusFallback(fallbackRef.current);
+        }, 400);
+      } else {
+        focusFallback(fallbackRef.current);
+      }
     };
   }, [open]);
 

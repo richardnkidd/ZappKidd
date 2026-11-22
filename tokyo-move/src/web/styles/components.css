@@ -193,9 +193,11 @@
   background: var(--surface);
   color: var(--ink);
   font-size: var(--fs-0);
-  font-weight: 550;
+  font-weight: 600;
   line-height: 1.25;
-  white-space: nowrap;
+  /* A chip wraps when the line is too narrow (200% text, 320px) instead of running off the screen. */
+  white-space: normal;
+  overflow-wrap: anywhere;
   max-width: 100%;
 }
 .chip > span {
@@ -278,11 +280,11 @@
   background: var(--surface);
   color: var(--ink-2);
   border: 1px dotted var(--ink-3);
-  font-weight: 500;
+  font-weight: 400;
 }
 .chip--optional {
   font-style: italic;
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .pbadge {
@@ -290,7 +292,7 @@
   place-items: center;
   flex: none;
   border-radius: 50%;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
   border: 1.5px solid currentColor;
 }
@@ -314,8 +316,8 @@
 .pbadge-pair {
   display: inline-flex;
 }
-.pbadge-pair .pbadge + .pbadge {
-  margin-left: -7px;
+.pbadge-pair {
+  gap: 2px; /* legacy pair: the monograms never overlap (the quiet "Together" is one glyph, see pkg-foundations.css) */
 }
 .person-name {
   display: inline-flex;
@@ -334,12 +336,12 @@
 }
 
 .date-text {
-  font-weight: 550;
+  font-weight: 600;
 }
 .date-text--awaiting {
   color: var(--ink-2);
   font-style: italic;
-  font-weight: 500;
+  font-weight: 400;
 }
 .date-text--past,
 .date-flag {
@@ -384,7 +386,7 @@
   border: 1.5px solid var(--line-strong);
   background: var(--surface);
   color: var(--ink);
-  font-weight: 500;
+  font-weight: 400;
   font-size: var(--fs-1);
 }
 .fchip:hover {
@@ -394,7 +396,7 @@
   background: var(--ai-soft);
   border-color: var(--ai);
   color: var(--ai);
-  font-weight: 650;
+  font-weight: 600;
 }
 .fchip__count {
   font-size: var(--fs-0);
@@ -425,14 +427,14 @@
   border: 1.5px solid transparent;
   background: transparent;
   color: var(--ink-2);
-  font-weight: 550;
+  font-weight: 600;
   font-size: var(--fs-1);
   flex: 1 1 auto;
 }
 @media (max-width: 479.98px) {
   .segmented__btn {
     padding: 0 var(--s-2);
-    font-size: 0.875rem;
+    font-size: var(--fs-0);
   }
   .plan-views .segmented__btn .icon {
     display: none;
@@ -442,7 +444,7 @@
   background: var(--surface);
   color: var(--ai);
   border-color: var(--ai);
-  font-weight: 650;
+  font-weight: 600;
 }
 
 /* ---------- Forms ---------- */
@@ -464,7 +466,7 @@
 .field__error {
   color: var(--kaki);
   font-size: var(--fs-1);
-  font-weight: 550;
+  font-weight: 600;
 }
 .input {
   width: 100%;
@@ -611,7 +613,9 @@ legend {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--tab-h) + env(safe-area-inset-bottom) + var(--s-3));
+  /* Sits on the bottom navigation (its measured height), and the page leaves room for it while it shows (see
+     pkg-foundations.css), so it never covers the buttons at the foot of a card. */
+  bottom: var(--nav-h);
   z-index: 60;
   display: flex;
   justify-content: center;
@@ -626,7 +630,8 @@ legend {
   border-radius: var(--r-pill);
   background: var(--surface);
   border: 1.5px solid var(--line-strong);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.12);
+  box-shadow: 0 -2px 12px rgb(0 0 0 / 0.1);
+  min-height: 36px;
   font-size: var(--fs-1);
   font-weight: 600;
   color: var(--ink);
@@ -715,7 +720,7 @@ legend {
   color: var(--ink-3);
 }
 .empty__title {
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink);
 }
 .empty__body {
@@ -759,7 +764,7 @@ legend {
 }
 .fact dt {
   font-size: var(--fs-0);
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink-2);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -797,7 +802,7 @@ legend {
   vertical-align: middle;
   background: var(--surface-2);
   font-size: var(--fs-0);
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink-2);
   white-space: nowrap;
 }
@@ -815,7 +820,7 @@ legend {
   min-height: 32px;
   border: 0;
   background: none;
-  font-weight: 650;
+  font-weight: 600;
   color: inherit;
   padding: 0;
 }
@@ -874,7 +879,7 @@ legend {
 
 .date-text--old {
   color: var(--ink-3);
-  font-weight: 500;
+  font-weight: 400;
 }
 .linked-line {
   display: flex;
@@ -887,7 +892,7 @@ legend {
 }
 .linked-line__label {
   font-size: var(--fs-0);
-  font-weight: 650;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -929,7 +934,7 @@ legend {
   list-style: none;
 }
 .conflict-cards__field {
-  font-weight: 650;
+  font-weight: 600;
   max-width: none;
 }
 .conflict-card {
@@ -941,7 +946,7 @@ legend {
 }
 .conflict-card__who {
   font-size: var(--fs-0);
-  font-weight: 650;
+  font-weight: 600;
   color: var(--ink-2);
   max-width: none;
 }

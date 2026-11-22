@@ -6,7 +6,7 @@ export type IconName =
   | 'chevron-right' | 'chevron-down' | 'chevron-left' | 'plus' | 'link' | 'lock' | 'info'
   | 'flag' | 'calendar' | 'target' | 'doc' | 'tilde' | 'eye' | 'undo' | 'pencil' | 'user'
   | 'logout' | 'refresh' | 'list' | 'board' | 'timeline' | 'rows' | 'file' | 'book' | 'plane'
-  | 'sprout' | 'shield' | 'arrow-right' | 'bookmark' | 'sync' | 'contacts' | 'database' | 'gear' | 'compass';
+  | 'sprout' | 'shield' | 'arrow-right' | 'bookmark' | 'sync' | 'contacts' | 'database' | 'gear' | 'compass' | 'together';
 
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;
 
@@ -78,6 +78,7 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6" />
     </>
   ),
+  together: <path d="M8.5 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM2.5 19.5c.4-3 2.7-4.5 6-4.5s5.6 1.5 6 4.5M16 11.2a2.8 2.8 0 1 0 0-5.6M17.5 15.2c2.2.4 3.7 1.8 4 4.3" />,
   compass: (
     <>
       <circle cx="12" cy="12" r="9" />

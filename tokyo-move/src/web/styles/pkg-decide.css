@@ -496,9 +496,25 @@ p.dcard__outcome--approved > .icon {
 }
 .dcard__outcome-text {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+/* With no status words, the date leads the row instead of floating right. */
+.dcard__top > .dcard__by:first-child {
+  margin-left: 0;
+}
+/* "Hide choices" sits in the card's corner, so the status and date keep the row's width. */
+.dcard {
+  position: relative;
+}
+.dcard__top:has(.dcard__close) {
+  padding-right: 40px;
+}
+.dcard__top .dcard__close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  margin: 0;
 }
 
 /* ---------- Decide tab: a dot when nothing is urgent but some decisions are still my turn ---------- */

@@ -32,15 +32,17 @@ describe('Your turn', () => {
     const partner = homeDecisionWords(decision('D01', 'proposed', { ...q, approvals: [approval('bo', 'b')] }) as never, 'ann', DIR);
     expect(partner).toEqual({
       question: 'How much can we spend on the move?',
-      sub: 'Bo picked: Protect a safety fund',
+      lines: ['Bo picked: Protect a safety fund'],
       verb: 'Agree',
       label: 'How much can we spend on the move? Bo picked: Protect a safety fund.',
     });
     const both = homeDecisionWords(decision('D02', 'proposed', { ...q, approvals: [approval('ann', 'a'), approval('bo', 'b')] }) as never, 'ann', DIR);
     expect(both.question).toBe('How much can we spend on the move?');
-    expect(both.sub).toBe('You picked Set firm limits and keep a return reserve. Bo picked Protect a safety fund.');
+    // After a disagreement: what each person picked, one line each, as the card says it.
+    expect(both.lines).toEqual(['You: Set firm limits and keep a return reserve', 'Bo: Protect a safety fund']);
+    expect(both.label).toBe('How much can we spend on the move? You: Set firm limits and keep a return reserve. Bo: Protect a safety fund.');
     const first = homeDecisionWords(decision('D03', 'open', q) as never, 'ann', DIR);
-    expect(first).toMatchObject({ question: 'How much can we spend on the move?', sub: null, verb: 'Decide' });
+    expect(first).toMatchObject({ question: 'How much can we spend on the move?', lines: [], verb: 'Decide' });
     // No plain question yet: the cleaned title.
     expect(homeDecisionWords(decision('D04', 'open', { question: 'Pick movers' }) as never, 'ann', DIR).question).toBe('Title of'); // codes such as D04 are removed
   });

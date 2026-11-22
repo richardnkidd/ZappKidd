@@ -88,7 +88,7 @@ test.describe('Home', () => {
     expect(await turn.getByRole('listitem').count()).toBeLessThanOrEqual(3);
     for (const row of await decisionRows.all()) {
       // The question first; then who picked what, when someone did. Never "<Name> chose “…”. Agree?" alone.
-      await expect(row.getByRole('link')).toHaveAccessibleName(/^[^.]+[?.]?( Avery picked: .+\.| You picked .+\. Avery picked .+[.…])?$/);
+      await expect(row.getByRole('link')).toHaveAccessibleName(/^[^.]+[?.]?( Avery picked: .+[.…]| You: .+[.…] Avery: .+[.…])?$/);
       await expect(row.getByRole('link')).not.toHaveAccessibleName(/^Avery chose/);
     }
     if (d04?.status === 'proposed' && (d04.data.approvals as any[]).some((a) => a.person_id === 'avery') && !(d04.data.approvals as any[]).some((a) => a.person_id === 'jun')) {

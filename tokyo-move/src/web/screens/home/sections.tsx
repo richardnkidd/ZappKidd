@@ -140,11 +140,11 @@ export function YourTurnSection({ idx, dir, lookup }: Props) {
 export interface HomeDecisionWords {
   /** First line: the decision's plain question (or its title). */
   question: string;
-  /** Second line, when someone already picked: "Jun picked: Set firm limits", or both picks after a disagreement. */
-  sub: string | null;
+  /** The lines under it when someone already picked: ["Jun picked: Set firm limits"], or ["You: …", "Jun: …"]. */
+  lines: string[];
   /** The word on the row's button. */
   verb: string;
-  /** The link's accessible name: the question, then the second line. */
+  /** The link's accessible name: the question, then each line. */
   label: string;
 }
 
@@ -157,29 +157,34 @@ export function homeDecisionWords(d: Decision, meId: string | null, dir: Directo
     return o ? shortLabel(optionLabel(d, o, lookup), 10) : null;
   };
   const other = t.otherId ? dir.nameOf(t.otherId) : 'They';
-  let sub: string | null = null;
+  let lines: string[] = [];
   let verb = 'Decide';
   if (t.turn === 'mine_after_partner') {
     const theirs = label(t.otherOptionId);
-    sub = theirs ? `${other} picked: ${theirs}` : `${other} picked`;
+    lines = [theirs ? `${other} picked: ${theirs}` : `${other} picked`];
     verb = 'Agree';
   } else if (t.turn === 'disagree') {
-    sub = `${sentence(`You picked ${label(t.myOptionId) ?? 'one'}`)} ${sentence(`${other} picked ${label(t.otherOptionId) ?? 'another'}`)}`;
+    // Both picks, the same way the card says them.
+    lines = [`You: ${label(t.myOptionId) ?? 'one choice'}`, `${other}: ${label(t.otherOptionId) ?? 'another'}`];
     verb = 'Open';
   }
-  return { question, sub, verb, label: sub ? `${question} ${sentence(sub)}` : question };
+  return { question, lines, verb, label: [question, ...lines.map(sentence)].join(' ') };
 }
 
 /** A decision on Home: tapping anywhere opens the decision, expanded, on the Decide screen. */
 function DecisionTurnRow({ row, idx, dir, lookup }: { row: TurnDecisionRow; idx: Indexes; dir: Directory; lookup?: KeyLookup }) {
   const d = idx.decisions.find((x) => x.id === row.id);
-  const words = d ? homeDecisionWords(d, dir.me?.id ?? null, dir, lookup) : { question: row.text, sub: null, verb: 'Decide', label: row.text };
+  const words = d ? homeDecisionWords(d, dir.me?.id ?? null, dir, lookup) : { question: row.text, lines: [], verb: 'Decide', label: row.text };
   return (
     <li className="turn-row turn-row--decision">
       <Link className="turn-row__link" to={{ pathname: '/decide', hash: `#decision-${row.key}` }} aria-label={words.label}>
         <span className="turn-row__body">
           <span className="turn-row__title">{words.question}</span>
-          {words.sub && <span className="turn-row__sub">{words.sub}</span>}
+          {words.lines.map((l) => (
+            <span key={l} className="turn-row__sub">
+              {l}
+            </span>
+          ))}
         </span>
         <span className="turn-row__go" aria-hidden="true">
           {words.verb}

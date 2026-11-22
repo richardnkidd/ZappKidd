@@ -153,10 +153,10 @@ test.describe('Keyboard', () => {
         await openRecord(page, 'milestone:W06', /Verify both passports/);
         // Proposing an action sits behind the "Task list" More button on a record page.
         await openMore(page, /^Task list/);
-        const opener = page.getByRole('button', { name: 'Propose an action' });
+        const opener = page.getByRole('button', { name: 'Suggest a task' });
         await keyboardFocus(page, opener);
         await page.keyboard.press('Space');
-        return { opener, dialog: page.getByRole('dialog', { name: 'Propose an action for your task list' }) };
+        return { opener, dialog: page.getByRole('dialog', { name: 'Suggest a task for your task list' }) };
       },
     },
   ];

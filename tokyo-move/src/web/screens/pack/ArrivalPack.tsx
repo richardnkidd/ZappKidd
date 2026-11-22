@@ -6,7 +6,7 @@ import { DataGate } from '../../components/DataGate';
 import { InfoNote } from '../../components/InfoNote';
 import { More } from '../../components/More';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
-import { civil } from '../../lib/format';
+import { dateLineText } from '../../lib/dateLine';
 import { dataOf } from '../../lib/records';
 import type { DocumentData } from '@shared/types';
 import { buildPack, SENSITIVITY_ORDER, type Pack, type PackItem, type Sensitivity } from '../../lib/pack';
@@ -28,13 +28,10 @@ function Items({ items, empty, checkbox = false }: { items: PackItem[]; empty: s
           {checkbox && <span className="pack__box" aria-hidden="true" />}
           <span className="pack__text">
             <span className="pack__title">{it.title}</span>
+            {it.date && <span className="pack__meta"> — {it.date}</span>}
             {it.meta && it.meta.length > 0 && <span className="pack__meta"> — {it.meta.join(' · ')}</span>}
+            {it.bring && <span className="pack__detail pack__bring">Bring: {it.bring}</span>}
             {it.detail && <span className="pack__detail">{it.detail}</span>}
-            {it.check && (
-              <span className="pack__detail pack__check">
-                <strong>Check:</strong> {it.check}
-              </span>
-            )}
             {it.link && <span className="pack__link">{it.link}</span>}
           </span>
         </li>
@@ -56,8 +53,7 @@ function PackFor({ pack, name, person, today, include }: { pack: Pack; name: str
           <PersonBadge person={person} size={28} /> Arrival pack — {name}
         </h2>
         <p className="pack__date">
-          Printed {civil(today, 'weekday')}
-          {pack.from ? ` · Steps count from: ${pack.from}` : ''}
+          Printed {dateLineText(today)}
         </p>
       </header>
       {sections.map((s, i) => (

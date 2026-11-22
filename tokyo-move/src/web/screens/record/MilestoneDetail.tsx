@@ -28,7 +28,7 @@ import { LinkedDates } from '../../components/LinkedDates';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, dayIn, instant, safeHref } from '../../lib/format';
 import { deadlineVerification } from '../../lib/home';
-import { dateLine } from '../../lib/dateLine';
+import { dateLine, dateLineText } from '../../lib/dateLine';
 import { whenFor, type WhenCandidate } from '../../lib/when';
 import { dataOf, type AnyRecord, type Directory, type Indexes, type Milestone } from '../../lib/records';
 import { attempt } from '../../lib/safe';
@@ -85,7 +85,7 @@ function DeadlineFacts({ deadline, state, idx, dir, today, computed }: { deadlin
         </Fact>
         <Fact label="Applies in">{deadline.jurisdiction ? (JURISDICTION_LABEL[deadline.jurisdiction] ?? deadline.jurisdiction) : NOT_KNOWN}</Fact>
         <Fact label="Calendar date in">{zoneLabel(deadline.timezone)}</Fact>
-        <Fact label="Last checked">{deadline.verified_on ? civil(deadline.verified_on, 'weekday') : 'Not checked yet'}</Fact>
+        <Fact label="Last checked">{deadline.verified_on ? dateLineText(deadline.verified_on, today, { open: false }) : 'Not checked yet'}</Fact>
         <Fact label="For">{traveler}</Fact>
       </dl>
     </div>
@@ -348,7 +348,7 @@ function LinkedTasks({ record, idx, dir, level }: { record: Milestone; idx: Inde
       {error && <p className="field__error" role="alert">{error}</p>}
       <div>
         <Button variant="secondary" icon="plus" onClick={() => setPropose(true)}>
-          Propose an action
+          Suggest a task
         </Button>
       </div>
       <ProposeActionDialog open={propose} onClose={() => setPropose(false)} record={record} defaultTitle={displayNext(record, keyLookup(idx.byKey)) ?? ''} />
@@ -361,12 +361,12 @@ function LinkedTasks({ record, idx, dir, level }: { record: Milestone; idx: Inde
 
 /** One date, in words and in the one shared format. */
 function WhenText({ c, today, labelled = false }: { c: WhenCandidate; today: string; labelled?: boolean }) {
-  // A check-in is a reminder to look again, never a deadline: it never reads as late.
+  // A check-in keeps its word, and its date reads like every other: "Mon, Nov 30 (8 days)" or "11 days late".
   if (c.kind === 'review_date') {
     return (
       <span className="rec-when">
         {!labelled && <DeadlineBadge kind="review_date" />}
-        <LineTime date={c.date} line={dateLine(c.date, today, { open: false })} />
+        <LineTime date={c.date} line={dateLine(c.date, today)} />
       </span>
     );
   }
@@ -472,7 +472,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
               return (
                 <li key={i}>
                   <span className="preline">{e.summary}</span>
-                  <span className="small faint"> — {dir.nameOf(e.by)}, {civil(dayIn(e.at, zone), 'weekday')}</span>
+                  <span className="small faint"> — {dir.nameOf(e.by)}, {dateLineText(dayIn(e.at, zone), today, { open: false })}</span>
                   {href && (
                     <>
                       {' '}
@@ -592,7 +592,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
               <LinkedDates milestoneId={record.id} today={today} />
               {d.review_date && (
                 <p>
-                  <DeadlineBadge kind="review_date" /> <LineTime date={d.review_date} line={dateLine(d.review_date, today, { open: false })} />
+                  <DeadlineBadge kind="review_date" /> <LineTime date={d.review_date} line={dateLine(d.review_date, today)} />
                 </p>
               )}
             </div>
@@ -607,7 +607,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
                 return (
                   <li key={i}>
                     <span className="preline">{e.summary}</span>
-                    <span className="small faint"> — {dir.nameOf(e.by)}, {civil(dayIn(e.at, zone), 'weekday')}</span>
+                    <span className="small faint"> — {dir.nameOf(e.by)}, {dateLineText(dayIn(e.at, zone), today, { open: false })}</span>
                     {href && (
                       <>
                         {' '}

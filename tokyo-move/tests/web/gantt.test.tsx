@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 /** The timeline chart over the fictional demo household, rendered in a DOM (no layout): structure, words and focus. */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act, createElement, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
@@ -10,6 +12,7 @@ import type { BaseRecord, PlanningTarget, Person, TaskLink } from '../../src/sha
 import { buildPlanItems } from '../../src/web/lib/plan';
 import { buildDirectory, buildIndexes } from '../../src/web/lib/records';
 import { GanttChart } from '../../src/web/screens/plan/Gantt';
+import { resetOpenChoices } from '../../src/web/screens/plan/PlanGroup';
 import { SnapshotContext, type SnapshotCtx } from '../../src/web/state/snapshot';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -44,7 +47,19 @@ const snapshotCtx = {
 
 let container: HTMLDivElement;
 let root: Root;
-function chart(target: PlanningTarget | null, shown: typeof items = items): HTMLElement {
+/**
+ * The chart opens with the current and next groups unfolded and five rows each. Most tests below look at every row, so
+ * they unfold every group and press every "Show all" first (the default view is covered by its own tests).
+ */
+function expandAll(el: HTMLElement) {
+  act(() => {
+    for (const b of el.querySelectorAll<HTMLButtonElement>('.ggroup__head button[aria-expanded="false"]')) b.click();
+  });
+  act(() => {
+    for (const b of el.querySelectorAll<HTMLButtonElement>('.grow--more .show-all')) b.click();
+  });
+}
+function chart(target: PlanningTarget | null, shown: typeof items = items, expand = true): HTMLElement {
   const node: ReactElement = createElement(
     MemoryRouter,
     null,
@@ -55,6 +70,7 @@ function chart(target: PlanningTarget | null, shown: typeof items = items): HTML
   document.body.appendChild(container);
   root = createRoot(container);
   act(() => root.render(node));
+  if (expand) expandAll(container);
   return container;
 }
 /** jsdom has no media queries: say which of the chart's two (phone, wide) match. Neither = a tablet-sized window. */
@@ -72,6 +88,7 @@ beforeAll(() => {
   window.scrollBy = () => undefined;
 });
 beforeEach(() => {
+  resetOpenChoices();
   screen('tablet');
   window.localStorage.clear();
 });
@@ -213,9 +230,48 @@ describe('timeline chart', () => {
 
     const byArea = [...el.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'By area')!;
     act(() => byArea.click());
+    expandAll(el);
     const headings = [...el.querySelectorAll('h3')].map((h) => h.textContent ?? '');
     expect(headings.some((h) => h.startsWith('Mochi: import, transport and care'))).toBe(true);
     expect(bars(el)).toHaveLength(items.length);
+  });
+
+  it('opens with the current and next groups unfolded, five rows each, and "Show all (N)" for the rest', () => {
+    const el = chart(TARGET, items, false);
+    const toggles = [...el.querySelectorAll<HTMLButtonElement>('.ggroup__head button[aria-expanded]')];
+    // Avery, Jun, Mochi and Shared: the first two with work to do are open, the rest are one tap away.
+    expect(toggles.map((t) => t.getAttribute('aria-expanded'))).toEqual(['true', 'true', 'false', 'false']);
+    // An open group's button points at its rows.
+    for (const t of toggles.filter((x) => x.getAttribute('aria-expanded') === 'true')) expect(document.getElementById(t.getAttribute("aria-controls")!)).not.toBeNull();
+    // Shared has 14 items: once unfolded it shows five and then "Show all (14)".
+    const shared = toggles.find((t) => t.textContent?.startsWith('Shared'))!;
+    act(() => shared.click());
+    const group = shared.closest('section.ggroup')!;
+    expect(group.querySelectorAll('[data-gantt-bar]')).toHaveLength(5);
+    const more = group.querySelector<HTMLButtonElement>('.grow--more .show-all')!;
+    expect(more.textContent).toContain('Show all (14)');
+    act(() => more.click());
+    expect(group.querySelectorAll('[data-gantt-bar]')).toHaveLength(14);
+    expect(group.querySelector('.grow--more')).toBeNull();
+  });
+
+  it('remembers which groups were opened or closed for the session', () => {
+    const el = chart(TARGET, items, false);
+    const toggle = () => [...el.querySelectorAll<HTMLButtonElement>('.ggroup__head button[aria-expanded]')].find((b) => b.textContent?.startsWith('Mochi'))!;
+    expect(toggle().getAttribute('aria-expanded')).toBe('false');
+    act(() => toggle().click());
+    expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    act(() => root.unmount());
+    container.remove();
+    const again = chart(TARGET, items, false);
+    const mochi = [...again.querySelectorAll<HTMLButtonElement>('.ggroup__head button[aria-expanded]')].find((b) => b.textContent?.startsWith('Mochi'))!;
+    expect(mochi.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('every tappable mark is at least 44px: the bar button carries the height, the drawn bar stays thin', () => {
+    const css = readFileSync(resolve(__dirname, '../../src/web/styles/pkg-plan.css'), 'utf8');
+    expect(css).toMatch(/\.gantt \.gbar \{\s*height: 44px;/);
+    expect(css).toMatch(/\.gantt \.gmark--checkin::after \{[^}]*inset: -10px/);
   });
 
   it('remembers the grouping and the range between visits', () => {

@@ -245,10 +245,10 @@ test.describe('Accessibility smoke', () => {
     await openRecord(page, 'milestone:W06', /Verify both passports/);
     for (const [opener, dialogName] of [
       ['Change status', 'Change status'],
-      ['Propose an action', 'Propose an action for your task list'],
+      ['Suggest a task', 'Suggest a task for your task list'],
     ] as const) {
       // Proposing an action sits behind the "Task list" More button on a record page.
-      if (opener === 'Propose an action') await openMore(page, /^Task list/);
+      if (opener === 'Suggest a task') await openMore(page, /^Task list/);
       await page.getByRole('button', { name: opener }).click();
       const dialog = page.getByRole('dialog', { name: dialogName });
       await expect(dialog).toBeVisible();

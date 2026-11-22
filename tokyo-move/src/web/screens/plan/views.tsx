@@ -1,11 +1,12 @@
-import { useMemo, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { useEffect, useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { Link } from 'react-router';
-import { PHASE_LABEL, ANCHOR_CONFIDENCE_LABEL } from '@shared/labels';
+import { ANCHOR_CONFIDENCE_LABEL, WORK_STATUS_LABEL } from '@shared/labels';
 import type { AnchorData, HouseholdSettings, WorkStatus } from '@shared/types';
 import { AnchorDialog } from '../../components/AnchorDialog';
 import { DateText, DeadlineBadge, OptionalTag, StatusBadge } from '../../components/Badges';
 import { Button, SegmentedControl } from '../../components/Controls';
 import { Disclosure } from '../../components/Disclosure';
+import { waitingOnText } from '../../lib/home';
 import { DoneButton, useDoneWithUndo, type DoneWithUndo } from '../../components/DoneWithUndo';
 import { Icon } from '../../components/Icon';
 import { ItemCard } from '../../components/ItemCard';
@@ -13,39 +14,55 @@ import { Card, Section } from '../../components/Layout';
 import { OwnerChip, PersonBadge } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { displayNext, displayTitle, keyLookup, stripCodes, type KeyLookup } from '@shared/plain';
-import { dateLineText } from '../../lib/dateLine';
+import { checkInLineText } from '../../lib/dateLine';
 import { plural } from '../../lib/format';
 import { departureAnchors, travelSummary } from '../../lib/gantt';
 import { groupByStatus, groupPlan, nextToDo, sortForGroup, sortPlanItems, splitByDate, type PlanItemData } from '../../lib/plan';
 import { dataOf, isOpenWork, type Directory, type Indexes } from '../../lib/records';
+import { ShowAllList } from '../arrival/ShowAll';
 import { GanttChart } from './Gantt';
+import { ownerDisputed } from './ownerNote';
+import { PlanGroup } from './PlanGroup';
+import { useNarrow } from './useNarrow';
 
 /* ------------------------------------------------------------------ shared */
+
+/** Rows a group, section or column shows before "Show all (N)". */
+const FIRST = 5;
 
 function useLookup(idx: Indexes) {
   return useMemo(() => keyLookup(idx.byKey), [idx]);
 }
 
-/** One slim row: title, next step, date and person. Status is a quiet icon, only when it says something (not for "planned"). */
-function PlanItemCard({ it, today, lookup, showStatus = true, done }: { it: PlanItemData; today: string; lookup: KeyLookup | undefined; showStatus?: boolean; done?: DoneWithUndo }) {
+const capital = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+
+/**
+ * One slim row: title, next step, date and person. Status is a quiet icon, only when it says something (not for
+ * "planned"). A stuck item adds one line saying what it waits on, in the same words Home uses. `slim` drops the next
+ * step, for the board, where a card is a title and one line.
+ */
+function PlanItemCard({ it, today, lookup, idx, showStatus = true, done, slim = false }: { it: PlanItemData; today: string; lookup: KeyLookup | undefined; idx: Indexes; showStatus?: boolean; done?: DoneWithUndo; slim?: boolean }) {
   const { m } = it;
   const title = displayTitle(m, lookup);
-  // A check-in is a reminder to look again. It never reads as a deadline, so it is told in words, never "N days late".
+  // A check-in is a reminder to look again, so it is told with the word "Check-in" in the one date format.
   const checkIn = it.when.primary?.kind === 'review_date' ? it.when.primary : null;
+  const waitingOn = m.status === 'blocked' ? waitingOnText(m, idx, lookup) : null;
   return (
     <ItemCard
       recordId={m.id}
       title={title}
       owner={m.owner}
-      ownerProposed={m.owner_proposed}
-      nextAction={displayNext(m, lookup)}
+      ownerProposed={ownerDisputed(m)}
+      // A stuck card says what it waits on instead of its next step (the same as Home's Stuck rows).
+      nextAction={slim || m.status === 'blocked' ? null : displayNext(m, lookup)}
       status={m.status}
       showStatus={showStatus && m.status !== 'planned'}
-      when={checkIn ? undefined : it.when}
-      note={checkIn ? `Check-in ${dateLineText(checkIn.date, today, { open: false })}` : undefined}
+      when={checkIn || !it.when.primary ? undefined : it.when}
+      note={checkIn ? checkInLineText(checkIn.date, today) : undefined}
       today={today}
       optional={m.data?.optional_future_work}
       tone={m.status === 'blocked' ? 'blocked' : 'default'}
+      className="plan-card"
       action={
         done && isOpenWork(m.status) ? (
           <DoneButton
@@ -56,24 +73,44 @@ function PlanItemCard({ it, today, lookup, showStatus = true, done }: { it: Plan
           />
         ) : undefined
       }
-    />
+    >
+      {m.status === 'blocked' && <p className="item__why">{waitingOn ? `Waiting on: ${capital(waitingOn)}` : 'No reason written yet'}</p>}
+    </ItemCard>
   );
 }
 
 /* ------------------------------------------------------------------ list (grouped; the default) */
 
 /**
- * Groups, each a heading with a count. Every group starts closed except the one that holds the next thing to do
- * (or all of them, when a filter has left only a few items). Inside a group, past-due items come first.
+ * Groups, each a heading with a count. Every group starts closed except the first one that has unfinished items (or
+ * all of them, when a filter has left only a few items). An open group shows five rows and then "Show all (N)".
+ * Inside a group, past-due items come first. Open or closed is remembered for the session only.
  */
 export function WorkstreamView({ items, idx, today, filtered = false, focusRef }: { items: PlanItemData[]; idx: Indexes; today: string; filtered?: boolean; focusRef: RefObject<HTMLElement | null> }) {
   const lookup = useLookup(idx);
   const done = useDoneWithUndo(focusRef);
-  const { groups, nextId } = useMemo(() => {
+  const groups = useMemo(() => {
     const sorted = sortPlanItems(items, 'date', (o) => o ?? '');
-    const g = groupPlan(sorted, idx).groups.map((x) => ({ ...x, items: sortForGroup(x.items, today) }));
-    return { groups: g, nextId: nextToDo(items, today)?.m.id ?? null };
+    const all = groupPlan(sorted, idx).groups.map((x) => ({ ...x, items: sortForGroup(x.items, today) }));
+    // Groups with something still to do come first, so a finished group never pushes work down the page.
+    const hasWork = (g: (typeof all)[number]) => g.items.some((i) => isOpenWork(i.m.status));
+    return [...all.filter(hasWork), ...all.filter((g) => !hasWork(g))];
   }, [items, idx, today]);
+  // Opens first: the first group with unfinished items. After a filter, groups open in order until about five items are
+  // showing, so a long answer (such as Stuck) still opens short.
+  const opensFirst = useMemo(() => {
+    const keys = new Set<string>();
+    let shown = 0;
+    for (const g of groups) {
+      const n = g.items.filter((i) => isOpenWork(i.m.status)).length;
+      if (n === 0) continue;
+      if (keys.size > 0 && (!filtered || shown >= FIRST)) break;
+      keys.add(g.key);
+      shown += n;
+    }
+    return keys;
+  }, [groups, filtered]);
+  const scope = filtered ? 'f' : 'a';
   return (
     <div className="stack grid-wide grid-wide--2">
       <div className="plan-done-note">{done.note}</div>
@@ -81,33 +118,24 @@ export function WorkstreamView({ items, idx, today, filtered = false, focusRef }
         const open = g.items.filter((i) => isOpenWork(i.m.status));
         const blocked = g.items.filter((i) => i.m.status === 'blocked').length;
         const closed = g.items.filter((i) => !isOpenWork(i.m.status));
-        const hasNext = nextId !== null && g.items.some((i) => i.m.id === nextId);
+        const card = (it: PlanItemData, doneHook?: DoneWithUndo) => <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} idx={idx} done={doneHook} />;
         return (
-          <Disclosure
-            key={`${g.key || 'other'}-${filtered ? 'f' : 'a'}`}
+          <PlanGroup
+            key={`${scope}:${g.key || 'other'}`}
+            id={`list:${scope}:${g.key || 'other'}`}
             title={g.title}
-            meta={`${open.length} to do${blocked ? ` · ${blocked} stuck` : ''}`}
-            defaultOpen={hasNext || filtered}
+            count={open.length}
+            countLabel="to do"
+            note={blocked ? (blocked === open.length ? 'all stuck' : `${blocked} stuck`) : undefined}
+            defaultOpen={opensFirst.has(g.key)}
           >
-            {open.length > 0 ? (
-              <ul className="item-list">
-                {open.map((it) => (
-                  <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} done={done} />
-                ))}
-              </ul>
-            ) : (
-              <p className="muted">All finished or set aside.</p>
-            )}
+            {open.length > 0 ? <ShowAllList first={FIRST} rows={open.map((it) => card(it, done))} label={`in ${g.title}`} /> : <p className="muted">All finished or set aside.</p>}
             {closed.length > 0 && (
-              <Disclosure title="Finished or set aside" meta={String(closed.length)} level={4} className="disclosure--flat">
-                <ul className="item-list">
-                  {closed.map((it) => (
-                    <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
-                  ))}
-                </ul>
-              </Disclosure>
+              <PlanGroup id={`closed:${scope}:${g.key || 'other'}`} title="Finished or set aside" count={closed.length} defaultOpen={false} headingLevel={4} className="pgroup--flat">
+                <ShowAllList first={FIRST} rows={closed.map((it) => card(it))} label="finished or set aside" />
+              </PlanGroup>
             )}
-          </Disclosure>
+          </PlanGroup>
         );
       })}
     </div>
@@ -117,21 +145,18 @@ export function WorkstreamView({ items, idx, today, filtered = false, focusRef }
 /* ------------------------------------------------------------------ by date */
 
 /**
- * "By date": what is past its date, then what is coming up, then what has no date yet.
- * This is where Home's "Coming up" and "Past their date" links land: `/plan?view=list`.
+ * "By date": what is past its date, then what is coming up, then what has no date yet. Each part shows five rows and
+ * then "Show all (N)". This is where Home's "Coming up" and "Past their date" links land: `/plan?view=list`.
  */
 export function ListView({ items, idx, today, focusRef }: { items: PlanItemData[]; idx: Indexes; today: string; focusRef: RefObject<HTMLElement | null> }) {
   const lookup = useLookup(idx);
   const done = useDoneWithUndo(focusRef);
   const parts = useMemo(() => splitByDate(items, today), [items, today]);
+  const card = (it: PlanItemData, withDone: boolean) => <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} idx={idx} done={withDone ? done : undefined} />;
   const block = (id: string, title: string, list: PlanItemData[]) =>
     list.length === 0 ? null : (
       <Section title={title} count={list.length} headingLevel={3} className={`bydate bydate--${id}`}>
-        <ul className="item-list">
-          {list.map((it) => (
-            <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} done={done} />
-          ))}
-        </ul>
+        <ShowAllList first={FIRST} rows={list.map((it) => card(it, true))} label={title.toLowerCase()} />
       </Section>
     );
   return (
@@ -139,15 +164,16 @@ export function ListView({ items, idx, today, focusRef }: { items: PlanItemData[
       <div className="plan-done-note">{done.note}</div>
       {block('past', 'Past their date', parts.past)}
       {block('coming', 'Coming up', parts.coming)}
-      {block('undated', 'No date yet', parts.undated)}
+      {parts.undated.length > 0 && (
+        // Work with no date is the quietest part: it starts closed unless nothing else is listed.
+        <PlanGroup id="bydate:undated" title="No date yet" count={parts.undated.length} defaultOpen={parts.past.length + parts.coming.length === 0} className="bydate bydate--undated">
+          <ShowAllList first={FIRST} rows={parts.undated.map((it) => card(it, true))} label="no date yet" />
+        </PlanGroup>
+      )}
       {parts.closed.length > 0 && (
-        <Disclosure title="Finished or set aside" meta={String(parts.closed.length)}>
-          <ul className="item-list">
-            {parts.closed.map((it) => (
-              <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
-            ))}
-          </ul>
-        </Disclosure>
+        <PlanGroup id="bydate:closed" title="Finished or set aside" count={parts.closed.length} defaultOpen={false}>
+          <ShowAllList first={FIRST} rows={parts.closed.map((it) => card(it, false))} label="finished or set aside" />
+        </PlanGroup>
       )}
     </div>
   );
@@ -156,8 +182,11 @@ export function ListView({ items, idx, today, focusRef }: { items: PlanItemData[
 /* ------------------------------------------------------------------ board */
 
 const BOARD_MAIN: WorkStatus[] = ['planned', 'in_progress', 'blocked', 'waiting_external', 'completed'];
-const COLUMN_CAP = 8;
 
+/**
+ * One column for each status. A card is its title and one line (date and person); a stuck card adds what it waits on.
+ * Each column shows five cards and then "Show all (N)".
+ */
 export function BoardView({
   items,
   idx,
@@ -173,47 +202,59 @@ export function BoardView({
 }) {
   const lookup = useLookup(idx);
   const byStatus = useMemo(() => groupByStatus(sortPlanItems(items, 'date', (o) => o ?? '')), [items]);
-  const set = (list: PlanItemData[]) => list;
   const closedOnes = [...(byStatus.get('eliminated') ?? []), ...(byStatus.get('not_applicable') ?? [])];
+  const narrow = useNarrow();
+  const openColumn = (byStatus.get('in_progress')?.length ?? 0) > 0 ? 'in_progress' : (BOARD_MAIN.find((st) => (byStatus.get(st)?.length ?? 0) > 0) ?? 'planned');
   return (
     <div className="stack">
       <div className="board">
         {BOARD_MAIN.map((s) => {
-          const list = set(byStatus.get(s) ?? []);
-          const open = expanded[s];
-          const visible = open ? list : list.slice(0, COLUMN_CAP);
+          const list = byStatus.get(s) ?? [];
+          const cards = (
+            <ShowAllList
+              className="item-list item-list--compact"
+              first={FIRST}
+              all={Boolean(expanded[s])}
+              onAll={() => setExpanded((e) => ({ ...e, [s]: true }))}
+              label={`in ${WORK_STATUS_LABEL[s]}`}
+              rows={list.map((it) => (
+                <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} idx={idx} showStatus={false} slim />
+              ))}
+            />
+          );
+          // On a phone the columns stack, so each heading is a button and only one column starts open: the one with
+          // work being done, else the first with anything in it. Beside each other (wider screens) they all show.
+          if (narrow && list.length > 0) {
+            return (
+              <section key={s} className={`board-col board-col--${s}`}>
+                <PlanGroup id={`board:${s}`} title={<StatusBadge status={s} />} count={list.length} defaultOpen={s === openColumn} className="pgroup--flat">
+                  {cards}
+                </PlanGroup>
+              </section>
+            );
+          }
           return (
             <section key={s} className={`board-col board-col--${s}`} aria-labelledby={`col-${s}`}>
               <h3 id={`col-${s}`} className="board-col__title">
                 <StatusBadge status={s} />
                 <span className="count">{list.length}</span>
               </h3>
-              {list.length === 0 ? (
-                <p className="faint small board-col__empty">Nothing here.</p>
-              ) : (
-                <ul className="item-list item-list--compact">
-                  {visible.map((it) => (
-                    <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} showStatus={false} />
-                  ))}
-                </ul>
-              )}
-              {list.length > COLUMN_CAP && (
-                <Button variant="quiet" onClick={() => setExpanded((e) => ({ ...e, [s]: !open }))}>
-                  {open ? 'Show fewer' : `Show ${list.length - COLUMN_CAP} more`}
-                </Button>
-              )}
+              {list.length === 0 ? <p className="faint small board-col__empty">Nothing here.</p> : cards}
             </section>
           );
         })}
       </div>
       {closedOnes.length > 0 && (
-        <Disclosure title="Dropped or not needed" meta={String(closedOnes.length)}>
-          <ul className="item-list item-list--compact">
-            {closedOnes.map((it) => (
-              <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
+        <PlanGroup id="board:closed" title="Dropped or not needed" count={closedOnes.length} defaultOpen={false}>
+          <ShowAllList
+            className="item-list item-list--compact"
+            first={FIRST}
+            label="dropped or not needed"
+            rows={closedOnes.map((it) => (
+              <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} idx={idx} slim />
             ))}
-          </ul>
-        </Disclosure>
+          />
+        </PlanGroup>
       )}
     </div>
   );
@@ -287,6 +328,14 @@ type TimelineSettings = Pick<HouseholdSettings, 'plan_baseline' | 'planning_targ
 
 export function TimelineView({ items, idx, dir, today, settings }: { items: PlanItemData[]; idx: Indexes; dir: Directory; today: string; settings?: TimelineSettings }) {
   const [view, setView] = useState<'chart' | 'table'>('chart');
+  const [allRows, setAllRows] = useState(false);
+  const bodyRef = useRef<HTMLTableSectionElement>(null);
+  const revealed = useRef(false);
+  useEffect(() => {
+    if (!allRows || !revealed.current) return;
+    revealed.current = false;
+    bodyRef.current?.rows[FIRST]?.querySelector<HTMLElement>('a[href]')?.focus();
+  }, [allRows]);
   const dated = useMemo(
     () => sortPlanItems(items.filter((i) => i.date && i.dateKind !== 'review_date'), 'date', (o) => o ?? ''),
     [items],
@@ -301,7 +350,6 @@ export function TimelineView({ items, idx, dir, today, settings }: { items: Plan
       <Section
         title="When things happen"
         headingLevel={2}
-        intro={view === 'chart' ? 'Bars show when work happens. Only a solid bar ends at a real date.' : undefined}
         action={
           <SegmentedControl
             label="Timeline layout"
@@ -328,8 +376,8 @@ export function TimelineView({ items, idx, dir, today, settings }: { items: Plan
                   <th scope="col">Kind of date</th>
                 </tr>
               </thead>
-              <tbody>
-                {dated.map((it) => (
+              <tbody ref={bodyRef}>
+                {(allRows ? dated : dated.slice(0, FIRST)).map((it) => (
                   <tr key={it.m.id}>
                     <td>
                       <DateText date={it.date} today={today} state={it.dateState ?? undefined} />
@@ -352,6 +400,16 @@ export function TimelineView({ items, idx, dir, today, settings }: { items: Plan
                 )}
               </tbody>
             </table>
+            {!allRows && dated.length > FIRST && (
+              <div>
+                <Button variant="quiet" className="show-all" onClick={() => {
+                    revealed.current = true;
+                    setAllRows(true);
+                  }}>
+                  Show all ({dated.length})
+                </Button>
+              </div>
+            )}
             {(reviewOnly.length > 0 || undated.length > 0) && (
               <p className="small muted table-foot">
                 {undated.length > 0 && <>{plural(undated.length, 'item')} {undated.length === 1 ? 'has' : 'have'} no date yet. </>}

@@ -7,6 +7,7 @@ import type { PlanningTarget } from '@shared/types';
 import { DateText, DeadlineBadge, StatusBadge } from '../../components/Badges';
 import { SegmentedControl } from '../../components/Controls';
 import { Icon, type IconName } from '../../components/Icon';
+import { More } from '../../components/More';
 import { OwnerChip, PersonBadge } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, plural } from '../../lib/format';
@@ -41,6 +42,8 @@ import { groupPlan, sortPlanItems, type PlanItemData } from '../../lib/plan';
 import { dataOf, isOpenWork, type Directory, type Indexes } from '../../lib/records';
 import { loadPref, savePref } from '../../state/prefs';
 import { Chain } from './Chain';
+import { ownerDisputed } from './ownerNote';
+import { readOpen, writeOpen } from './PlanGroup';
 
 /* Sizes that the layout and the pixel maths must agree on. Everything else about looks lives in styles/gantt.css. */
 const UNIT_PX = { wide: 72, phone: 56 }; // the narrowest month (or quarter) column
@@ -261,7 +264,12 @@ function markerLabels(axis: GanttAxis, markers: DepartureMarker[], checkIns: Sha
 }
 
 /** Heights of the header rows, so the sticky axis can tell the scroll box how much room it takes. */
-const HEAD_ROW = { years: 24, cols: 26, lane: 26, pad: 4 };
+const HEAD_ROW = { years: 24, cols: 26, lane: 26, mark: 44, pad: 4 };
+
+/** Rows a group of the chart shows before "Show all (N)". */
+const FIRST_ROWS = 5;
+/** Groups that start open: the current one and the next one. */
+const OPEN_GROUPS = 2;
 
 interface HeadProps {
   axis: GanttAxis;
@@ -320,9 +328,9 @@ function ChartHead({ axis, bands, bandLanes, labels, lanes, selectedId, onToggle
       </div>
       <div className="ghrow ghrow--marks">
         <div className="ghrow__label">Key dates</div>
-        <div className="ghrow__area" style={{ ...areaStyle, height: lanes * HEAD_ROW.lane + HEAD_ROW.pad }}>
+        <div className="ghrow__area" style={{ ...areaStyle, height: lanes * HEAD_ROW.mark + HEAD_ROW.pad }}>
           {labels.map((l) => {
-            const pos = l.flip ? { right: axis.width - l.x, top: l.lane * HEAD_ROW.lane + 2 } : { left: l.x, top: l.lane * HEAD_ROW.lane + 2 };
+            const pos = l.flip ? { right: axis.width - l.x, top: l.lane * HEAD_ROW.mark + 10 } : { left: l.x, top: l.lane * HEAD_ROW.mark + 10 };
             if (l.kind === 'checkin' && l.id) {
               const id = l.id;
               return (
@@ -548,7 +556,7 @@ function ItemPopover({ g, idx, today, target, ...shell }: PopoverBase & { g: Gan
   return (
     <PopoverShell subject={g.id} title={g.title} {...shell}>
       <div className="gpop__meta">
-        <OwnerChip owner={m.owner} proposed={m.owner_proposed} compact />
+        <OwnerChip owner={m.owner} proposed={ownerDisputed(m)} compact />
         <StatusBadge status={m.status} small />
       </div>
       <div className="gpop__timing">
@@ -629,7 +637,10 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
     setGroupByState(g);
     savePref(GROUP_PREF, g);
   }, []);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // Which groups the person opened or closed this session; a group they have not touched follows the default.
+  const [choice, setChoice] = useState<Record<string, boolean>>({});
+  const [allRows, setAllRows] = useState<Record<string, boolean>>({});
+  const [unplacedAll, setUnplacedAll] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetPad, setSheetPad] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -666,7 +677,7 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
   const checkInById = useMemo(() => new Map(checkIns.map((c) => [`checkin:${c.date}`, c])), [checkIns]);
   const { labels: markLabels, lanes: markLanes } = useMemo(() => markerLabels(axis, markers, checkIns, today), [axis, markers, checkIns, today]);
   const bandLanes = bands.reduce((n, b) => Math.max(n, b.lane + 1), 1);
-  const headHeight = HEAD_ROW.years + HEAD_ROW.cols + bandLanes * HEAD_ROW.lane + HEAD_ROW.pad + markLanes * HEAD_ROW.lane + HEAD_ROW.pad + 1;
+  const headHeight = HEAD_ROW.years + HEAD_ROW.cols + bandLanes * HEAD_ROW.lane + HEAD_ROW.pad + markLanes * HEAD_ROW.mark + HEAD_ROW.pad + 1;
 
   const byId = useMemo(() => new Map(placed.map((g) => [g.id, g])), [placed]);
   const byKey = useMemo(() => new Map(placed.map((g) => [g.key, g])), [placed]);
@@ -690,7 +701,7 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
 
   const selected = selectedId ? (byId.get(selectedId) ?? null) : null;
   const selectedCheckIn = selectedId ? (checkInById.get(selectedId) ?? null) : null;
-  const ownerText = useCallback((g: GanttItem) => `${dir.ownerLabel(g.owner)}${g.ownerProposed && g.owner && g.owner !== 'unassigned' ? ' (not agreed yet)' : ''}`, [dir]);
+  const ownerText = useCallback((g: GanttItem) => `${dir.ownerLabel(g.owner)}${ownerDisputed(g.item.m) && g.owner && g.owner !== 'unassigned' ? ' (not agreed yet)' : ''}`, [dir]);
 
   const register = useCallback((id: string, el: HTMLButtonElement | null) => {
     if (el) bars.current.set(id, el);
@@ -728,7 +739,7 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
   // A selected row that is no longer on screen (its group was folded, a filter changed) has nothing to point at.
   useLayoutEffect(() => {
     if (selectedId && !bars.current.has(selectedId)) setSelectedId(null);
-  }, [selectedId, groups, collapsed, groupBy]);
+  }, [selectedId, groups, choice, allRows, groupBy]);
 
   // Bring the chosen bar into view when it was chosen from its row label.
   useLayoutEffect(() => {
@@ -784,16 +795,28 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
     const ro = new ResizeObserver(compute);
     ro.observe(canvas);
     return () => ro.disconnect();
-  }, [selected, prereqIds, groups, collapsed, axis]);
+  }, [selected, prereqIds, groups, choice, allRows, axis]);
 
   // Where the main axis cannot stay in view (no scroll box), a small month axis is repeated at the top of a group.
+  const groupKey = (k: string) => `gantt:${groupBy}:${k}`;
+  // The current and the next group (the first two with work still to do) start open; later ones start folded.
+  const defaultOpen = useMemo(() => {
+    const keys = groups.filter((g) => g.items.some((i) => isOpenWork(i.status))).map((g) => g.key);
+    return new Set((keys.length > 0 ? keys : groups.map((g) => g.key)).slice(0, OPEN_GROUPS));
+  }, [groups]);
+  const isOpen = (k: string) => choice[groupKey(k)] ?? readOpen(groupKey(k)) ?? defaultOpen.has(k);
+  const setOpen = (k: string, open: boolean) => {
+    writeOpen(groupKey(k), open);
+    setChoice((c) => ({ ...c, [groupKey(k)]: open }));
+  };
+  const rowsShown = (k: string, n: number) => (isOpen(k) ? (allRows[groupKey(k)] ? n : Math.min(n, FIRST_ROWS)) : 0);
   const axisRows = useMemo(
-    () => compactAxisRows(groups.map((g) => (collapsed[`${groupBy}:${g.key}`] ? 0 : g.items.length)), groupBy === 'traveler' ? 0 : 8).map((show) => show && !wide),
-    [groups, collapsed, groupBy, wide],
+    () => compactAxisRows(groups.map((g) => rowsShown(g.key, g.items.length)), groupBy === 'traveler' ? 0 : 8).map((show) => show && !wide),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [groups, choice, allRows, defaultOpen, groupBy, wide],
   );
 
   const canvasStyle = vars({ width: (phone ? 0 : 240) + axis.width, '--gw': `${axis.width}px` });
-  const groupKey = (k: string) => `${groupBy}:${k}`;
 
   const renderRow = (g: GanttItem) => (
     <li key={g.id} className={`grow grow--${g.tone}${selectedId === g.id ? ' is-selected' : ''}`} data-gantt-item="" data-item-id={g.id} onClick={() => toggle(g.id)}>
@@ -832,7 +855,9 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
           ]}
         />
       </div>
-      <Legend />
+      <More label="What the marks mean" className="gantt__key">
+        <Legend />
+      </More>
       <div
         ref={scrollRef}
         className="gantt__scroll"
@@ -845,7 +870,8 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
           <ChartHead axis={axis} bands={bands} bandLanes={bandLanes} labels={markLabels} lanes={markLanes} selectedId={selectedId} onToggle={toggle} register={register} />
           <ChartLines axis={axis} markers={markers} checkIns={checkIns} today={today} />
           {groups.map((grp, gi) => {
-            const open = !collapsed[groupKey(grp.key)];
+            const open = isOpen(grp.key);
+            const shownRows = allRows[groupKey(grp.key)] ? grp.items : grp.items.slice(0, FIRST_ROWS);
             const todo = grp.items.filter((g) => isOpenWork(g.status)).length;
             const blocked = grp.items.filter((g) => g.status === 'blocked').length;
             const span = groupSpan(grp.items);
@@ -856,7 +882,7 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
             return (
               <section key={grp.key} className="ggroup">
                 <h3 className="ggroup__head">
-                  <button type="button" className="ggroup__toggle" aria-expanded={open} onClick={() => setCollapsed((c) => ({ ...c, [groupKey(grp.key)]: open }))}>
+                  <button type="button" className="ggroup__toggle" aria-expanded={open} aria-controls={open ? `${arrowId}-rows-${gi}` : undefined} onClick={() => setOpen(grp.key, !open)}>
                     <Icon name="chevron-right" size={16} className="ggroup__chev" />
                     <span className="ggroup__title">{grp.title}</span>
                     <span className="ggroup__meta">{`${plural(grp.items.length, 'item')} · ${todo} to do${blocked ? ` · ${blocked} stuck` : ''}`}</span>
@@ -872,7 +898,30 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
                     {clipped && <span className="ggroup__span" style={{ left: x0, width: Math.max(6, x1 - x0) }} />}
                   </span>
                 </h3>
-                {open && <ul className="ggroup__rows">{grp.items.map(renderRow)}</ul>}
+                {open && (
+                  <ul className="ggroup__rows" id={`${arrowId}-rows-${gi}`}>
+                    {shownRows.map(renderRow)}
+                    {shownRows.length < grp.items.length && (
+                      <li className="grow grow--more">
+                        <div className="grow__label">
+                          <button
+                            type="button"
+                            className="btn btn--quiet show-all"
+                            onClick={() => {
+                              const next = grp.items[FIRST_ROWS];
+                              setAllRows((a) => ({ ...a, [groupKey(grp.key)]: true }));
+                              if (next) requestAnimationFrame(() => bars.current.get(next.id)?.focus({ preventScroll: true }));
+                            }}
+                          >
+                            Show all ({grp.items.length})
+                            <span className="visually-hidden"> in {grp.title}</span>
+                          </button>
+                        </div>
+                        <div className="grow__area" />
+                      </li>
+                    )}
+                  </ul>
+                )}
               </section>
             );
           })}
@@ -886,7 +935,7 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
                 <span className="ggroup__area" aria-hidden="true" />
               </h3>
               <ul className="ggroup__rows">
-                {unplaced.map((g) => (
+                {(unplacedAll ? unplaced : unplaced.slice(0, FIRST_ROWS)).map((g) => (
                   <li key={g.id} className="grow grow--unplaced" data-gantt-item="" data-item-id={g.id}>
                     <div className="grow__label">
                       <OwnerAvatar owner={g.owner} dir={dir} />
@@ -905,6 +954,21 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
                     </div>
                   </li>
                 ))}
+                {!unplacedAll && unplaced.length > FIRST_ROWS && (
+                  <li className="grow grow--more">
+                    <div className="grow__label">
+                      <button type="button" className="btn btn--quiet show-all" onClick={() => {
+                          const next = unplaced[FIRST_ROWS];
+                          setUnplacedAll(true);
+                          if (next) requestAnimationFrame(() => canvasRef.current?.querySelector<HTMLElement>(`[data-item-id="${next.id}"] a`)?.focus({ preventScroll: true }));
+                        }}>
+                        Show all ({unplaced.length})
+                        <span className="visually-hidden"> not placed yet</span>
+                      </button>
+                    </div>
+                    <div className="grow__area" />
+                  </li>
+                )}
               </ul>
             </section>
           )}

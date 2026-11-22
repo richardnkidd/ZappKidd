@@ -102,7 +102,13 @@ test.describe('When things go wrong', () => {
     // Arrive by clicking through the app (not by typing the address), so Back is a move inside the app.
     await signIn(page, 'avery', '/plan?view=list');
     await loaded(page);
-    await page.getByRole('main').getByRole('link', { name: before.title as string, exact: true }).first().click();
+    // Lists open short (groups closed, five rows): unfold them until the item is on screen.
+    const link = page.getByRole('main').getByRole('link', { name: before.title as string, exact: true }).first();
+    for (let pass = 0; pass < 4 && !(await link.isVisible()); pass += 1) {
+      await page.evaluate(() => document.querySelectorAll<HTMLButtonElement>('main .pgroup__btn[aria-expanded="false"], main button.show-all').forEach((b) => b.click()));
+      await page.waitForTimeout(120);
+    }
+    await link.click();
     await expect(page.getByRole('button', { name: 'Edit next action' })).toBeVisible();
     await page.getByRole('button', { name: 'Edit next action' }).click();
     await box.fill(words);

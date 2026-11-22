@@ -49,6 +49,15 @@ export function dateLine(date: string, today?: string | null, opts: DateLineOpti
   return { text: `${dayWord(-n)} late`, when: 'late', days: n, dateText };
 }
 
+/**
+ * A check-in date for plain-text places (a card's meta line): "Check-in Mon, Nov 30 (8 days)", or "Check-in 11 days
+ * late". It uses the same wording as every other date, so a past check-in reads the same on Plan, Home and the record
+ * page. The word "Check-in" tells it apart from a deadline.
+ */
+export function checkInLineText(date: string, today?: string | null): string {
+  return `Check-in ${dateLineText(date, today)}`;
+}
+
 /** Text-only form for places with no markup (saved notes, printed packs). */
 export function dateLineText(date: string | null | undefined, today?: string | null, opts: DateLineOptions = {}): string {
   if (!date) return 'Awaiting date';

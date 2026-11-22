@@ -40,6 +40,22 @@ async function chooseView(page: Page, name: 'List' | 'By date' | 'Board' | 'Time
   await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
 }
 
+/**
+ * Unfold every group and press every "Show all (N)", so a test can count everything a view holds. Each view opens
+ * with groups folded and five rows a group (see the reading-load tests); this is the "one tap away" part.
+ */
+async function revealAll(page: Page) {
+  for (let pass = 0; pass < 4; pass += 1) {
+    const clicked = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('main .pgroup__btn[aria-expanded="false"], main .ggroup__toggle[aria-expanded="false"], main button.show-all'));
+      for (const b of buttons) b.click();
+      return buttons.length;
+    });
+    if (clicked === 0) break;
+    await page.waitForTimeout(120);
+  }
+}
+
 /** Every plan item on screen: by its link, or (the timeline chart, whose rows open a details panel) by its row. */
 async function milestoneIds(page: Page): Promise<string[]> {
   const linked = await page.locator('main a[href^="/r/milestone"]').evaluateAll((as) => as.map((a) => decodeURIComponent((a.getAttribute('href') ?? '').slice(3))));
@@ -66,10 +82,8 @@ test.describe('Plan: views and filters', () => {
     const found: Record<string, string[]> = {};
     for (const view of ['List', 'By date', 'Board', 'Timeline'] as const) {
       await chooseView(page, view);
-      if (view === 'Board') {
-        // Long columns show the first few cards; "Show N more" reveals the rest.
-        for (const more of await page.getByRole('button', { name: /^Show \d+ more$/ }).all()) await more.click();
-      }
+      // Groups and columns open short: "Show all (N)" and the group headings reveal the rest.
+      await revealAll(page);
       found[view] = await milestoneIds(page);
     }
     for (const [view, ids] of Object.entries(found)) {
@@ -109,6 +123,7 @@ test.describe('Plan: views and filters', () => {
     const count = page.getByRole('status').filter({ hasText: /^Showing/ });
     await expect(quick.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
     const initial = (await count.innerText()).match(/Showing (\d+) of (\d+)/)!;
+    await revealAll(page);
     expect(await milestoneIds(page)).toHaveLength(Number(initial[1]));
 
     const snap = await (await api('avery')).snapshot();
@@ -119,6 +134,7 @@ test.describe('Plan: views and filters', () => {
     const mine = Number((await count.innerText()).match(/Showing (\d+)/)![1]);
     expect(mine).toBeGreaterThan(0);
     expect(mine).toBeLessThan(Number(initial[1]));
+    await revealAll(page);
     const shownIds = await milestoneIds(page);
     expect(shownIds).toHaveLength(mine);
     for (const id of shownIds) expect(byId.get(id).owner, id).toBe('avery');
@@ -127,6 +143,7 @@ test.describe('Plan: views and filters', () => {
     await expect(quick.getByRole('button', { name: 'Stuck' })).toHaveAttribute('aria-pressed', 'true');
     const blockedIds = (snap.records as any[]).filter((r) => r.type === 'milestone' && r.status === 'blocked' && !r.data.optional_future_work).map((r) => r.id as string).sort();
     await expect(count).toHaveText(`Showing ${blockedIds.length} of ${initial[2]}`);
+    await revealAll(page);
     expect(await milestoneIds(page)).toEqual(blockedIds);
 
     await quick.getByRole('button', { name: 'All' }).click();
@@ -172,23 +189,48 @@ test.describe('Plan: views and filters', () => {
     await expect(count).toHaveText(`Showing ${initial[1]} of ${initial[2]}`);
   });
 
-  test('the List opens on content: groups are closed except the one with the next thing to do', async ({ page, signIn }) => {
+  test('the List opens on content: groups are closed except the first with unfinished items, five rows each', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/plan');
     await loaded(page);
-    const summaries = page.locator('main details.disclosure > summary');
-    await expect(summaries.first()).toBeVisible();
-    expect(await summaries.count()).toBeGreaterThan(3);
-    const open = await page.locator('main details.disclosure[open]').count();
+    const heads = page.locator('main .pgroup > .pgroup__head > .pgroup__btn');
+    await expect(heads.first()).toBeVisible();
+    expect(await heads.count()).toBeGreaterThan(3);
+    // Proper disclosures: each heading is a button that says whether it is open and what it controls.
+    for (const h of await heads.all()) {
+      await expect(h).toHaveAttribute('aria-expanded', /^(true|false)$/);
+      await expect(h).toHaveAttribute('aria-controls', /.+/);
+    }
+    const open = await page.locator('main .grid-wide > .pgroup > .pgroup__head > .pgroup__btn[aria-expanded="true"]').count();
     expect(open).toBe(1);
-    // Every group heading carries a count.
-    for (const t of await page.locator('main .grid-wide > details.disclosure > summary .disclosure__meta').allInnerTexts()) expect(t).toMatch(/\d+ to do/);
+    // Every group heading carries its name and a count.
+    for (const t of await page.locator('main .grid-wide > .pgroup > .pgroup__head > .pgroup__btn').allInnerTexts()) expect(t).toMatch(/\S[\s\S]*\d+/);
+    // No group lists more than five rows until "Show all (N)" is pressed.
+    for (const body of await page.locator('main .grid-wide > .pgroup > .pgroup__body:not([hidden])').all()) {
+      expect(await body.locator(':scope > ul > li').count()).toBeLessThanOrEqual(5);
+    }
     // No filter chips, no helper paragraphs, no "Showing ... gentle limit ..." lines: content starts in the first screen.
     const firstItem = page.getByRole('main').locator('a[href^="/r/milestone"]:visible').first();
     await expect(firstItem).toBeVisible();
     const height = page.viewportSize()!.height;
     // On a 320 by 640 phone the first group heading is in view; on larger screens an item is too.
-    expect((await summaries.first().boundingBox())!.y).toBeLessThan(height);
+    expect((await heads.first().boundingBox())!.y).toBeLessThan(height);
     if (height >= 800) expect((await firstItem.boundingBox())!.y).toBeLessThan(height);
+  });
+
+  test('a group that was opened stays open for the rest of the visit', async ({ page, signIn }) => {
+    await signIn(page, 'avery', '/plan?view=workstream');
+    await loaded(page);
+    const heads = page.locator('main .grid-wide > .pgroup > .pgroup__head > .pgroup__btn');
+    const index = (await heads.evaluateAll((els) => els.findIndex((e) => e.getAttribute('aria-expanded') === 'false')));
+    expect(index).toBeGreaterThan(-1);
+    await heads.nth(index).click();
+    await expect(heads.nth(index)).toHaveAttribute('aria-expanded', 'true');
+    // Leave the screen and come back: the choice is remembered for this visit only.
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Home', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await page.goto('/plan?view=workstream');
+    await loaded(page);
+    await expect(heads.nth(index)).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('"By date" lists what is past its date first, then what is coming up', async ({ page, signIn }) => {
@@ -204,8 +246,11 @@ test.describe('Plan: views and filters', () => {
       // Past-due work says how late, in the one date format, and is never a check-in.
       for (const t of await past.locator('.item__when').allInnerTexts()) expect(t).toMatch(/\d+ days? late/);
     }
-    // A check-in never reads as late.
-    for (const t of await page.locator('.bydate--coming .item__meta').allInnerTexts()) if (/Check-in/.test(t)) expect(t).not.toMatch(/late/);
+    // A check-in keeps its word and reads in the one date format, the same as on Home and on the record page.
+    for (const t of await page.locator('main .item__meta').allInnerTexts()) {
+      const m = t.match(/Check-in (.*)/);
+      if (m) expect(m[1], t).toMatch(/^(Today|Tomorrow|\d+ days? late|\w{3}, \w{3} \d+(, \d{4})?( \(\d+ days?\))?)/);
+    }
   });
 });
 
@@ -428,7 +473,7 @@ test.describe('Status rules', () => {
   });
 });
 
-test.describe('Propose an action', () => {
+test.describe('Suggest a task', () => {
   test('defaults the due date to 14 days after today in the household zone; "leave blank" stays blank', async ({ page, signIn, api }, testInfo) => {
     const avery = await api('avery');
     const snap = await avery.snapshot();
@@ -442,13 +487,13 @@ test.describe('Propose an action', () => {
     const tasks = page.getByRole('region', { name: /^Tasks on your task list/ });
 
     // --- Default: 14 calendar days after today, in the household's zone (not the computer's).
-    await tasks.getByRole('button', { name: 'Propose an action' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Propose an action for your task list' });
+    await tasks.getByRole('button', { name: 'Suggest a task' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Suggest a task for your task list' });
     await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill(titleDefault);
     const expectedBefore = addDays(todayInZone(zone), 14);
     await expect(dialog.getByRole('radio', { name: /^In about 14 days/ })).toBeChecked();
     await expect(dialog.getByRole('radio', { name: /^In about 14 days/ })).toHaveAccessibleName(new RegExp(weekdayLabel(expectedBefore)));
-    await dialog.getByRole('button', { name: 'Propose action' }).click();
+    await dialog.getByRole('button', { name: 'Suggest task' }).click();
     await expect(dialog).toHaveCount(0);
     const expectedAfter = addDays(todayInZone(zone), 14);
 
@@ -462,11 +507,11 @@ test.describe('Propose an action', () => {
     expect(created.due_basis).toBe('default_14_days');
 
     // --- Leave blank: no date is invented anywhere.
-    await tasks.getByRole('button', { name: 'Propose an action' }).click();
-    const dialog2 = page.getByRole('dialog', { name: 'Propose an action for your task list' });
+    await tasks.getByRole('button', { name: 'Suggest a task' }).click();
+    const dialog2 = page.getByRole('dialog', { name: 'Suggest a task for your task list' });
     await dialog2.getByRole('textbox', { name: 'What needs doing?' }).fill(titleBlank);
     await dialog2.getByRole('radio', { name: /^Leave blank/ }).check();
-    await dialog2.getByRole('button', { name: 'Propose action' }).click();
+    await dialog2.getByRole('button', { name: 'Suggest task' }).click();
     await expect(dialog2).toHaveCount(0);
     const blankRow = tasks.getByRole('listitem').filter({ hasText: titleBlank });
     await expect(blankRow).toBeVisible();
@@ -482,18 +527,18 @@ test.describe('Propose an action', () => {
     await signIn(page, 'jun', `/r/${enc(PROPOSE_TARGET)}`);
     await loaded(page);
     await openMore(page, /^Task list/);
-    await page.getByRole('button', { name: 'Propose an action' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Propose an action for your task list' });
+    await page.getByRole('button', { name: 'Suggest a task' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Suggest a task for your task list' });
     await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill('');
-    await dialog.getByRole('button', { name: 'Propose action' }).click();
+    await dialog.getByRole('button', { name: 'Suggest task' }).click();
     await expect(dialog.getByRole('alert')).toContainText('Please say what needs doing');
 
     await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill(title);
     await dialog.getByRole('radio', { name: 'Pick a date' }).check();
-    await dialog.getByRole('button', { name: 'Propose action' }).click();
+    await dialog.getByRole('button', { name: 'Suggest task' }).click();
     await expect(dialog.getByRole('alert')).toContainText('Please pick a date');
     await dialog.getByRole('textbox', { name: 'Due date' }).fill('2027-03-15');
-    await dialog.getByRole('button', { name: 'Propose action' }).click();
+    await dialog.getByRole('button', { name: 'Suggest task' }).click();
     await expect(dialog).toHaveCount(0);
     const row = page.getByRole('region', { name: /^Tasks on your task list/ }).getByRole('listitem').filter({ hasText: title });
     await expect(row.locator('time[datetime]')).toHaveAttribute('datetime', '2027-03-15');
@@ -503,7 +548,7 @@ test.describe('Propose an action', () => {
   });
 });
 
-test.describe('Propose an action on a read-only task list', () => {
+test.describe('Suggest a task on a read-only task list', () => {
   test.use({ baseURL: baseUrlFor('snapshot') });
 
   async function makeProposals(avery: Api, testInfo: TestInfo) {
@@ -588,10 +633,10 @@ test.describe('Propose an action on a read-only task list', () => {
     await signIn(page, 'avery', `/r/${enc(PROPOSE_TARGET)}`);
     await loaded(page);
     await openMore(page, /^Task list/);
-    await page.getByRole('button', { name: 'Propose an action' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Propose an action for your task list' });
+    await page.getByRole('button', { name: 'Suggest a task' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Suggest a task for your task list' });
     await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill(title);
-    await dialog.getByRole('button', { name: 'Propose action' }).click();
+    await dialog.getByRole('button', { name: 'Suggest task' }).click();
     await expect(dialog).toHaveCount(0);
 
     const row = page.getByRole('region', { name: /^Tasks on your task list/ }).getByRole('listitem').filter({ hasText: title });
@@ -613,7 +658,7 @@ test.describe('Propose an action on a read-only task list', () => {
   });
 });
 
-test.describe('Propose an action when the task list fails once', () => {
+test.describe('Suggest a task when the task list fails once', () => {
   // This server's demo task store is told to fail the first "create": the proposal must not be lost or pretended done.
   test.describe.configure({ mode: 'serial' });
   test.use({ baseURL: baseUrlFor('failcreate') });
@@ -625,10 +670,10 @@ test.describe('Propose an action when the task list fails once', () => {
     await signIn(page, 'avery', `/r/${enc(PROPOSE_TARGET)}`);
     await loaded(page);
     await openMore(page, /^Task list/);
-    await page.getByRole('button', { name: 'Propose an action' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Propose an action for your task list' });
+    await page.getByRole('button', { name: 'Suggest a task' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Suggest a task for your task list' });
     await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill(title);
-    await dialog.getByRole('button', { name: 'Propose action' }).click();
+    await dialog.getByRole('button', { name: 'Suggest task' }).click();
     await expect(dialog).toHaveCount(0);
 
     const row = page.getByRole('region', { name: /^Tasks on your task list/ }).getByRole('listitem').filter({ hasText: title });

@@ -265,3 +265,36 @@
   position: relative;
   z-index: 2;
 }
+
+/* ---------- Arrival: short rows; the buttons drop below the text on narrow screens ---------- */
+.step__next {
+  margin: 0;
+  font-size: var(--fs-1);
+  line-height: 1.4;
+}
+.arrival .row-1__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.arrival .step a.item__title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+.arrival .row-1__main {
+  overflow-wrap: break-word;
+}
+@media (max-width: 480px) {
+  .arrival .row-1 {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .arrival .row-1__main {
+    flex: 1 1 0;
+  }
+  .arrival .row-1__side {
+    flex: 1 1 100%;
+    padding-left: 0;
+  }
+}

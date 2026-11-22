@@ -13,6 +13,23 @@ async function openTimeline(page: Page) {
   await expect(page.getByRole('region', { name: /^Timeline chart/ })).toBeVisible();
 }
 
+/**
+ * The chart opens with the current and next groups unfolded and five rows a group. These tests look at particular bars,
+ * so they unfold every group and press every "Show all (N)" first.
+ */
+async function revealRows(page: Page) {
+  await expect(page.getByRole('region', { name: /^Timeline chart/ })).toBeVisible();
+  for (let pass = 0; pass < 4; pass += 1) {
+    const n = await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('.gantt .ggroup__toggle[aria-expanded="false"], .gantt .grow--more .show-all'));
+      for (const b of buttons) b.click();
+      return buttons.length;
+    });
+    if (n === 0) break;
+    await page.waitForTimeout(120);
+  }
+}
+
 function chart(page: Page): Locator {
   return page.getByRole('region', { name: /^Timeline chart/ });
 }
@@ -29,6 +46,7 @@ test.describe('Timeline chart', () => {
     await signIn(page, 'avery', '/plan');
     await loaded(page);
     await openTimeline(page);
+    await revealRows(page);
 
     // One bar for each item the plan shows (optional future work is hidden by default).
     const snap = await (await api('avery')).snapshot();
@@ -68,6 +86,9 @@ test.describe('Timeline chart', () => {
   test('shows the key, Today, the departure markers, and where each phase sits', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/plan?view=timeline');
     await loaded(page);
+    await revealRows(page);
+    // The key sits behind its own control: it is helper text, not content.
+    await page.getByRole('button', { name: 'What the marks mean' }).click();
     const key = page.getByRole('list', { name: 'How to read the chart' });
     for (const word of ['Firm date', 'Timing from its phase', 'Placed by the target', 'Deadline', 'Check-in (not a deadline)', 'Today']) await expect(key).toContainText(word);
 
@@ -122,6 +143,7 @@ test.describe('Timeline chart', () => {
   test('a bar opens its details from the keyboard; Escape closes them and focus returns to the bar', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/plan?view=timeline');
     await loaded(page);
+    await revealRows(page);
     const b = bar(page, 'Confirm airline and crate feasibility');
     await b.scrollIntoViewIfNeeded();
     await b.focus();
@@ -162,6 +184,7 @@ test.describe('Timeline chart', () => {
   test('a check-in that many items share is one marker in Key dates, not a circle and a leader on every row', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/plan?view=timeline');
     await loaded(page);
+    await revealRows(page);
     const region = chart(page);
     const marker = region.getByRole('button', { name: /^Check-in · Wed, Nov 11(, 2026)? · 4 items · not scheduled$/ });
     await expect(marker).toBeVisible();
@@ -209,6 +232,7 @@ test.describe('Timeline chart', () => {
   test('"Open item" goes to the item, and a bar with a check-in explains that it is not a deadline', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/plan?view=timeline');
     await loaded(page);
+    await revealRows(page);
     const b = bar(page, 'Collect mover quotes');
     await b.scrollIntoViewIfNeeded();
     await b.click();
@@ -230,6 +254,7 @@ test.describe('Timeline chart', () => {
   test('a firm bar names its date in the details, with the kind of date', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/plan?view=timeline');
     await loaded(page);
+    await revealRows(page);
     const b = bar(page, 'Verify both passports and renewal outcomes');
     await b.scrollIntoViewIfNeeded();
     await b.click();
@@ -243,12 +268,15 @@ test.describe('Timeline chart', () => {
     await signIn(page, 'avery', '/plan?view=timeline');
     await loaded(page);
     const group = chart(page).getByRole('button', { name: /^Mochi / });
+    // Mochi is the third group: the current and next groups are open, later ones start folded.
+    await expect(group).toHaveAttribute('aria-expanded', 'false');
+    await group.click();
     await expect(group).toHaveAttribute('aria-expanded', 'true');
     await expect(group).toContainText(/6 items · 6 to do · 1 stuck/);
     const bars = await chart(page).locator('[data-gantt-bar]').count();
     await group.click();
     await expect(group).toHaveAttribute('aria-expanded', 'false');
-    await expect(chart(page).locator('[data-gantt-bar]')).toHaveCount(bars - 6);
+    await expect(chart(page).locator('[data-gantt-bar]')).toHaveCount(bars - 5); // five rows were showing (Mochi has six)
     await group.click();
     await expect(chart(page).locator('[data-gantt-bar]')).toHaveCount(bars);
   });

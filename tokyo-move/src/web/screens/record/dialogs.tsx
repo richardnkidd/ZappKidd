@@ -22,16 +22,6 @@ const NEEDS_REASON: WorkStatus[] = ['blocked', 'eliminated', 'not_applicable'];
 const MAIN_STATUSES: WorkStatus[] = ['planned', 'in_progress', 'blocked', 'completed'];
 const OTHER_STATUSES: WorkStatus[] = ['waiting_external', 'eliminated', 'not_applicable'];
 
-const STATUS_HELP: Record<WorkStatus, string> = {
-  planned: 'Not started yet.',
-  in_progress: 'Someone is working on it.',
-  blocked: 'Stuck. Say what it waits on.',
-  waiting_external: 'The next move is someone else’s.',
-  completed: 'All finished.',
-  eliminated: 'We chose not to do it.',
-  not_applicable: 'We do not need it.',
-};
-
 const REASON_LABEL: Partial<Record<WorkStatus, string>> = {
   blocked: 'What is it waiting on?',
   eliminated: 'Why are we dropping this?',
@@ -136,7 +126,6 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
           <span>
             <StatusBadge status={s} small showLabel /> {s === currentStatus && <span className="faint small">(current)</span>}
           </span>
-          <span className="choice__hint">{STATUS_HELP[s]}</span>
         </span>
       </label>
       {status === s && (needsReason || s === 'waiting_external') && (
@@ -212,7 +201,7 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
   );
 }
 
-/* ------------------------------------------------------------------ propose an action */
+/* ------------------------------------------------------------------ suggest a task */
 
 type DueChoice = 'default' | 'explicit' | 'blank';
 
@@ -276,7 +265,7 @@ export function ProposeActionDialog({ open, onClose, record, defaultTitle = '' }
     <Dialog
       open={open}
       onClose={onClose}
-      title="Propose an action for your task list"
+      title="Suggest a task for your task list"
       description={`Kadode won’t add this. ${ownerName} adds it by hand.`}
       footer={
         <>
@@ -284,7 +273,7 @@ export function ProposeActionDialog({ open, onClose, record, defaultTitle = '' }
             Cancel
           </Button>
           <Button variant="primary" busy={w.busy} onClick={submit}>
-            Propose action
+            Suggest task
           </Button>
         </>
       }

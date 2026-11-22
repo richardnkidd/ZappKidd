@@ -138,8 +138,8 @@ this is for trying the layout, not for anything you would not say on your own Wi
 | `npm start` | Starts the API on `127.0.0.1:8787` and serves `dist/web` |
 | `npm run dev:server` / `npm run dev:web` | Just the API (watching) / just Vite |
 | `npm run typecheck` | `tsc --noEmit` over `src`, `scripts` and `tests` |
-| `npm test` | Vitest: unit, API and web-component tests (500+ tests, about 30 seconds) |
-| `npm run test:e2e` | Playwright browser tests in three viewports against throw-away demo servers (builds first; about 7 minutes) |
+| `npm test` | Vitest: unit, API and web-component tests (848 tests, about 30 seconds) |
+| `npm run test:e2e` | Playwright browser tests in three viewports against throw-away demo servers (355 runs pass, 50 skip by design; builds first; about 6 minutes) |
 | `npm run seed:demo` | Creates the fictional demo database (`-- --reset` recreates it) |
 | `npm run import -- --source <dir>` | Reads a source package into the database, idempotently, with receipts (`--report`, `--corrections`, `--force`) |
 | `npm run db:migrate` | Applies database migrations (opening the app does this too) |
@@ -174,7 +174,7 @@ npm run test:e2e               # browser tests: first run only, install the brow
 
 - **Real-data tests** (skipped unless you opt in; they check counts and rules against your own package):
   `TOKYO_SOURCE_DIR="/path/to/package" npm test`
-- **Browser tests** start three throw-away servers on ports 8920, 8921 and 8922 with temporary databases, so they never
+- **Browser tests** start four throw-away servers on ports 8920 to 8923 with temporary databases, so they never
   touch `private/`. Run one project or file: `npx playwright test --project=phone tests/e2e/plan.spec.ts`.
   If something fails, `npx playwright show-report` opens the report with screenshots and traces.
 - What the suites cover, and what they do **not**, is written down in [docs/TEST-REPORT.md](docs/TEST-REPORT.md).

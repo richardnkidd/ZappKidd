@@ -1,5 +1,45 @@
 # Kadode test report
 
+## Latest: usability rebuild integration (2026-11-22)
+
+Run on the integration branch after the six usability packages were merged, fictional demo data only.
+
+| Suite | Command | Pass | Fail | Skip |
+|---|---|---:|---:|---:|
+| Typecheck | `npm run typecheck` | clean | | |
+| Unit + API + web | `npm test` | **848** | 0 | 13 (real-data tests) |
+| Browser, phone 390x844 | `npx playwright test --project=phone` | 116 | 0 | 16 |
+| Browser, small phone 320x640 | `--project=small-phone` | 107 | 0 | 25 |
+| Browser, desktop 1280x800 | `--project=desktop` | 132 | 0 | 9 |
+| Browser, all three | `npm run test:e2e` | **355** | 0 | 50 |
+
+Two full browser runs back to back gave the same result (about 5.5 minutes each). The 50 skips are by design: the
+twelve that existed before (section 7 below, now 42 runs with the new specs) plus `reading-load.spec.ts`, which measures
+once at 390x844 and skips on the other two projects (8 runs).
+
+**Measured on the demo at 390x844 (dark):** Home 947px tall, 111 words in its main content; an open decision card 73
+words with "Why and history" folded. The guard test fails above 1,400px, 180 words and 90 words.
+
+**What the integration found and fixed (root causes):**
+
+| Test | Root cause | Fixed in |
+|---|---|---|
+| `timezone` "switching the display zone…" and "the zone choice is remembered…" ("12 days late" where "11" was expected) | The shared date line put the distance from today inside the `<time>` element. Today follows the display zone, so in the hours when Tokyo and Hawaii are on different days the text of a date-only deadline changed. | Product: `<time>` holds only the calendar date; the distance sits beside it (`LineTime` in `components/Badges.tsx`). The remembered-zone test also read the list before it had drawn; it now waits for the dates. |
+| `timezone` "the computer's own time zone…" (the same date as "Mon, Jul 5, 2027" and "Mon, Jul 5, 2027 (225 days)") | Same cause: the distance was part of the date's text. | Product, as above. |
+| `timezone` "times of day do follow the zone…" | Home no longer shows a zone line or any time of day. | Test: reads a record's history, and the account control's name. |
+| `timeline` "a firm bar names its date…" ("We committed") | The banned word was the label for a date we set ourselves. | Product: "Our date". Dates in the timeline now use the one format too. |
+| `timeline` "the Today and month lines never cover a group heading" (zero headings) | The test counted headings with `count()`, which does not wait, before the chart had drawn. | Test: waits for the four headings first. |
+| `resilience` "leaving a page with unsaved typing…" (desktop) | "Discard and leave" cleared the draft only when the old page unmounted, which on desktop was after the next page showed. Opening the record straight away restored the discarded text. | Product: drafts are cleared before the page changes. |
+| `a11y` "the bottom bar never covers the focused control" | The phone timeline is one region taller than the window (it scrolls sideways, so it must take focus). Its centre can never be on screen. | Test: for a control taller than the window, the visible part's centre is checked; every other control still uses its centre. |
+
+Every other change to a browser test follows a change made on purpose (Notes and the task list behind More buttons,
+choosing on the decision card, the Decide tab's count badge, Home's three regions, the new status words, one date
+format) and asserts the new behaviour at least as strictly.
+
+---
+
+## Earlier report (2026-10-30)
+
 Every number below was produced by running the command shown, on 2026-10-30, against the working tree at the time
 (fictional demo data only, except the clearly marked real-data run, which reports counts and nothing else).
 

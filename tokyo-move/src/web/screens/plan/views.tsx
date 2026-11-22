@@ -29,6 +29,8 @@ import { useNarrow } from './useNarrow';
 
 /** Rows a group, section or column shows before "Show all (N)". */
 const FIRST = 5;
+/** Group headings the list shows before "Show all areas (N)". A plan with fifty small areas is otherwise five screens of headings. */
+export const GROUPS_FIRST = 12;
 
 function useLookup(idx: Indexes) {
   return useMemo(() => keyLookup(idx.byKey), [idx]);
@@ -111,10 +113,22 @@ export function WorkstreamView({ items, idx, today, filtered = false, focusRef }
     return keys;
   }, [groups, filtered]);
   const scope = filtered ? 'f' : 'a';
+  // Only the first dozen areas show at first. Two or three extra are not worth a button.
+  const [allGroups, setAllGroups] = useState(false);
+  const capped = !allGroups && groups.length > GROUPS_FIRST + 3;
+  const shownGroups = capped ? groups.slice(0, GROUPS_FIRST) : groups;
+  const listRef = useRef<HTMLDivElement>(null);
+  const reveal = useRef(false);
+  useEffect(() => {
+    if (!allGroups || !reveal.current) return;
+    reveal.current = false;
+    // Focus lands on the first area that was not shown before, never on a button that has gone.
+    listRef.current?.querySelectorAll<HTMLElement>(':scope > .pgroup > .pgroup__head > .pgroup__btn')[GROUPS_FIRST]?.focus();
+  }, [allGroups]);
   return (
-    <div className="stack grid-wide grid-wide--2">
+    <div className="stack grid-wide grid-wide--2" ref={listRef}>
       <div className="plan-done-note">{done.note}</div>
-      {groups.map((g) => {
+      {shownGroups.map((g) => {
         const open = g.items.filter((i) => isOpenWork(i.m.status));
         const blocked = g.items.filter((i) => i.m.status === 'blocked').length;
         const closed = g.items.filter((i) => !isOpenWork(i.m.status));
@@ -138,6 +152,20 @@ export function WorkstreamView({ items, idx, today, filtered = false, focusRef }
           </PlanGroup>
         );
       })}
+      {capped && (
+        <div>
+          <Button
+            variant="quiet"
+            className="show-all"
+            onClick={() => {
+              reveal.current = true;
+              setAllGroups(true);
+            }}
+          >
+            Show all areas ({groups.length})
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,11 +7,11 @@ Run on the integration branch after the six usability packages were merged, fict
 | Suite | Command | Pass | Fail | Skip |
 |---|---|---:|---:|---:|
 | Typecheck | `npm run typecheck` | clean | | |
-| Unit + API + web | `npm test` | **848** | 0 | 13 (real-data tests) |
+| Unit + API + web | `npm test` | **888** | 0 | 13 (real-data tests) |
 | Browser, phone 390x844 | `npx playwright test --project=phone` | 116 | 0 | 16 |
 | Browser, small phone 320x640 | `--project=small-phone` | 107 | 0 | 25 |
 | Browser, desktop 1280x800 | `--project=desktop` | 132 | 0 | 9 |
-| Browser, all three | `npm run test:e2e` | **355** | 0 | 50 |
+| Browser, all three | `npm run test:e2e` | **391** | 0 | 68 |
 
 Two full browser runs back to back gave the same result (about 5.5 minutes each). The 50 skips are by design: the
 twelve that existed before (section 7 below, now 42 runs with the new specs) plus `reading-load.spec.ts`, which measures

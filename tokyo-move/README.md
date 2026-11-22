@@ -138,8 +138,8 @@ this is for trying the layout, not for anything you would not say on your own Wi
 | `npm start` | Starts the API on `127.0.0.1:8787` and serves `dist/web` |
 | `npm run dev:server` / `npm run dev:web` | Just the API (watching) / just Vite |
 | `npm run typecheck` | `tsc --noEmit` over `src`, `scripts` and `tests` |
-| `npm test` | Vitest: unit, API and web-component tests (848 tests, about 30 seconds) |
-| `npm run test:e2e` | Playwright browser tests in three viewports against throw-away demo servers (355 runs pass, 50 skip by design; builds first; about 6 minutes) |
+| `npm test` | Vitest: unit, API and web-component tests (888 tests, about 30 seconds) |
+| `npm run test:e2e` | Playwright browser tests in three viewports against throw-away demo servers (391 runs pass, 68 skip by design; builds first; about 6 minutes) |
 | `npm run seed:demo` | Creates the fictional demo database (`-- --reset` recreates it) |
 | `npm run import -- --source <dir>` | Reads a source package into the database, idempotently, with receipts (`--report`, `--corrections`, `--force`) |
 | `npm run db:migrate` | Applies database migrations (opening the app does this too) |

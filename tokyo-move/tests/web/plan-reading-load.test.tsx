@@ -229,3 +229,32 @@ describe('Plan: Board', () => {
     for (const li of stuck.querySelectorAll('li.item')) expect(li.querySelector('.item__why')?.textContent).toMatch(/^(Waiting on: |No reason)/);
   });
 });
+
+describe('Plan list: a plan with many small areas', () => {
+  /** Every milestone loses its workstream, so the list groups by area name; fourteen more one-item areas are added. */
+  function manyAreas(): BaseRecord[] {
+    const base = records.find((r) => r.type === 'milestone' && r.status === 'planned' && !(r.data as { optional_future_work?: boolean }).optional_future_work)!;
+    const loose = records.map((r) => (r.type === 'milestone' ? ({ ...r, data: { ...(r.data as object), workstream_key: null } } as BaseRecord) : r));
+    const extra = Array.from({ length: 14 }, (_, i) => ({ ...base, id: `milestone:ZA${i}`, key: `ZA${i}`, title: `Area step ${i}`, data: { ...(base.data as object), plain_title: `Area step ${i}`, work_area: `Small area ${i}`, workstream_key: null, optional_future_work: false, deadline: null, review_date: null } }) as BaseRecord);
+    return [...loose, ...extra];
+  }
+  const areas = (el: HTMLElement) => [...el.querySelectorAll<HTMLButtonElement>('.stack > .pgroup > .pgroup__head > .pgroup__btn')];
+
+  it('shows twelve areas, then "Show all areas (N)" reveals the rest and moves focus to the first new one', () => {
+    const el = list(manyAreas());
+    expect(areas(el)).toHaveLength(12);
+    const more = [...el.querySelectorAll('button')].find((b) => /^Show all areas \(\d+\)$/.test(b.textContent?.trim() ?? ''))!;
+    expect(more).toBeTruthy();
+    const total = Number(more.textContent!.match(/\((\d+)\)/)![1]);
+    expect(total).toBeGreaterThan(15);
+    act(() => more.click());
+    expect(areas(el)).toHaveLength(total);
+    expect(document.activeElement).toBe(areas(el)[12]);
+    expect([...el.querySelectorAll('button')].some((b) => /^Show all areas/.test(b.textContent?.trim() ?? ''))).toBe(false);
+  });
+
+  it('shows every area when there are only a few, with no extra button', () => {
+    const el = list();
+    expect([...el.querySelectorAll('button')].some((b) => /^Show all areas/.test(b.textContent?.trim() ?? ''))).toBe(false);
+  });
+});

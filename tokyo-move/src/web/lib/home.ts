@@ -558,7 +558,7 @@ export interface StuckRow {
 
 /**
  * "Stuck": blocked plan work (status "blocked"; optional future work left out). The total is exactly what Plan shows
- * for `/plan?view=list&status=blocked`.
+ * for `/plan?view=workstream&status=blocked (the List view with Stuck chosen)`.
  */
 export function selectStuck(idx: Indexes, lookup?: KeyLookup): { rows: StuckRow[]; total: number } {
   const blocked = idx.milestones
@@ -587,7 +587,7 @@ export interface TravellerChip {
   left: number;
   /** The single thing holding them up, when there is one. */
   stuckOn: string | null;
-  /** "4 left · stuck on visa", "Ready to go", "Nothing left". */
+  /** "4 left · stuck on visa", "Ready to go", "Nothing left", or "Not set up yet" when no steps are configured. */
   text: string;
 }
 
@@ -603,8 +603,12 @@ export function travellerChip(r: TravelerReadiness, idx: Indexes, lookup?: KeyLo
   const first = blockers[0];
   const firstRec = first ? idx.byId.get(first.record_id) : undefined;
   const stuckOn = first ? (firstRec ? displayTitle(firstRec, lookup) : stripCodes(first.title, lookup)) : null;
+  // No required steps at all means nobody has set this traveller up yet. That is not the same as "ready".
+  const configured = left + r.met.filter(keep).length + r.conditional_unknown.filter(keep).length;
+  const travelled = r.state === 'released' || r.state === 'arrived' || r.state === 'settled';
   let text: string;
-  if (left === 0) text = DONE_WORDS[r.state] ?? 'Nothing left';
+  if (left === 0 && configured === 0 && !travelled) text = 'Not set up yet';
+  else if (left === 0) text = DONE_WORDS[r.state] ?? 'Nothing left';
   else text = `${left} left${stuckOn ? ` · stuck on ${stuckOn}` : ''}`;
   return { personId: r.person_id, left, stuckOn, text };
 }

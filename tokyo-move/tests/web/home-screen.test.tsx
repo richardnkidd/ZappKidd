@@ -91,7 +91,16 @@ describe('Travellers', () => {
     const chip = travellerChip(ready({ state: 'blocked', blockers: [gate('W01', 'Visa')], open: [gate('W02', 'a'), gate('W03', 'b'), gate('W04', 'c')] }), idx);
     expect(chip.text).toBe('4 left · stuck on Visa');
     expect(travellerChip(ready({ open: [gate('W02', 'a')] }), idx).text).toBe('1 left');
-    expect(travellerChip(ready({ state: 'ready_to_release' }), idx).text).toBe('Ready to go');
+    expect(travellerChip(ready({ state: 'ready_to_release', met: [{ ...gate('W05', 'Passport'), met: true }] }), idx).text).toBe('Ready to go');
+  });
+
+  it('says "Not set up yet" when no steps are configured, and "Nothing left" only when steps exist and are all done', () => {
+    const idx = buildIndexes([], []);
+    expect(travellerChip(ready({}), idx).text).toBe('Not set up yet');
+    expect(travellerChip(ready({ state: 'ready_to_release' }), idx).text).toBe('Not set up yet');
+    expect(travellerChip(ready({ met: [{ ...gate('W05', 'Passport'), met: true }] }), idx).text).toBe('Nothing left');
+    // Someone who has already travelled keeps their state, whatever was configured.
+    expect(travellerChip(ready({ state: 'arrived' }), idx).text).toBe('Arrived');
   });
 
   it('never counts optional future work', () => {

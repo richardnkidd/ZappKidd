@@ -101,10 +101,10 @@ describe('Questions tab', () => {
     expect(more.getAttribute('aria-expanded')).toBe('false');
     expect(more.getAttribute('aria-controls')).toBeTruthy();
   });
-  it('starts each group with ten questions and offers Show all', () => {
+  it('starts our own list with five questions and offers Show all', () => {
     const many = Array.from({ length: 25 }, (_, i) => q(`Q${String(i + 1).padStart(3, '0')}`));
     const c = mount(many);
-    expect(c.querySelectorAll('li.qrow').length).toBe(10);
+    expect(c.querySelectorAll('li.qrow').length).toBe(5);
     const all = button(c, 'Show all (25)')!;
     click(all);
     expect(c.querySelectorAll('li.qrow').length).toBe(25);
@@ -114,13 +114,45 @@ describe('Questions tab', () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     const c = mount([q('Q1'), q('Q2', { audience: 'tax_adviser', question: 'Do we file twice?' }), q('Q3', { audience: 'tax_adviser', question: 'What is the deadline?' }), q('Q4', { audience: 'embassy_hr', question: 'Which forms?' })]);
-    const heads = [...c.querySelectorAll('h3')].map((h) => h.textContent);
+    const heads = [...c.querySelectorAll('h3')].map((h) => h.querySelector('.qgroup__toggle > span')?.textContent ?? h.textContent);
     expect(heads).toEqual(['For us', 'For embassy HR', 'For the tax adviser']);
     const copies = [...c.querySelectorAll('button')].filter((b) => /Copy these questions/.test(b.textContent ?? ''));
     expect(copies).toHaveLength(2);
+    // The copy control works while the group is still folded.
+    expect(c.textContent).not.toContain('Do we file twice?');
     await act(async () => copies[1]!.click());
     expect(writeText).toHaveBeenCalledWith('1. Do we file twice?\n2. What is the deadline?');
     expect(c.textContent).toContain('Copied');
+  });
+  it('folds each professional group to its heading, a count and the copy control, and opens it on tap', () => {
+    // A real plan has about fifteen audiences and 83 open questions; the page must not be a wall of them.
+    const audiences = Array.from({ length: 15 }, (_, i) => `adviser_${String.fromCharCode(97 + i)}`);
+    const list = [
+      ...Array.from({ length: 12 }, (_, i) => q(`Q${String(i + 1).padStart(3, '0')}`)),
+      ...audiences.flatMap((a, ai) => Array.from({ length: 5 }, (_, i) => q(`Q${100 + ai * 10 + i}`, { audience: a, question: `Ask ${a} number ${i + 1}?` }))),
+    ];
+    const c = mount(list);
+    // "For us" shows five and Show all (12); nothing from the folded groups is on the page yet.
+    expect(c.querySelectorAll('li.qrow').length).toBe(5);
+    expect(button(c, 'Show all (12)')).toBeTruthy();
+    const toggles = [...c.querySelectorAll<HTMLButtonElement>('h3 .qgroup__toggle')];
+    expect(toggles).toHaveLength(15);
+    for (const t of toggles) {
+      expect(t.getAttribute('aria-expanded')).toBe('false');
+      const body = document.getElementById(t.getAttribute('aria-controls')!);
+      expect(body?.hasAttribute('hidden')).toBe(true);
+      expect(t.textContent).toMatch(/^For .+5 questions$/);
+    }
+    expect([...c.querySelectorAll('button')].filter((b) => /Copy these questions/.test(b.textContent ?? ''))).toHaveLength(15);
+    // Tap one: only that group opens, with its own questions.
+    click(toggles[2]);
+    expect(toggles[2]!.getAttribute('aria-expanded')).toBe('true');
+    expect(document.getElementById(toggles[2]!.getAttribute('aria-controls')!)?.hasAttribute('hidden')).toBe(false);
+    expect(c.querySelectorAll('li.qrow').length).toBe(10);
+    expect(c.textContent).toContain('Ask adviser_c number 1?');
+    expect(toggles[3]!.getAttribute('aria-expanded')).toBe('false');
+    click(toggles[2]);
+    expect(c.querySelectorAll('li.qrow').length).toBe(5);
   });
   it('answers in place through the version-checked write, then says Saved and keeps focus on the row', async () => {
     const patch = vi.fn(async (..._a: unknown[]) => q("Q1"));

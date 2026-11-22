@@ -43,6 +43,42 @@
   font-weight: 600;
   color: var(--ink);
 }
+/* A professional group, folded to one row: the heading is the toggle, with its count and a chevron. */
+.qgroup--folded {
+  gap: 0;
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-1);
+}
+.qgroup--folded.is-open {
+  gap: var(--s-2);
+}
+.qgroup--folded .qgroup__title {
+  font-family: var(--font-ui);
+  font-size: var(--fs-2);
+}
+.qgroup__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.qgroup__count {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.qgroup__chev {
+  transition: transform 0.15s ease;
+}
+.qgroup--folded.is-open .qgroup__chev {
+  transform: rotate(180deg);
+}
 .qgroup__copied {
   margin: 0;
   min-height: 0;

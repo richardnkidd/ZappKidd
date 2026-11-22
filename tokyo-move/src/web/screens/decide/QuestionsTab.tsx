@@ -19,6 +19,8 @@ import { useWrite } from '../../state/useWrite';
 
 /** Per group, the list starts short. */
 export const SHOWN_FIRST = 10;
+/** "For us" starts shorter: the household's own list is read first, so five, then "Show all (n)". */
+export const OWN_FIRST = 5;
 const byKey = (a: Question, b: Question) => a.key.localeCompare(b.key, undefined, { numeric: true });
 
 /** Higher = more relevant to this person right now. Uses the question's own relevance links; never hides anything. */
@@ -264,8 +266,11 @@ function Group({
   onSaved: (id: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // A professional group starts folded to its heading, count and copy control; it opens on tap.
+  const [groupOpen, setGroupOpen] = useState(false);
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null);
   const listId = useId();
+  const bodyId = useId();
   const headId = useId();
 
   useEffect(() => {
@@ -284,40 +289,66 @@ function Group({
   }, [group.questions, show, rank, kept]);
 
   if (shownQs.length === 0) return null;
+  const first = group.professional ? SHOWN_FIRST : OWN_FIRST;
   // A row answered a moment ago stays in view even when it has moved down the list.
-  const visible = expanded ? shownQs : shownQs.filter((q, i) => i < SHOWN_FIRST || kept.has(q.id));
+  const visible = expanded ? shownQs : shownQs.filter((q, i) => i < first || kept.has(q.id));
   const copy = async () => {
     const ok = await copyText(numberedList(openQs.map((q) => questionText(q, lookup))));
     setCopied(ok ? 'ok' : 'fail');
   };
-
-  return (
-    <section className="qgroup" aria-labelledby={headId}>
-      <div className="qgroup__head">
-        <h3 id={headId} className="qgroup__title">
-          {group.title}
-        </h3>
-        {group.professional && openQs.length > 0 && (
-          <Button variant="quiet" small icon="file" onClick={() => void copy()}>
-            Copy these questions<span className="visually-hidden"> for {group.title.replace(/^For /, '')}</span>
-          </Button>
-        )}
-      </div>
-      {group.professional && (
-        <p className="qgroup__copied muted" role="status">
-          {copied === 'ok' ? 'Copied' : copied === 'fail' ? 'Could not copy. Select the text instead.' : ''}
-        </p>
-      )}
+  const list = (
+    <>
       <ul id={listId} className="qlist">
         {visible.map((q) => (
           <QuestionRow key={q.id} q={q} idx={idx} lookup={lookup} onSaved={onSaved} />
         ))}
       </ul>
-      {shownQs.length > SHOWN_FIRST && (
+      {shownQs.length > first && (
         <Button variant="quiet" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded((v) => !v)}>
           {expanded ? 'Show fewer' : `Show all (${shownQs.length})`}
         </Button>
       )}
+    </>
+  );
+
+  if (!group.professional) {
+    return (
+      <section className="qgroup" aria-labelledby={headId}>
+        <div className="qgroup__head">
+          <h3 id={headId} className="qgroup__title">
+            {group.title}
+          </h3>
+        </div>
+        {list}
+      </section>
+    );
+  }
+
+  return (
+    <section className={`qgroup qgroup--folded${groupOpen ? ' is-open' : ''}`} aria-labelledby={headId}>
+      <div className="qgroup__head">
+        <h3 id={headId} className="qgroup__title">
+          <button type="button" className="qgroup__toggle" aria-expanded={groupOpen} aria-controls={bodyId} onClick={() => setGroupOpen((v) => !v)}>
+            <span>{group.title}</span>
+            <span className="qgroup__count">
+              {shownQs.length}
+              <span className="visually-hidden"> {shownQs.length === 1 ? 'question' : 'questions'}</span>
+            </span>
+            <Icon name="chevron-down" size={16} className="qgroup__chev" />
+          </button>
+        </h3>
+        {openQs.length > 0 && (
+          <Button variant="quiet" small icon="file" onClick={() => void copy()}>
+            Copy these questions<span className="visually-hidden"> for {group.title.replace(/^For /, '')}</span>
+          </Button>
+        )}
+      </div>
+      <p className="qgroup__copied muted" role="status">
+        {copied === 'ok' ? 'Copied' : copied === 'fail' ? 'Could not copy. Select the text instead.' : ''}
+      </p>
+      <div id={bodyId} hidden={!groupOpen}>
+        {groupOpen && list}
+      </div>
     </section>
   );
 }

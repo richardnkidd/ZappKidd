@@ -16,6 +16,54 @@ A private home for a move, not enterprise PM software with a Tokyo wallpaper. Th
 6. **Calm urgency.** Legal deadlines and blockers get clear, restrained emphasis — never gamified, no confetti,
    streaks or scores.
 
+## House style (usability rebuild, Nov 2026)
+
+This section wins over anything older further down. It was written for a couple where one person has ADHD: as little
+text as possible, every string written for a person who does not know the app.
+
+**Words**
+- Sentences of 12 words or fewer, one idea per line. No semicolons, slashes or brackets in visible text.
+- A decision is a question that ends in "?". Buttons start with a verb and name the thing ("Agree: …", "Not now").
+- No internal codes (W04, D02, Q017) anywhere a person reads. Linked items show their names.
+- No helper text that explains the app, and no sentence twice on one screen.
+- Not on screen: committed, carry forward, pending capture, open question, proposed, disposition, severity, assumption,
+  dependency. `tests/e2e/plain-language.spec.ts` fails if any of them, or a code, shows on a normal route.
+- Unknown stays unknown: "Not known yet", never a guess or 0. Not checked: "Not checked yet".
+- Status words: **Not started, Doing, Stuck, Done, Waiting on someone, Dropped, Not needed** (labels only; stored values
+  are unchanged). Decisions: **Your turn, <Name> chose. Your turn, Waiting for <Name>, You chose differently, Decided,
+  Put off, Not doing this**, from `decisionStatus()`. The couple review uses the same words and buttons.
+- A traveller with no steps set up reads "Not set up yet", never "Nothing left".
+
+**Dates.** One format: "Mon, Nov 30 (8 days)", "Today", "Tomorrow", "11 days late". The year is added only when it
+differs or the date is more than six months away. Use `DateText`, `LineTime` or `dateLineText`; never format a date by
+hand. The `<time>` element holds only the calendar date; the distance from today sits beside it, because "today"
+follows the display time zone and the date itself never does.
+
+**Look.** At most one chip per card (whose turn it is). One filled button per card; other actions are quiet text
+buttons. No borders inside cards. Two weights (400, 600). Nothing under 14px except monogram letters. 44px targets.
+Amber only for "due soon". `tests/e2e/reading-load.spec.ts` guards Home (under 1,400px and 180 words at 390x844), an
+open decision card (under 90 words), text size and filled buttons.
+
+**Plain-language fields.** A record's `data` may carry `plain_title`, `plain_question`, `plain_summary`,
+`plain_delay`, `plain_next`, `plain_options`. Show them through `src/shared/plain.ts`: `displayTitle` everywhere a
+title is shown (it falls back to the imported title with codes removed), `displayQuestion` (null means "Write the
+question"), `displayNext`, `displayDelay`, `optionLabel`, and `stripCodes` for any other imported text outside
+`<Prose>`. The original wording stays in the record's "History and source".
+
+**Shared components and when to use them**
+- `ItemCard`: every list row. Title, next step (two lines), one meta line. `action` puts one control beside it.
+- `DoneWithUndo` (`useDoneWithUndo` + `DoneButton`): one-tap Done on Home, Plan (List and By date) and Arrival steps.
+  It sends the record's version, shows "Marked done · Undo" for ten seconds in a live region, and moves focus to Undo
+  and then to a heading. Evidence is optional.
+- `More`: the one disclosure for anything that is not the main point (why and history, notes, task list, details).
+- `InfoNote`: a caveat behind an info button instead of a paragraph.
+- `YourTurnChip`, `StatusBadge` (icon plus hidden words), `Dialog` (with `fallbackFocus`).
+- Questions: "For us" shows five, then "Show all (n)". Each adviser group is one row (heading button with a count and
+  "Copy these questions") that opens on tap.
+
+**Links between screens.** Home's "Stuck" links to `/plan?view=workstream&status=blocked`: the List view with Stuck
+chosen and the same count. Plan always writes `view` into the address, so a link never falls back to a remembered board.
+
 ## Identity
 
 - Name: **Kadode** with **門出** set small in Noto Serif JP ("setting out on a new start").
@@ -44,7 +92,7 @@ Verify every text/background pair meets WCAG 2.2 AA (4.5:1 body, 3:1 large text 
 Never rely on color alone: pair with an icon shape and text.
 
 Type: headings **Source Serif 4** (600), UI/body **Inter Variable**; Japanese glyphs **Noto Serif JP** (self-hosted
-via @fontsource; no external requests). Scale 13/15/17/20/24/30/38 px; body 16–17px; line-height 1.5; max 68ch.
+via @fontsource; no external requests). Scale from 14px up (`--fs-0` is 14px, the smallest); body 16–17px; line-height 1.5; max 68ch.
 Spacing: 4px base (4, 8, 12, 16, 24, 32, 48). Radius 12–14px cards, 999px chips. Borders over shadows.
 
 ## Layout
@@ -164,8 +212,8 @@ Merged from four independent reviews. The rules that came out of it:
   Wording follows what the date means (`bound`): "Due by", "Not before", a window, "On", "Repeats", with the engine's
   `business_day_advice` for weekends (never an earlier day for a "not before"). Years appear whenever they differ from today's
   or the date is more than about six months away.
-- **A proposed task is not "in your task list".** It reads "Proposed for your task list · not added yet" with an amber
-  "Waiting to be added" chip, has its own Home row, and is never overdue.
+- **A task that is waiting to be added is not "in your task list".** It reads "Waiting to be added to your task list",
+  Home counts it in one line, and it is never overdue.
 - **Home on a phone**: This week (three items), a three-chip readiness strip, one sentence for Blocked. "Mine" includes joint
   work; "Needs me" is the Monday glance. Focus never lands under the sticky header or tab bar (measured bar heights feed
   `scroll-padding`).

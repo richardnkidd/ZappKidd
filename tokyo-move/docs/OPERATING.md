@@ -177,7 +177,12 @@ text with its internal codes (such as W04 or D02) taken out.
 | `data.plain_options.<option id>` | decisions | A short name for one choice. 20 words or fewer. |
 
 Plain text only, on one line. People can also type these in the app. An edit made in the app is kept over a later
-correction, like any other edit. Example, in a file such as `private/corrections/96-plain-words.json`:
+correction, like any other edit. Editing a step's plain next step in the app replaces both the plain wording and the
+plan's next action with the person's words.
+
+Answering a question in the app (or marking it not needed) also sets its status the same way an import does, so the
+open count on the Questions tab and in the couple review drop at once. A correction that sets `data.disposition` on a
+question gets the same status on the next import. Example, in a file such as `private/corrections/96-plain-words.json`:
 
 ```json
 {

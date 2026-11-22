@@ -154,7 +154,7 @@ export function homeDecisionWords(d: Decision, meId: string | null, dir: Directo
   const t = decisionTurn(d, meId, dir);
   const label = (id: string | null) => {
     const o = (d.data?.options ?? []).find((x) => x.id === id);
-    return o ? shortLabel(optionLabel(d, o, lookup), 6) : null;
+    return o ? shortLabel(optionLabel(d, o, lookup), 10) : null;
   };
   const other = t.otherId ? dir.nameOf(t.otherId) : 'They';
   let sub: string | null = null;

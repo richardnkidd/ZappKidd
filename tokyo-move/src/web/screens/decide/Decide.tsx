@@ -40,7 +40,7 @@ export function Decide() {
           const active = t.end ? pathname === t.to || pathname === `${t.to}/` : pathname.startsWith(t.to);
           const words = t.to === '/decide' ? badgeWords(badge) : '';
           return (
-            <Link key={t.to} to={t.to} className="segmented__btn" aria-current={active ? 'page' : undefined}>
+            <Link key={t.to} to={t.to} className="segmented__btn" aria-current={active ? 'page' : undefined} aria-label={words ? `${t.label}${words}` : undefined}>
               {t.label}
               {words && badge.count > 0 && (
                 <span className="dtab-count" aria-hidden="true">
@@ -48,7 +48,6 @@ export function Decide() {
                 </span>
               )}
               {words && badge.count === 0 && <span className="dtab-dot" aria-hidden="true" />}
-              {words && <span className="visually-hidden">{words}</span>}
             </Link>
           );
         })}

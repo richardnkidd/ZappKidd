@@ -79,7 +79,7 @@ test.describe('Keyboard', () => {
     const names: [string, RegExp][] = [
       ['Home', /^Home$/],
       ['Plan', /^Plan$/],
-      ['Decide', /^Decide(, \d+ needs? you)?$/],
+      ['Decide', /^Decide(, \d+ needs? you|, some need you later)?$/],
       ['Money', /^Money$/],
       ['More', /^More$/],
     ];

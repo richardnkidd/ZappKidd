@@ -317,6 +317,7 @@ export function DecisionCard({
     }, 30);
   };
   const collapse = () => {
+    if (articleRef.current) articleRef.current.style.minHeight = '';
     setExpanded(false);
     window.setTimeout(() => toggleRef.current?.focus(), 30);
   };
@@ -483,6 +484,7 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
   const [adding, setAdding] = useState(false);
   const [noting, setNoting] = useState(false);
   const changeRef = useRef<HTMLButtonElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const fallback = cardSelector(d.key);
 
   // Someone else's change arrived (refresh): start again from the rule, unless I am in the middle of picking.
@@ -498,6 +500,10 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
   const agree = async () => {
     if (!selected) return;
     onChose(); // a list keeps the card where it is while the answer is saved
+    // The card gets shorter once the choices give way to "You chose". Near the end of the page that would pull the
+    // page up under the reader's thumb, so the card keeps its height until it is closed or the page is left.
+    const article = innerRef.current?.closest('article');
+    const height = article?.getBoundingClientRect().height ?? 0;
     let out: BaseRecord | null = null;
     const ok = await w.run(async (v) => {
       out = await actions.approveDecision(d.id, v, selected, null);
@@ -510,6 +516,7 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
       onSettled({ kind: 'decided', label, record: res });
     } else {
       versionRef.current = res.version;
+      if (article && height > 0) article.style.minHeight = `${Math.round(height)}px`;
       const names = waitingNames.length ? waitingNames.join(' and ') : null;
       const differs = !!t.otherOptionId && t.otherOptionId !== selected;
       const after = differs ? `${otherName ?? 'They'} picked something else.` : names ? `Waiting for ${names}.` : '';
@@ -554,7 +561,7 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
   );
 
   return (
-    <div className="dcard__inner">
+    <div className="dcard__inner" ref={innerRef}>
       {!hasQuestion && <WriteQuestion d={d} onSaved={onQuestionSaved} />}
 
       {options.length === 0 ? (

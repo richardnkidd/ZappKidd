@@ -38,7 +38,7 @@ describe('Your turn', () => {
     });
     const both = homeDecisionWords(decision('D02', 'proposed', { ...q, approvals: [approval('ann', 'a'), approval('bo', 'b')] }) as never, 'ann', DIR);
     expect(both.question).toBe('How much can we spend on the move?');
-    expect(both.sub).toBe('You picked Set firm limits and keep… Bo picked Protect a safety fund.');
+    expect(both.sub).toBe('You picked Set firm limits and keep a return reserve. Bo picked Protect a safety fund.');
     const first = homeDecisionWords(decision('D03', 'open', q) as never, 'ann', DIR);
     expect(first).toMatchObject({ question: 'How much can we spend on the move?', sub: null, verb: 'Decide' });
     // No plain question yet: the cleaned title.

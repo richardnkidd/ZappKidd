@@ -11,6 +11,9 @@ import { Icon } from '../../components/Icon';
 import { ItemCard } from '../../components/ItemCard';
 import { Card, EmptyState, PageTitle, Section, Skeleton } from '../../components/Layout';
 import { OwnerChip } from '../../components/People';
+import { InfoNote } from '../../components/InfoNote';
+import { More } from '../../components/More';
+import { displayQuestion, displayTitle, keyLookup, optionLabel, stripCodes } from '@shared/plain';
 import { RecordLink } from '../../components/RecordLink';
 import { AuditLines } from '../../components/AuditLines';
 import { describeAuditList } from '../../lib/audit';
@@ -56,7 +59,7 @@ function GentleTimer({ startedAt }: { startedAt: number }) {
   }, []);
   const mins = Math.floor((Date.now() - startedAt) / 60_000);
   // Not a live region on purpose: a timer should never interrupt anyone.
-  return <p className="review-timer faint small">{mins < 1 ? 'Just started' : `${mins} min so far — no rush`}</p>;
+  return <p className="review-timer faint small">{mins < 1 ? 'Just started' : `${mins} min so far`}</p>;
 }
 
 /* ------------------------------------------------------------------ steps */
@@ -84,7 +87,7 @@ function StepChanges({ idx, dir, since, onCount }: { idx: Indexes; dir: Director
 
   return (
     <div className="stack">
-      <p className="muted">{since ? `Everything that changed after ${instant(since, zone, 'long')}.` : 'This is the first review, so here is what changed most recently.'}</p>
+      <p className="muted">{since ? `Changes since ${civil(dayIn(since, zone), 'weekday')}.` : 'Recent changes.'}</p>
       {state.kind === 'loading' && <Skeleton lines={4} />}
       {state.kind === 'error' && (
         <ErrorBanner title="We couldn't load the changes." onRetry={() => setTick((t) => t + 1)}>
@@ -94,7 +97,7 @@ function StepChanges({ idx, dir, since, onCount }: { idx: Indexes; dir: Director
       {state.kind === 'ready' &&
         (lines.length === 0 ? (
           <Card>
-            <EmptyState icon="check" title="Nothing has changed since then." />
+            <EmptyState icon="check" title="Nothing has changed." />
           </Card>
         ) : (
           <Card>
@@ -102,7 +105,7 @@ function StepChanges({ idx, dir, since, onCount }: { idx: Indexes; dir: Director
             {lines.length > 10 && (
               <div className="center">
                 <Button variant="quiet" onClick={() => setAll((v) => !v)}>
-                  {all ? 'Show fewer' : `Show all ${lines.length}`}
+                  {all ? 'Show fewer' : `Show all (${lines.length})`}
                 </Button>
               </div>
             )}
@@ -123,7 +126,7 @@ function OwnerRow({ rec, dir, done, onAccepted }: { rec: AnyRecord; dir: Directo
     <li className="item item--flat">
       <div className="item__main">
         <RecordLink id={rec.id} className="item__title">
-          {rec.title}
+          {displayTitle(rec)}
         </RecordLink>
         <div className="item__meta">
           <OwnerChip owner={rec.owner} proposed={!done} compact />
@@ -166,9 +169,9 @@ function StepThisWeek({ idx, dir, session, setSession }: { idx: Indexes; dir: Di
   const later = pending.length - rows.length;
   return (
     <div className="stack stack--loose">
-      <Section title="This week" headingLevel={3} intro="The next few things worth doing.">
+      <Section title="This week" headingLevel={3}>
         {now.length === 0 ? (
-          <p className="muted">Nothing is ready to start right now.</p>
+          <p className="muted">Nothing ready to start.</p>
         ) : (
           <ul className="item-list">
             {now.map((it) => (
@@ -177,11 +180,11 @@ function StepThisWeek({ idx, dir, session, setSession }: { idx: Indexes; dir: Di
           </ul>
         )}
       </Section>
-      <Section title="Owners to confirm" count={pending.length || undefined} headingLevel={3} intro="Each item has one accountable owner. A proposed owner stays provisional until someone accepts it. Only what falls in the next three weeks is shown first.">
+      <Section title="Owners to confirm" count={pending.length || undefined} headingLevel={3}>
         {pending.length === 0 && session.accepted.length === 0 ? (
-          <p className="muted">No owners are waiting to be confirmed.</p>
+          <p className="muted">No owners to confirm.</p>
         ) : rows.length === 0 && session.accepted.length === 0 ? (
-          <p className="muted">No owner needs confirming for the next three weeks. {plural(pending.length, 'other')} can wait.</p>
+          <p className="muted">None in the next three weeks. {plural(pending.length, 'other')} can wait.</p>
         ) : (
           <ul className="item-list">
             {session.accepted.map((a) => {
@@ -201,7 +204,7 @@ function StepThisWeek({ idx, dir, session, setSession }: { idx: Indexes; dir: Di
         )}
         {later > 0 && !showAll && (
           <Button variant="quiet" onClick={() => setShowAll(true)}>
-            Show {later === pending.length ? `all ${pending.length}` : `${later} more that can wait`}
+            Show all ({pending.length})
           </Button>
         )}
       </Section>
@@ -229,32 +232,36 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
   const [reasoning, setReasoning] = useState<{ d: Decision; mode: 'defer' | 'reject' } | null>(null);
   const me = dir.me?.display_name ?? 'You';
 
-  if (picks.length === 0 && session.decisions.length === 0) return <EmptyState icon="check" title="No decisions are waiting." />;
+  if (picks.length === 0 && session.decisions.length === 0) return <EmptyState icon="check" title="No decisions waiting." />;
   const shown = [...picks, ...session.decisions.filter((o) => !picks.some((p) => p.id === o.id)).map((o) => idx.byId.get(o.id) as unknown as Decision).filter(Boolean)];
+  const lookup = keyLookup(idx.byKey);
   return (
     <div className="stack">
-      <p className="muted">At most three, so there is room to talk about each. Each of you can approve, or put it off for another time.</p>
+      <p className="muted">Up to three. Agree, or put one off.</p>
       <ul className="stack">
         {shown.map((d) => {
           const out = session.decisions.find((o) => o.id === d.id);
           const summary = approvalSummary(d, dir);
+          const question = displayQuestion(d, lookup);
+          const title = displayTitle(d, lookup);
           return (
             <li key={d.id}>
               <Card tone={d.status === 'proposed' ? 'proposal' : 'default'} className="stack">
-                <h3 className="decision__title">{d.title}</h3>
-                {d.data?.question && d.data.question !== d.title && <p className="muted preline">{d.data.question}</p>}
+                <h3 className="decision__title">{question ?? title}</h3>
                 <p className={`approval approval--${summary.state}`}>
                   <Icon name={summary.state === 'agreed' ? 'check' : 'clock'} size={16} /> {summary.text}
                 </p>
                 {(d.data?.options ?? []).length > 0 && (
-                  <ul className="plain-list small">
-                    {d.data.options.map((o) => (
-                      <li key={o.id}>
-                        {o.label}
-                        {o.id === d.data.recommended_option_id && <span className="faint"> (suggested)</span>}
-                      </li>
-                    ))}
-                  </ul>
+                  <More label={`Choices (${d.data.options.length})`} hint={title}>
+                    <ul className="plain-list">
+                      {d.data.options.map((o) => (
+                        <li key={o.id}>
+                          {optionLabel(d, o, lookup)}
+                          {o.id === d.data.recommended_option_id && <span className="faint"> (suggested)</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  </More>
                 )}
                 {out ? (
                   <p>
@@ -262,18 +269,17 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
                   </p>
                 ) : (
                   <div className="row-actions" style={{ marginTop: 0 }}>
-                    <Button variant="primary" onClick={() => setApproving(d)}>
-                      Approve as {me}
+                    <Button variant="secondary" onClick={() => setApproving(d)} aria-label={`Agree: ${title}`}>
+                      Agree
                     </Button>
-                    <Button variant="secondary" onClick={() => setReasoning({ d, mode: 'defer' })}>
-                      Put off…
+                    <Button variant="quiet" onClick={() => setReasoning({ d, mode: 'defer' })} aria-label={`Put off: ${title}`}>
+                      Put off
                     </Button>
                     <RecordLink id={d.id} className="more-link">
                       Open details
                     </RecordLink>
                   </div>
                 )}
-                {out && !doneIds.has(d.id) ? null : null}
               </Card>
             </li>
           );
@@ -287,7 +293,7 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
           onClose={() => setApproving(null)}
           onDone={(rec, label) => {
             const d = approving;
-            setSession((s) => ({ ...s, decisions: [...s.decisions.filter((x) => x.id !== d.id), { id: d.id, title: d.title, outcome: `${me} approved ${label ? `“${label.replace(/[.\s]+$/, '')}”` : 'an option'}${rec.status === 'approved' ? ', and the household decided' : ''}` }] }));
+            setSession((s) => ({ ...s, decisions: [...s.decisions.filter((x) => x.id !== d.id), { id: d.id, title: displayTitle(d), outcome: `${me} agreed${label ? `: “${label.replace(/[.\s]+$/, '')}”` : ''}${rec.status === 'approved' ? '. Decided.' : ''}` }] }));
           }}
         />
       )}
@@ -298,7 +304,7 @@ function StepDecisions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
           onClose={() => setReasoning(null)}
           onDone={() => {
             const d = reasoning.d;
-            setSession((s) => ({ ...s, decisions: [...s.decisions.filter((x) => x.id !== d.id), { id: d.id, title: d.title, outcome: 'put off for now' }] }));
+            setSession((s) => ({ ...s, decisions: [...s.decisions.filter((x) => x.id !== d.id), { id: d.id, title: displayTitle(d), outcome: 'put off for now' }] }));
           }}
         />
       )}
@@ -322,26 +328,30 @@ function QuestionRow({ q, onOutcome, done }: { q: Question; onOutcome: (outcome:
   };
   return (
     <Card className="stack">
-      <h3 className="decision__title">{q.data?.question || q.title}</h3>
-      {q.data?.known && <p className="muted small preline">What we know: {q.data.known}</p>}
+      <h3 className="decision__title">{displayQuestion(q) ?? displayTitle(q)}</h3>
+      {q.data?.known && (
+        <More label="What we know">
+          <p className="small preline">{stripCodes(q.data.known)}</p>
+        </More>
+      )}
       {done ? (
         <p>
           <Icon name="check" size={14} /> {done}
         </p>
       ) : (
         <>
-          <Field label="Our answer, if we have one" error={tried && answer.trim() === '' ? 'Write the answer first, or choose another option.' : null}>
+          <Field label="Our answer" error={tried && answer.trim() === '' ? 'Write the answer first, or choose another option.' : null}>
             <TextArea value={answer} onChange={(e) => setAnswer(e.target.value)} rows={2} />
           </Field>
           <div className="row-actions" style={{ marginTop: 0 }}>
-            <Button variant="primary" busy={w.busy} onClick={() => save('already_answered', 'answered', true)}>
-              Save our answer
+            <Button variant="secondary" busy={w.busy} onClick={() => save('already_answered', 'answered', true)}>
+              Save answer
             </Button>
-            <Button variant="secondary" busy={w.busy} onClick={() => save('carry_forward', 'carried forward', false)}>
-              Carry forward
+            <Button variant="quiet" busy={w.busy} onClick={() => save('carry_forward', 'kept open', false)}>
+              Keep open
             </Button>
-            <Button variant="quiet" busy={w.busy} onClick={() => save('not_applicable', 'marked not applicable', false)}>
-              Not applicable
+            <Button variant="quiet" busy={w.busy} onClick={() => save('not_applicable', 'marked not needed', false)}>
+              Not needed
             </Button>
           </div>
         </>
@@ -365,16 +375,16 @@ function StepQuestions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
       .map((x) => x.q);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idx.questions.length]);
-  if (picks.length === 0) return <EmptyState icon="check" title="No open questions right now." />;
+  if (picks.length === 0) return <EmptyState icon="check" title="No questions waiting." />;
   return (
     <div className="stack">
-      <p className="muted">A few that matter at this stage, five at most. You can answer, carry one forward unchanged, or mark it as not applicable.</p>
+      <p className="muted">Up to five. Answer, keep open, or skip.</p>
       {picks.map((q) => (
         <QuestionRow
           key={q.id}
           q={q}
           done={session.questions.find((o) => o.id === q.id)?.outcome ? `Recorded as ${session.questions.find((o) => o.id === q.id)!.outcome}.` : null}
-          onOutcome={(outcome) => setSession((s) => ({ ...s, questions: [...s.questions.filter((x) => x.id !== q.id), { id: q.id, title: q.data?.question || q.title, outcome }] }))}
+          onOutcome={(outcome) => setSession((s) => ({ ...s, questions: [...s.questions.filter((x) => x.id !== q.id), { id: q.id, title: displayQuestion(q) ?? displayTitle(q), outcome }] }))}
         />
       ))}
     </div>
@@ -444,7 +454,7 @@ function StepWrapUp({ session, idx, dir, since, prepare, onSaved }: { session: S
 
   return (
     <div className="stack">
-      <Field label="Next review" hint="A week from today unless you pick another day. This is a checkpoint, not a deadline." error={nextBad ? 'Please pick a real date.' : null}>
+      <Field label="Next review" hint="A week from today unless you pick another day." error={nextBad ? 'Please pick a real date.' : null}>
         <TextInput type="date" value={next} onChange={(e) => setNext(e.target.value)} />
       </Field>
       {dir.adults.length > 1 && (
@@ -470,7 +480,7 @@ function StepWrapUp({ session, idx, dir, since, prepare, onSaved }: { session: S
             ))}
           </p>
         )}
-        <p className="small faint">This only records what you looked at and decided. It does not mark any work as done, and it is not advice.</p>
+        <InfoNote label="About this summary">This only records what you looked at and decided. It does not mark any work as done, and it is not advice.</InfoNote>
       </Card>
       {error && <p className="field__error" role="alert">{error}</p>}
       <div className="row-actions" style={{ marginTop: 0 }}>
@@ -512,22 +522,17 @@ function ReviewStart({
   return (
     <div className="stack stack--loose">
       <Card className="stack">
-        <p>
-          A short, calm walk through where things stand — about twenty minutes, five steps. You can skip any step. Nothing is scored, and nothing is marked done for you.
-        </p>
         <ol className="review-outline">
           {STEPS.map((s) => (
             <li key={s}>{s}</li>
           ))}
         </ol>
-        <p className="muted small">Today is {civil(today, 'long')}.</p>
         {open && (
           <Card as="section" tone="inset" className="stack" aria-labelledby="review-open-title">
             <h2 id="review-open-title" className="money-h3">
               A review is open
             </h2>
             <p>{describeProgress(progressOf(open))}</p>
-            <p className="small muted">Nothing you confirmed or answered has been lost. Continuing picks up where it stopped.</p>
           </Card>
         )}
         {error && <p className="field__error" role="alert">{error}</p>}
@@ -541,16 +546,16 @@ function ReviewStart({
       <Section title="Last review" headingLevel={2}>
         {!last || !lastData ? (
           <Card>
-            <p className="muted">No review has been finished yet. The first one will be kept here.</p>
+            <p className="muted">No review finished yet.</p>
           </Card>
         ) : (
           <Card className="stack">
             <p>
-              <strong>{civil(dayIn(lastData.completed_at ?? since ?? '', zone), 'long')}</strong>
+              <strong>{civil(dayIn(lastData.completed_at ?? since ?? '', zone), 'weekday')}</strong>
               {lastData.participants?.length ? <span className="muted"> · with {lastData.participants.map((p) => dir.nameOf(p)).join(' and ')}</span> : null}
             </p>
             {lastData.summary && <ClampText className="preline">{lastData.summary}</ClampText>}
-            {lastData.next_review_on && <p className="small muted">Next review planned for {civil(lastData.next_review_on, 'long')}.</p>}
+            {lastData.next_review_on && <p className="small muted">Next review planned for {civil(lastData.next_review_on, 'weekday')}.</p>}
             <p>
               <RecordLink id={last.id} className="more-link">
                 Read the whole summary
@@ -575,7 +580,7 @@ function ReviewStart({
                       {d.participants?.length ? <span className="muted"> · with {d.participants.map((p) => dir.nameOf(p)).join(' and ')}</span> : null}
                     </span>
                     <time className="faint small" dateTime={d.completed_at ?? undefined}>
-                      {instant(d.completed_at, zone, 'short')}
+                      {civil(dayIn(d.completed_at ?? '', zone), 'weekday')}
                     </time>
                   </li>
                 );
@@ -584,7 +589,7 @@ function ReviewStart({
             {earlier.length > 3 && (
               <div className="center">
                 <Button variant="quiet" onClick={() => setShowPast((v) => !v)}>
-                  {showPast ? 'Show fewer' : `Show all ${earlier.length}`}
+                  {showPast ? 'Show fewer' : `Show all (${earlier.length})`}
                 </Button>
               </div>
             )}
@@ -714,7 +719,7 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
     return (
       <Card className="stack">
         <h2>Review saved</h2>
-        <p>Thank you. The summary is kept with the plan{(dataOf<{ next_review_on?: string | null }>(saved).next_review_on) ? `, and your next review is ${civil(dataOf<{ next_review_on?: string | null }>(saved).next_review_on)}` : ''}.</p>
+        <p>The summary is kept with the plan{(dataOf<{ next_review_on?: string | null }>(saved).next_review_on) ? `. Next review: ${civil(dataOf<{ next_review_on?: string | null }>(saved).next_review_on, 'weekday')}` : ''}.</p>
         <div className="row-actions">
           <Link className="btn btn--primary" to="/">
             Back to Home
@@ -775,7 +780,7 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
       <div className="row row--between">
         <label className="choice choice--inline">
           <input type="checkbox" checked={timer} onChange={(e) => setTimer(e.target.checked)} />
-          <span className="choice__text">Show a gentle timer</span>
+          <span className="choice__text">Show a timer</span>
         </label>
         {timer && <GentleTimer startedAt={startedAt.current} />}
       </div>
@@ -800,10 +805,9 @@ function ReviewFlow({ idx, dir }: { idx: Indexes; dir: Directory }) {
           </>
         )}
       </div>
-      <p className="faint small">Leaving this page keeps what you have done; the review stays open until you save it.</p>
       {placeNotSaved && (
         <p role="status" className="small muted">
-          We couldn’t note your place in this review just now. Everything you confirmed or answered is saved; only this list of what you covered may be missing if you leave.
+          We couldn’t note your place just now. What you confirmed or answered is saved.
         </p>
       )}
     </div>

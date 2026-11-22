@@ -17,6 +17,9 @@ import { DataGate } from '../../components/DataGate';
 import { Dialog } from '../../components/Dialog';
 import { ConflictBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
+import { More } from '../../components/More';
+import { displayTitle, keyLookup, stripCodes } from '@shared/plain';
+import { ShowAllList } from '../arrival/ShowAll';
 import { LinkedKeys } from '../../components/LinkedKeys';
 import { usePlain } from '../../components/People';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
@@ -83,29 +86,43 @@ export function ContactCard({ record, idx, headingLevel = 3 }: { record: AnyReco
   const rel = (d.relationship ?? 'potential') as ContactRelationship;
   const H = headingLevel === 2 ? 'h2' : 'h3';
   const plain = usePlain();
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   // A saved sentence like "Candidate only" stops being true once someone has actually been in touch.
   const saved = d.status_boundary?.trim() ?? '';
   const stale = rel !== 'potential' && /candidate only|nobody has been contacted|saved name only/i.test(saved);
   const boundary = !saved || stale ? CONTACT_BOUNDARY_DEFAULT[rel] : saved;
+  // The usual wording for a relationship is not repeated on every card; only a note that says something else is shown.
+  const unusual = boundary !== CONTACT_BOUNDARY_DEFAULT[rel];
+  const hasMore = Boolean((rel !== 'potential' && d.relationship_basis) || d.relevance || unusual);
   return (
     <Card as="article" className="contact" aria-labelledby={`ct-${record.key}`}>
-      <div className="item__meta">
-        <Chip small tone={rel === 'potential' ? 'neutral' : 'ai'}>
-          {CONTACT_RELATIONSHIP_LABEL[rel] ?? rel}
-        </Chip>
-      </div>
+      {rel !== 'potential' && (
+        <div className="item__meta">
+          <Chip small tone="ai">
+            {CONTACT_RELATIONSHIP_LABEL[rel] ?? rel}
+          </Chip>
+        </div>
+      )}
       <H id={`ct-${record.key}`} className="doc__title">
-        {d.name || record.title}
+        {stripCodes(d.name || displayTitle(record, lookup), lookup)}
       </H>
-      {d.role && <p className="muted">{d.role}</p>}
-      <p className="boundary">
-        <Icon name="info" size={15} /> {boundary}
-      </p>
-      {rel !== 'potential' && d.relationship_basis && <p className="small muted preline">Because: {d.relationship_basis}</p>}
-      {d.relevance && <p className="preline">{plain(d.relevance)}</p>}
+      {d.role && <p className="muted">{stripCodes(d.role, lookup)}</p>}
+      {hasMore && (
+        <More label="More" hint={d.name || record.title}>
+          <div className="stack stack--tight">
+            {unusual && (
+              <p className="boundary">
+                <Icon name="info" size={15} /> {stripCodes(boundary, lookup)}
+              </p>
+            )}
+            {rel !== 'potential' && d.relationship_basis && <p className="small muted preline">Because: {stripCodes(d.relationship_basis, lookup)}</p>}
+            {d.relevance && <p className="preline">{plain(d.relevance)}</p>}
+          </div>
+        </More>
+      )}
       <LinkedKeys keys={d.linked_records} idx={idx} label="Relevant to" />
       <div className="row-actions">
-        <Button variant="secondary" small icon="pencil" onClick={() => setEdit(true)}>
+        <Button variant="quiet" small icon="pencil" onClick={() => setEdit(true)}>
           Change relationship
         </Button>
       </div>
@@ -137,7 +154,7 @@ function RelationshipDialog({ record, onClose }: { record: AnyRecord; onClose: (
       open
       onClose={onClose}
       title="Change relationship"
-      description={`${d.name || record.title}. A saved name never means anyone has been contacted or booked.`}
+      description={d.name || record.title}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>
@@ -161,7 +178,7 @@ function RelationshipDialog({ record, onClose }: { record: AnyRecord; onClose: (
       {rel !== 'potential' && (
         <Field
           label="What happened, or what already exists?"
-          hint="Only a real recorded interaction or an existing relationship moves someone beyond a potential resource."
+          hint="A real interaction or relationship only."
           error={tried && basisMissing ? 'Please say what this is based on.' : null}
         >
           <TextArea value={basis} onChange={(e) => setBasis(e.target.value)} rows={2} />
@@ -187,7 +204,7 @@ function ContactList({ idx }: { idx: Indexes }) {
   return (
     <div className="stack">
       <h2 className="visually-hidden">Contacts</h2>
-      <p className="muted">People and firms who might help. A saved name is only a candidate: nothing here means anyone has been contacted, hired or booked.</p>
+      <p className="muted">Saved names are candidates. Nobody here is contacted or booked.</p>
       {contacts.length === 0 ? (
         <Card>
           <EmptyState icon="contacts" title="No contacts have been saved yet." />
@@ -209,13 +226,16 @@ function ContactList({ idx }: { idx: Indexes }) {
               <EmptyState icon="contacts" title="Nobody in this group." />
             </Card>
           ) : (
-            <ul className="stack grid-wide">
-              {shown.map((c) => (
+            <ShowAllList
+              className="stack grid-wide"
+              first={6}
+              label="contacts"
+              rows={shown.map((c) => (
                 <li key={c.id}>
                   <ContactCard record={c} idx={idx} />
                 </li>
               ))}
-            </ul>
+            />
           )}
         </>
       )}
@@ -237,19 +257,11 @@ export function EvidenceCard({ record, headingLevel = 3 }: { record: AnyRecord; 
           <Icon name={ver.tone === 'matcha' ? 'check' : ver.tone === 'kaki' ? 'alert' : 'info'} size={13} />
           <span>{ver.label}</span>
         </Chip>
-        {d.stale && (
-          <Chip small tone="kin">
-            May be out of date
-          </Chip>
-        )}
-        {d.superseded_by && (
-          <Chip small tone="neutral">
-            Replaced by a newer source
-          </Chip>
-        )}
+        {d.stale && <span className="muted small">May be out of date</span>}
+        {d.superseded_by && <span className="muted small">Replaced by a newer source</span>}
       </div>
       <H id={`ev-${record.key}`} className="doc__title">
-        {record.title}
+        {stripCodes(record.title)}
       </H>
       <dl className="facts facts--tight">
         <div className="fact">
@@ -297,7 +309,7 @@ function EvidenceList({ idx }: { idx: Indexes }) {
   return (
     <div className="stack">
       <h2 className="visually-hidden">Evidence</h2>
-      <p className="muted">The sources behind the plan, how recently each was checked, and how well. Rules and dates are only as certain as their source.</p>
+      <p className="muted">Sources behind the plan, and when each was checked.</p>
       {items.length === 0 ? (
         <Card>
           <EmptyState icon="book" title="No sources have been listed yet." />
@@ -313,13 +325,16 @@ function EvidenceList({ idx }: { idx: Indexes }) {
               { value: 'check', label: 'Worth checking again', count: items.filter(needsCheck).length },
             ]}
           />
-          <ul className="stack grid-wide">
-            {shown.map((r) => (
+          <ShowAllList
+            className="stack grid-wide"
+            first={6}
+            label="sources"
+            rows={shown.map((r) => (
               <li key={r.id}>
                 <EvidenceCard record={r} />
               </li>
             ))}
-          </ul>
+          />
         </>
       )}
     </div>
@@ -334,6 +349,8 @@ export function FindingCard({ record, idx, headingLevel = 3 }: { record: AnyReco
   const sev = d.severity;
   const disp = d.disposition ?? 'open';
   const H = headingLevel === 2 ? 'h2' : 'h3';
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
+  const hasMore = Boolean(d.recommendation || d.finding_type || d.due_or_trigger || d.evidence || d.disposition_rationale || d.reviewer);
   return (
     <Card as="article" className="finding" aria-labelledby={`fd-${record.key}`} tone={sev === 'critical' ? 'blocked' : sev === 'high' ? 'attention' : 'default'}>
       <div className="item__meta">
@@ -343,54 +360,57 @@ export function FindingCard({ record, idx, headingLevel = 3 }: { record: AnyReco
             <span>{SEVERITY_LABEL[sev]}</span>
           </Chip>
         )}
-        <Chip small tone={disp === 'accepted' ? 'matcha' : disp === 'open' ? 'ai' : 'neutral'}>
-          {FINDING_DISPOSITION_LABEL[disp] ?? disp}
-        </Chip>
-        {d.reviewer && (
-          <Chip small tone="neutral">
-            {REVIEWER_LABEL[d.reviewer] ?? humanizeKey(d.reviewer)}
-          </Chip>
-        )}
+        {disp !== 'open' && <span className="muted small">{FINDING_DISPOSITION_LABEL[disp] ?? disp}</span>}
       </div>
       <H id={`fd-${record.key}`} className="doc__title">
-        {record.title}
+        {stripCodes(record.title, lookup)}
       </H>
-      {d.impact && <p className="preline">{d.impact}</p>}
-      <dl className="facts facts--tight">
-        {d.recommendation && (
-          <div className="fact fact--wide">
-            <dt>What was suggested</dt>
-            <dd className="preline">{d.recommendation}</dd>
-          </div>
-        )}
-        {d.finding_type && (
-          <div className="fact">
-            <dt>Kind of finding</dt>
-            <dd>{FINDING_TYPE_LABEL[d.finding_type] ?? humanizeKey(d.finding_type)}</dd>
-          </div>
-        )}
-        {d.due_or_trigger && (
-          <div className="fact">
-            <dt>When to look at it</dt>
-            <dd>{d.due_or_trigger}</dd>
-          </div>
-        )}
-        {d.evidence && (
-          <div className="fact fact--wide">
-            <dt>What it was based on</dt>
-            <dd className="preline">{d.evidence}</dd>
-          </div>
-        )}
-        {d.disposition_rationale && (
-          <div className="fact fact--wide">
-            <dt>Why {String(FINDING_DISPOSITION_LABEL[disp] ?? disp).toLowerCase()}</dt>
-            <dd className="preline">{d.disposition_rationale}</dd>
-          </div>
-        )}
-      </dl>
+      {d.impact && <p className="preline">{stripCodes(d.impact, lookup)}</p>}
+      {hasMore && (
+        <More label="More" hint={record.title}>
+          <dl className="facts facts--tight">
+            {d.recommendation && (
+              <div className="fact fact--wide">
+                <dt>What was suggested</dt>
+                <dd className="preline">{stripCodes(d.recommendation, lookup)}</dd>
+              </div>
+            )}
+            {d.finding_type && (
+              <div className="fact">
+                <dt>Kind of finding</dt>
+                <dd>{FINDING_TYPE_LABEL[d.finding_type] ?? humanizeKey(d.finding_type)}</dd>
+              </div>
+            )}
+            {d.reviewer && (
+              <div className="fact">
+                <dt>Found by</dt>
+                <dd>{REVIEWER_LABEL[d.reviewer] ?? humanizeKey(d.reviewer)}</dd>
+              </div>
+            )}
+            {d.due_or_trigger && (
+              <div className="fact">
+                <dt>When to look at it</dt>
+                <dd>{stripCodes(d.due_or_trigger, lookup)}</dd>
+              </div>
+            )}
+            {d.evidence && (
+              <div className="fact fact--wide">
+                <dt>What it was based on</dt>
+                <dd className="preline">{stripCodes(d.evidence, lookup)}</dd>
+              </div>
+            )}
+            {d.disposition_rationale && (
+              <div className="fact fact--wide">
+                <dt>Why {String(FINDING_DISPOSITION_LABEL[disp] ?? disp).toLowerCase()}</dt>
+                <dd className="preline">{stripCodes(d.disposition_rationale, lookup)}</dd>
+              </div>
+            )}
+          </dl>
+        </More>
+      )}
       <LinkedKeys keys={d.affected_records} idx={idx} label="Affects" />
       <div className="row-actions">
-        <Button variant="secondary" small icon="pencil" onClick={() => setEdit(true)}>
+        <Button variant="quiet" small icon="pencil" onClick={() => setEdit(true)}>
           Decide what to do
         </Button>
       </div>
@@ -477,7 +497,7 @@ function FindingList({ idx }: { idx: Indexes }) {
   return (
     <div className="stack">
       <h2 className="visually-hidden">Plan review findings</h2>
-      <p className="muted">What the plan reviews found, and what the household decided to do about each one. Nothing here changes the plan by itself.</p>
+      <p className="muted">What reviews found, and what you decided.</p>
       {items.length === 0 ? (
         <Card>
           <EmptyState icon="shield" title="No review findings have been recorded yet." />
@@ -499,13 +519,16 @@ function FindingList({ idx }: { idx: Indexes }) {
               <EmptyState icon="check" title="Nothing in this group." />
             </Card>
           ) : (
-            <ul className="stack grid-wide">
-              {shown.map((r) => (
+            <ShowAllList
+              className="stack grid-wide"
+              first={6}
+              label="findings"
+              rows={shown.map((r) => (
                 <li key={r.id}>
                   <FindingCard record={r} idx={idx} />
                 </li>
               ))}
-            </ul>
+            />
           )}
         </>
       )}
@@ -519,7 +542,7 @@ export function Contacts() {
   const { pathname } = useLocation();
   return (
     <div className="page contacts">
-      <PageTitle kicker="Who might help, and what we rely on">Contacts & evidence</PageTitle>
+      <PageTitle>Contacts & evidence</PageTitle>
       <nav aria-label="Contacts and evidence sections" className="segmented segmented--nav">
         {TABS.map((t) => {
           const active = t.end ? pathname === t.to || pathname === `${t.to}/` : pathname.startsWith(t.to);

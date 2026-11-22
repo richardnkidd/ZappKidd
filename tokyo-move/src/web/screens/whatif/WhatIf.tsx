@@ -2,6 +2,10 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { isCivilDate } from '@shared/dates';
 import { VERIFICATION_LABEL } from '@shared/labels';
 import { DateText, DeadlineBadge } from '../../components/Badges';
+import { More } from '../../components/More';
+import { stripCodes } from '@shared/plain';
+import { dateLineText } from '../../lib/dateLine';
+import { ShowAllList } from '../arrival/ShowAll';
 import { Button, Field, Select, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { Disclosure } from '../../components/Disclosure';
@@ -60,7 +64,7 @@ function StepItem({ o }: { o: Record<string, unknown> }) {
     <li className="stack stack--tight">
       <span>
         <strong>{String(o.step ?? itemText(o))}</strong>
-        {label && <span className="chip chip--neutral chip--sm" style={{ marginLeft: 8 }}>{label}</span>}
+        {label && <span className="muted small"> · {label}</span>}
       </span>
       {typeof o.note === 'string' && o.note && (
         <span className="small muted">
@@ -180,11 +184,12 @@ function StagingNotes({ staging, pet, dir }: { staging: Record<string, unknown>;
 
 function ChangeList({ changes }: { changes: { deadline_id: string; label: string; kind: Parameters<typeof DeadlineBadge>[0]['kind']; before: string | null; after: string | null }[] }) {
   return (
-    <ul className="item-list">
-      {changes.map((c) => (
+    <ShowAllList
+      label="dates that move"
+      rows={changes.map((c) => (
         <li key={c.deadline_id} className="item item--flat">
           <div className="item__main">
-            <span className="item__title">{c.label}</span>
+            <span className="item__title">{stripCodes(c.label)}</span>
             <div className="item__meta">
               <DeadlineBadge kind={c.kind} />
               <span>
@@ -194,7 +199,7 @@ function ChangeList({ changes }: { changes: { deadline_id: string; label: string
           </div>
         </li>
       ))}
-    </ul>
+    />
   );
 }
 
@@ -206,7 +211,7 @@ function WhatIfTitle() {
 export function WhatIf() {
   return (
     <div className="page whatif">
-      <PageTitle kicker="A comparison — nothing changes">
+      <PageTitle kicker="A comparison only. Nothing is changed.">
         <WhatIfTitle />
       </PageTitle>
       <DataGate>{({ idx, dir }) => <WhatIfBody idx={idx} dir={dir} />}</DataGate>
@@ -303,13 +308,34 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
     if (ok) setSaved(true);
   };
 
+  const legalCount = legalChanges.length;
+  const costLine = !overlap || !overlap.ok ? null : noneKnown ? 'Extra cost: not known yet.' : `Extra cost so far: ${fmtUsd(overlap.value.beforeKnown)} → ${fmtUsd(overlap.value.afterKnown)}.`;
+  const adultsLine = `${unaffectedAdults.length ? unaffectedAdults.map((p) => dir.nameOf(p)).join(' and ') + '’s deadlines' : 'No other traveler’s deadlines'}: no change (${unchangedCount}).`;
+
   return (
     <div className="stack stack--loose">
-      <Card tone="inset" className="whatif-promise">
-        <p>
-          <Icon name="info" size={16} /> <strong>Nothing here changes your plan.</strong> You are only looking at what would move. Each traveler’s dates stay separate: {pet.display_name}’s move never moves an adult’s.
-        </p>
-      </Card>
+      {arrival && (
+        <section className="whatif-answer card" aria-labelledby="whatif-answer-h">
+          <h2 id="whatif-answer-h" className="whatif-answer__head">
+            {movedMonths === null || movedMonths === 0 ? `${pet.display_name} arrives on a new date` : `${pet.display_name} arrives ${plural(Math.abs(movedMonths), 'month')} ${movedMonths > 0 ? 'later' : 'earlier'}`}
+          </h2>
+          <ul className="whatif-answer__list">
+            <li>
+              Arrival: {currentArrival ? <DateText date={currentArrival} /> : 'not set'} → <DateText date={arrival} />
+            </li>
+            <li>{!preview || !preview.ok ? 'Dates: not worked out yet.' : legalCount > 0 ? `${plural(legalCount, 'legal or contract date')} would move.` : 'No legal or contract date would move.'}</li>
+            <li className="whatif-answer__ok">
+              <Icon name="check" size={16} /> {adultsLine}
+            </li>
+            {costLine && <li>{costLine}</li>}
+          </ul>
+          {waiting && (
+            <More label="A question to settle">
+              <p>{waiting}</p>
+            </More>
+          )}
+        </section>
+      )}
 
       <Section title={`When might ${pet.display_name} arrive?`} headingLevel={2}>
         <div className="stack">
@@ -325,7 +351,7 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
             </Field>
           )}
           <fieldset>
-            <legend>{petNow ? `Compared with ${pet.display_name}’s arrival now (${civil(petNow)})` : `Compared with ${firstAdultName}’s arrival`}</legend>
+            <legend>{petNow ? `Compared with ${pet.display_name}’s arrival now: ${dateLineText(petNow, today)}` : `Compared with ${firstAdultName}’s arrival`}</legend>
             <div className="chip-radios">
               {choices.map((c) => (
                 <label key={c.value} className="choice choice--inline">
@@ -342,154 +368,128 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
           )}
           {showHypo && (
             <div className="stack stack--tight">
-              <Field
-                label={noAnchors ? 'Needed for the comparison — no dates are set yet' : 'If the first adult arrived on… (optional)'}
-                hint={
-                  noAnchors
-                    ? `Neither ${pet.display_name}’s nor the adults’ arrival dates are set. A date here is only for the comparison and is never saved.`
-                    : 'Only needed to compare with the first adult’s arrival. It is never saved.'
-                }
-              >
+              <Field label={noAnchors ? 'Add an arrival date to compare' : 'First adult arrives on (optional)'} hint="Only for this comparison. Never saved.">
                 <TextInput type="date" value={hypo} onChange={(e) => setHypo(e.target.value)} />
               </Field>
               {noAnchors && (
                 <div>
                   <Button variant="secondary" small onClick={() => setHypo(EXAMPLE_ARRIVAL.date)}>
-                    Try {EXAMPLE_ARRIVAL.label} — start of your target month (example only, never saved)
+                    Try {EXAMPLE_ARRIVAL.label}
                   </Button>
                 </div>
               )}
             </div>
           )}
-          <dl className="facts facts--tight">
-            <div className="fact">
-              <dt>{pet.display_name} now</dt>
-              <dd>
-                arrives <DateText date={currentArrival} />
-              </dd>
-            </div>
-            <div className="fact">
-              <dt>If so</dt>
-              <dd>{arrival ? `arrives ${civil(arrival, 'weekday')}` : 'Choose how, above'}</dd>
-            </div>
-          </dl>
           {arrival && (
-            <Field
-              label={`${pet.display_name}’s departure`}
-              hint="Honolulu–Tokyo flights usually land the next day, so this starts one day before arrival. Adjust it if yours differs."
-            >
-              <TextInput type="date" value={depOverride || departure || ''} onChange={(e) => setDepOverride(e.target.value)} />
-            </Field>
+            <More label="Change the departure date">
+              <Field label={`${pet.display_name}’s departure`} hint="Starts one day before arrival.">
+                <TextInput type="date" value={depOverride || departure || ''} onChange={(e) => setDepOverride(e.target.value)} />
+              </Field>
+            </More>
           )}
         </div>
       </Section>
 
       {!arrival ? (
         <Card>
-          <EmptyState icon="calendar" title="Pick when, and the comparison appears here.">
-            {noAnchors ? 'First add a date for the first adult’s arrival, just for this comparison.' : ''}
-          </EmptyState>
+          <EmptyState icon="calendar" title="Pick when, and the comparison appears here." />
         </Card>
       ) : (
         <>
-          <Section title={`What would move for ${pet.display_name}`} headingLevel={2}>
-            {!preview ? null : !preview.ok ? (
-              <ErrorBanner title="We couldn't work out the dates just now.">{preview.error.message}</ErrorBanner>
-            ) : (
-              <div className="stack">
-                {preview.value.warnings.map((m) => (
-                  <p key={m} className="small">
-                    <Icon name="alert" size={14} /> {m}
-                  </p>
-                ))}
-                {preview.value.changes.length === 0 ? (
-                  <p className="muted">No dated rule would change.</p>
+          <More label="See every date and cost">
+            <div className="stack stack--loose">
+              <Section title={`What would move for ${pet.display_name}`} headingLevel={3}>
+                {!preview ? null : !preview.ok ? (
+                  <ErrorBanner title="We couldn't work out the dates just now.">{preview.error.message}</ErrorBanner>
                 ) : (
-                  <>
-                    {legalChanges.length > 0 ? (
-                      <div>
-                        <h3 className="coming-group__title">Legal and contract dates</h3>
-                        <ChangeList changes={legalChanges} />
-                      </div>
-                    ) : (
-                      <p className="muted">No legal or contract date would change.</p>
-                    )}
-                    {targetChanges.length > 0 && (
-                      <Disclosure title="Our own targets and estimates" meta={`${targetChanges.length}`} level={3}>
-                        <ChangeList changes={targetChanges} />
-                      </Disclosure>
-                    )}
-                  </>
-                )}
-                <p className="unchanged">
-                  <Icon name="check" size={16} />
-                  <span>
-                    <strong>Unchanged:</strong> {unaffectedAdults.length ? unaffectedAdults.map((p) => dir.nameOf(p)).join(' and ') + '’s deadlines' : 'no other traveler’s deadlines'} ({unchangedCount}).
-                  </span>
-                </p>
-              </div>
-            )}
-          </Section>
-
-          <Section title="What it could add in cost" headingLevel={2} intro="Extra time in Hawaii means extra staged-overlap costs. Amounts that aren’t known yet stay unknown; they are never treated as zero.">
-            {!overlap ? null : !overlap.ok ? (
-              <ErrorBanner title="We couldn't work out the costs just now.">{overlap.error.message}</ErrorBanner>
-            ) : (
-              <Card className="stack">
-                {movedMonths !== null && <p>{movedMonths === 0 ? 'About the same time as now.' : `About ${plural(Math.abs(movedMonths), 'month')} ${movedMonths > 0 ? 'later' : 'earlier'} than the current plan.`}</p>}
-                {overlap.value.lines.length === 0 ? (
-                  <p className="muted">No staged-overlap costs are listed yet.</p>
-                ) : (
-                  <ul className="overlap-lines">
-                    {overlap.value.lines.map((l) => (
-                      <li key={l.key}>
-                        <span>{l.description}</span>
-                        <span className="muted small">
-                          {l.before === null ? 'not known yet' : fmtUsd(l.before)} → {l.after === null ? 'not known yet' : fmtUsd(l.after)}
-                        </span>
-                      </li>
+                  <div className="stack">
+                    {preview.value.warnings.map((m) => (
+                      <p key={m} className="small">
+                        <Icon name="alert" size={14} /> {stripCodes(m)}
+                      </p>
                     ))}
-                  </ul>
+                    {preview.value.changes.length === 0 ? (
+                      <p className="muted">No dated rule would change.</p>
+                    ) : (
+                      <>
+                        {legalChanges.length > 0 ? (
+                          <div>
+                            <h4 className="group-head">Legal and contract dates</h4>
+                            <ChangeList changes={legalChanges} />
+                          </div>
+                        ) : (
+                          <p className="muted">No legal or contract date would change.</p>
+                        )}
+                        {targetChanges.length > 0 && (
+                          <Disclosure title="Our own targets and estimates" meta={`${targetChanges.length}`} level={4}>
+                            <ChangeList changes={targetChanges} />
+                          </Disclosure>
+                        )}
+                      </>
+                    )}
+                    <p className="unchanged">
+                      <Icon name="check" size={16} />
+                      <span>
+                        <strong>Unchanged:</strong> {unaffectedAdults.length ? unaffectedAdults.map((p) => dir.nameOf(p)).join(' and ') + '’s deadlines' : 'no other traveler’s deadlines'} ({unchangedCount}).
+                      </span>
+                    </p>
+                  </div>
                 )}
-                {noneKnown ? (
-                  <p>
-                    <strong>No amounts known yet.</strong>
-                    <span className="muted"> {plural(overlap.value.lines.length, 'line')} listed, none with an amount. Adding amounts on the Money page makes this comparison real.</span>
-                  </p>
+              </Section>
+
+              <Section title="What it could add in cost" headingLevel={3}>
+                {!overlap ? null : !overlap.ok ? (
+                  <ErrorBanner title="We couldn't work out the costs just now.">{overlap.error.message}</ErrorBanner>
                 ) : (
-                  <p>
-                    Known so far: <strong>{fmtUsd(overlap.value.beforeKnown)}</strong> → <strong>{fmtUsd(overlap.value.afterKnown)}</strong>
-                    {overlap.value.unknownAfter > 0 ? <span className="muted"> · {overlap.value.unknownAfter} not known yet</span> : null}
-                  </p>
+                  <div className="stack">
+                    {overlap.value.lines.length === 0 ? (
+                      <p className="muted">No staged-overlap costs are listed yet.</p>
+                    ) : (
+                      <ul className="overlap-lines">
+                        {overlap.value.lines.map((l) => (
+                          <li key={l.key}>
+                            <span>{stripCodes(l.description)}</span>
+                            <span className="muted small">
+                              {l.before === null ? 'not known yet' : fmtUsd(l.before)} → {l.after === null ? 'not known yet' : fmtUsd(l.after)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {noneKnown ? (
+                      <p>
+                        <strong>No amounts known yet.</strong>
+                        <span className="muted"> Add amounts on Money to make this real.</span>
+                      </p>
+                    ) : (
+                      <p>
+                        Known so far: <strong>{fmtUsd(overlap.value.beforeKnown)}</strong> → <strong>{fmtUsd(overlap.value.afterKnown)}</strong>
+                        {overlap.value.unknownAfter > 0 ? <span className="muted"> · {overlap.value.unknownAfter} not known yet</span> : null}
+                      </p>
+                    )}
+                  </div>
                 )}
-              </Card>
-            )}
-          </Section>
+              </Section>
 
-          {waiting && (
-            <p className="whatif-waiting">
-              <Icon name="info" size={16} /> {waiting}
-            </p>
-          )}
+              <Section title="Conditions to check" headingLevel={3}>
+                {!staging || typeof staging !== 'object' || Object.keys(staging).length === 0 ? (
+                  <p className="muted">Nothing added yet.</p>
+                ) : (
+                  <StagingNotes staging={staging} pet={pet} dir={dir} />
+                )}
+              </Section>
+            </div>
+          </More>
 
-          <Section title="Conditions to check" headingLevel={2} intro="From the household’s own staging notes. They are things to confirm, not answers.">
-            {!staging || typeof staging !== 'object' || Object.keys(staging).length === 0 ? (
-              <p className="muted">No staging notes have been added yet.</p>
-            ) : (
-              <StagingNotes staging={staging} pet={pet} dir={dir} />
-            )}
-          </Section>
-
-          <Card tone="inset" className="stack">
-            <p className="muted">Want to keep this? It is saved as a household note. It does not change any date.</p>
+          <div className="stack stack--tight">
             <div className="row-actions" style={{ marginTop: 0 }}>
               <Button variant="secondary" icon="plus" busy={w.busy} onClick={saveNote} disabled={saved}>
-                {saved ? 'Saved as a note' : 'Save this comparison as a note'}
+                {saved ? 'Saved as a note' : 'Save as a note'}
               </Button>
             </div>
             {w.error && <p className="field__error" role="alert">{w.error}</p>}
-            {saved && <p role="status" className="small">Saved. You can find it with the household’s notes.</p>}
-          </Card>
+            {saved && <p role="status" className="small">Saved.</p>}
+          </div>
         </>
       )}
     </div>

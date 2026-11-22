@@ -1,5 +1,5 @@
 import type { FutureOptionData } from '@shared/types';
-import { Chip } from '../../components/Badges';
+import { stripCodes } from '@shared/plain';
 import { DataGate } from '../../components/DataGate';
 import { Disclosure } from '../../components/Disclosure';
 import { ConflictBanner } from '../../components/Feedback';
@@ -66,23 +66,18 @@ export function FutureOptionCard({ record, headingLevel = 3 }: { record: AnyReco
   ];
   return (
     <Card as="article" className="future-card" aria-labelledby={`fo-${record.key}`}>
-      <div className="item__meta">
-        <Chip small tone="neutral">
-          Optional
-        </Chip>
-      </div>
       <H id={`fo-${record.key}`} className="doc__title">
-        {d.path || record.title}
+        {stripCodes(d.path || record.title)}
       </H>
       <InterestPicker record={record} />
-      <Disclosure title="More about this option" level={4} className="disclosure--flat">
+      <Disclosure title="More" level={4} className="disclosure--flat">
         <dl className="facts facts--tight">
           {rows
             .filter(([, v]) => v && v.trim())
             .map(([label, v]) => (
               <div key={label} className="fact fact--wide">
                 <dt>{label}</dt>
-                <dd className="preline">{v}</dd>
+                <dd className="preline">{stripCodes(v)}</dd>
               </div>
             ))}
         </dl>
@@ -96,8 +91,8 @@ function SimpleItem({ r }: { r: AnyRecord }) {
   const text = d.body || [d.why_fit, d.first_test].filter(Boolean).join(' ');
   return (
     <li className="future-item">
-      <p className="future-item__title">{d.path || r.title}</p>
-      {text && <p className="muted preline">{text}</p>}
+      <p className="future-item__title">{stripCodes(d.path || r.title)}</p>
+      {text && <p className="muted preline">{stripCodes(text)}</p>}
     </li>
   );
 }
@@ -105,7 +100,7 @@ function SimpleItem({ r }: { r: AnyRecord }) {
 export function Future() {
   return (
     <div className="page future">
-      <PageTitle kicker="Away from the critical path">Future work</PageTitle>
+      <PageTitle>Future work</PageTitle>
       <DataGate>{({ idx }) => <FutureBody idx={idx} />}</DataGate>
     </div>
   );
@@ -118,17 +113,14 @@ function FutureBody({ idx }: { idx: Indexes }) {
   const notes = all.filter((r) => futureKind(r) === 'note').sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true }));
   return (
     <div className="stack stack--loose">
-      <Card tone="inset" className="future-intro">
-        <p className="future-intro__line">Optional. Not part of the move. Continuing the break is a valid choice.</p>
-        <p className="muted">Nothing here has a date, a target or a deadline, and nothing on this page holds up anyone’s move.</p>
-      </Card>
+      <p className="muted">Optional. Not part of the move.</p>
       {all.length === 0 ? (
         <Card>
-          <EmptyState icon="sprout" title="Nothing has been added here yet." />
+          <EmptyState icon="sprout" title="Nothing here yet." />
         </Card>
       ) : (
         <>
-          <Section title="Ideas" headingLevel={2} intro="Three directions, in no particular order of urgency.">
+          <Section title="Ideas" headingLevel={2}>
             <ul className="stack">
               {options.map((o) => (
                 <li key={o.id}>
@@ -138,7 +130,7 @@ function FutureBody({ idx }: { idx: Indexes }) {
             </ul>
           </Section>
           {phases.length > 0 && (
-            <Section title="If you ever wanted to try one" headingLevel={2} intro="A gentle shape, only if it appeals.">
+            <Section title="If you want to try one" headingLevel={2}>
               <ol className="future-list">
                 {phases.map((p) => (
                   <SimpleItem key={p.id} r={p} />

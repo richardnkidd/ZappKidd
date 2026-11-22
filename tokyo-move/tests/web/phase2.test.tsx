@@ -130,7 +130,10 @@ describe('money wording', () => {
       other_commitments_usd: null, return_reserve_usd: null, need_usd_known: 0, need_complete: false, cash_usd: null, cash_as_of: null, headroom_usd: null,
       modeled_income_usd: null, state: 'incomplete' as const, missing: [],
     };
-    expect(cashStatement(model, 1).headline).toBe("Can't conclude yet — 49 amounts and one income are unknown");
+    const statement = cashStatement(model, 1);
+    expect(statement.headline).toBe("Can't conclude yet");
+    // The real number of unknowns is said once, in one short line, and totals are never shown without it.
+    expect(statement.detail).toBe('Totals count only what is known. Missing: 49 amounts and one income.');
   });
 });
 
@@ -249,7 +252,7 @@ describe('what if, with no adult date yet (a hypothetical first-adult arrival)',
     const base = { petName: 'Mochi', adultName: 'Avery', adultArrival: '2027-07-01' };
     const later = waitingNote({ ...base, petArrival: '2027-10-01' })!;
     expect(later).toContain('Mochi would arrive about 3 months after Avery.');
-    expect(later).toContain('who looks after Mochi in Hawaii, and who flies with Mochi?');
+    expect(later).toContain('Who looks after Mochi in Hawaii, and who flies with Mochi?');
     expect(later).toContain('never move an adult’s legal deadlines');
     expect(waitingNote({ ...base, petArrival: '2027-07-12' })).toContain('11 days after Avery');
     expect(waitingNote({ ...base, petArrival: '2027-07-01' })).toBeNull(); // together
@@ -273,10 +276,10 @@ describe('couple review summary', () => {
   };
   it('names what happened, links every record it mentions, and never claims work is done', () => {
     const { text, recordIds } = buildReviewSummary(facts);
-    expect(text).toContain('Couple review on Thursday, October 29, 2026, with Ann and Bo.');
+    expect(text).toContain('Couple review on Thu, Oct 29, with Ann and Bo.');
     expect(text).toContain('Owners accepted: “Establish a route” (Bo).');
     expect(text).toContain('“Choose the home” — Ann approved “Option A”');
-    expect(text).toContain('Next review: Thursday, November 5, 2026.');
+    expect(text).toContain('Next review: Thu, Nov 5.');
     expect(recordIds).toEqual(['milestone:W03', 'decision:D02', 'question:Q001']);
     expect(text.toLowerCase()).not.toMatch(/\b(completed|marked done|you should|we recommend)\b/);
   });
@@ -356,6 +359,24 @@ describe('printable arrival pack', () => {
     expect(mine.items.map((i) => i.id)).toEqual([doc.id]);
     const other = people.find((p) => p.id !== adult.id)!;
     expect(buildPack(marked, dir, deadlines, other.id).sections.find((s) => s.key === 'documents')!.items).toEqual([]);
+  });
+
+  it('says a holder and a status shared by every document once, never "(proposed)", never on every row', () => {
+    const docBase = records.find((r) => r.type === 'document')!;
+    const mk = (n: number, status = 'not_started') =>
+      ({ ...docBase, id: `document:DX${n}`, key: `DX${n}`, title: `Document ${n}`, status, data: { ...(docBase.data as object), custodian: 'Each document holder (proposed)', traveler_scope: [], carry_on_arrival: [], link: null } }) as BaseRecord;
+    const same = buildIndexes([...records.filter((r) => r.type !== 'document'), mk(1), mk(2), mk(3)], taskLinks);
+    const docs = buildPack(same, dir, deadlines, adult.id).sections.find((s) => s.key === 'documents')!;
+    expect(docs.note).toBe('Held by: Each document holder · All: Not started');
+    for (const i of docs.items) {
+      expect(i.detail).toBeNull();
+      expect(i.meta).toEqual([]);
+    }
+    // When they differ, each row says its own.
+    const mixed = buildIndexes([...records.filter((r) => r.type !== 'document'), mk(1), mk(2, 'received')], taskLinks);
+    const rows = buildPack(mixed, dir, deadlines, adult.id).sections.find((s) => s.key === 'documents')!;
+    expect(rows.items.map((i) => i.meta)).toEqual([['Not started'], ['Received']]);
+    expect(rows.items.map((i) => i.detail)).toEqual([null, null].map(() => null));
   });
 
   it('a pet gets its own arrival-day list', () => {

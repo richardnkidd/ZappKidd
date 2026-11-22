@@ -115,15 +115,15 @@ export function cashStatement(model: CashModel, incomeNotCounted: number): CashS
       const what = bits.length ? bits.join(' and ') : 'some details';
       return {
         tone: 'kin',
-        headline: `Can't conclude yet — ${what} ${amounts + incomeNotCounted === 1 ? 'is' : 'are'} unknown`,
-        detail: 'Totals below are what is known so far, not what is needed.',
+        headline: "Can't conclude yet",
+        detail: `Totals count only what is known. Missing: ${what}.`,
       };
     }
     case 'cash_view_ready_income_unverified':
       return {
         tone: 'ai',
-        headline: 'Cash for this period is accounted for — income is still unverified',
-        detail: 'Without verified income there is no longer-term conclusion.',
+        headline: 'Cash is accounted for. Income is not verified.',
+        detail: 'No longer-term conclusion yet.',
       };
     default:
       return {

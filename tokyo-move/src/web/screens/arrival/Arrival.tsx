@@ -3,7 +3,10 @@ import { Link } from 'react-router';
 import type { ComputedDeadline } from '@shared/engine-contracts';
 import { ARRIVAL_WINDOW_LABEL, ARRIVAL_WINDOW_ORDER, ANCHOR_CONFIDENCE_LABEL, CADENCE_LABEL } from '@shared/labels';
 import type { AnchorData, ArrivalData, DeadlineRuleData, HorizonData, PropertyData, WorkStatus } from '@shared/types';
-import { Chip, DateText, DeadlineBadge, StatusBadge, VerificationNote } from '../../components/Badges';
+import { DateText, DeadlineBadge, StatusBadge, VerificationNote } from '../../components/Badges';
+import { More } from '../../components/More';
+import { displayTitle, keyLookup, stripCodes, type KeyLookup } from '@shared/plain';
+import { ShowAllList } from './ShowAll';
 import { AnchorDialog } from '../../components/AnchorDialog';
 import { Button, SegmentedControl } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
@@ -12,9 +15,7 @@ import { Icon } from '../../components/Icon';
 import { LinkedKeys } from '../../components/LinkedKeys';
 import { Card, EmptyState, PageTitle, Section } from '../../components/Layout';
 import { PersonBadge, usePlain } from '../../components/People';
-import { ClampText } from '../../components/ClampText';
 import { DeadlineRow, ruleOf } from '../../components/DeadlineRow';
-import { Disclosure } from '../../components/Disclosure';
 import { RecordLink } from '../../components/RecordLink';
 import { deadlineVerification } from '../../lib/home';
 import { splitTitleAction } from '../../lib/prose';
@@ -53,48 +54,51 @@ export function arrivalFor(idx: Indexes, personId: string) {
 
 const norm = (t: string) => t.trim().replace(/[.\s]+$/, '').toLowerCase();
 
-function ArrivalItem({ item, personId, today }: { item: ReturnType<typeof arrivalFor>[number]; personId: string; today: string }) {
+function ArrivalItem({ item, personId, today, lookup, markShared }: { item: ReturnType<typeof arrivalFor>[number]; personId: string; today: string; lookup: KeyLookup | undefined; markShared: boolean }) {
   const plain = usePlain();
   const [open, setOpen] = useState(false);
   const d = item.data;
-  const split = splitTitleAction(item.record.title, d.action ? plain(d.action) : null);
+  const split = splitTitleAction(displayTitle(item.record, lookup), d.action ? plain(d.action) : null);
   const action = split.detail;
   const trigger = d.trigger && norm(d.trigger) !== norm(item.record.title) && norm(d.trigger) !== norm(d.action ?? '') ? d.trigger : null;
   const reason = item.reason && item.status !== 'planned' && norm(item.reason) !== norm(d.action ?? '') ? item.reason : null;
+  const hasMore = Boolean(action || trigger || reason || d.review_note);
   return (
-    <li className="item item--flat">
-      <div className="item__main">
-        <RecordLink id={item.record.id} className="item__title">
-          {split.title}
-        </RecordLink>
-        {action && <ClampText className="item__action preline">{action}</ClampText>}
-        {trigger && (
-          <p className="small muted">
-            <span className="item__label">When</span> {plain(trigger)}
-          </p>
-        )}
-        {reason && <p className="small muted preline">{plain(reason)}</p>}
-        {d.review_note && (
-          <Disclosure title="Practical checks" level={4} className="disclosure--flat">
-            <p className="small preline">{plain(d.review_note)}</p>
-          </Disclosure>
-        )}
-        <div className="item__meta">
+    <li className="step">
+      <div className="row-1">
+        <span className="row-1__icon">
           <StatusBadge status={item.status} small />
-          {d.deadline && (
-            <span className="item__when">
-              <DateText date={d.deadline.date} today={today} kind={d.deadline.kind} />
-              <DeadlineBadge kind={d.deadline.kind} />
-            </span>
+        </span>
+        <div className="row-1__main">
+          <RecordLink id={item.record.id} className="item__title">
+            {split.title}
+          </RecordLink>
+          {(d.deadline || (markShared && item.shared)) && (
+            <p className="step__meta small">
+              {d.deadline && (
+                <span className="item__when">
+                  <DateText date={d.deadline.date} today={today} kind={d.deadline.kind} />
+                  <DeadlineBadge kind={d.deadline.kind} />
+                </span>
+              )}
+              {markShared && item.shared && <span className="muted">Shared</span>}
+            </p>
           )}
-          {item.shared && <span className="chip chip--neutral chip--sm">Shared</span>}
         </div>
-        <div className="row-actions" style={{ marginTop: 0 }}>
-          <Button variant="secondary" small onClick={() => setOpen(true)}>
-            Update status
-          </Button>
-        </div>
+        <Button variant="quiet" small className="row-1__side" onClick={() => setOpen(true)} aria-label={`Update status: ${split.title}`}>
+          Update
+        </Button>
       </div>
+      {hasMore && (
+        <More label="Details" hint={split.title}>
+          <div className="stack stack--tight">
+            {action && <p className="preline">{stripCodes(action, lookup)}</p>}
+            {trigger && <p className="small muted">When: {stripCodes(plain(trigger), lookup)}</p>}
+            {reason && <p className="small muted preline">{stripCodes(plain(reason), lookup)}</p>}
+            {d.review_note && <p className="small preline">{stripCodes(plain(d.review_note), lookup)}</p>}
+          </div>
+        </More>
+      )}
       {open && <StatusDialog open onClose={() => setOpen(false)} record={item.record} traveler={item.shared ? personId : null} currentStatus={item.status} />}
     </li>
   );
@@ -120,14 +124,8 @@ function AfterArrivalDeadlines({ person, idx, dir }: { person: string; idx: Inde
     }
     return d.source === 'record' && Boolean(d.record_id?.startsWith('arrival:'));
   });
-  if (rows.length === 0) return <p className="muted">No dated rules start from this traveler’s arrival yet.</p>;
-  return (
-    <ul className="item-list grid-wide">
-      {rows.map((d) => (
-        <DeadlineRow key={d.id} d={d} idx={idx} today={today} dir={dir} headingLevel={3} />
-      ))}
-    </ul>
-  );
+  if (rows.length === 0) return <p className="muted">Nothing dated yet.</p>;
+  return <ShowAllList className="item-list grid-wide" rows={rows.map((d) => <DeadlineRow key={d.id} d={d} idx={idx} today={today} dir={dir} headingLevel={3} />)} label="dated rules" />;
 }
 
 /* ------------------------------------------------------------------ household sections */
@@ -135,37 +133,38 @@ function AfterArrivalDeadlines({ person, idx, dir }: { person: string; idx: Inde
 export function PropertyCard({ record, idx, headingLevel = 3 }: { record: AnyRecord; idx: Indexes; headingLevel?: 2 | 3 }) {
   const d = dataOf<PropertyData>(record);
   const H = headingLevel === 2 ? 'h2' : 'h3';
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
+  const hasMore = Boolean(d.people_resources || d.evidence_status || d.evidence_caution);
   return (
     <Card as="article" className="property" aria-labelledby={`pr-${record.key}`}>
-      <div className="item__meta">
-        <Chip small tone="neutral">
-          {record.status === 'open' ? 'Needs watching' : record.status.replace(/_/g, ' ')}
-        </Chip>
-      </div>
       <H id={`pr-${record.key}`} className="doc__title">
-        {d.obligation || record.title}
+        {stripCodes(d.obligation || record.title, lookup)}
       </H>
-      {d.known_context && <p className="preline">{d.known_context}</p>}
-      <dl className="facts facts--tight">
-        {d.people_resources && (
-          <div className="fact">
-            <dt>Who can help</dt>
-            <dd className="preline">{d.people_resources}</dd>
-          </div>
-        )}
-        {d.evidence_status && (
-          <div className="fact">
-            <dt>What we have checked</dt>
-            <dd className="preline">{d.evidence_status}</dd>
-          </div>
-        )}
-        {d.evidence_caution && (
-          <div className="fact fact--wide">
-            <dt>Take care</dt>
-            <dd className="preline">{d.evidence_caution}</dd>
-          </div>
-        )}
-      </dl>
+      {d.known_context && <p className="preline">{stripCodes(d.known_context, lookup)}</p>}
+      {hasMore && (
+        <More label="More" hint={d.obligation || record.title}>
+          <dl className="facts facts--tight">
+            {d.people_resources && (
+              <div className="fact">
+                <dt>Who can help</dt>
+                <dd className="preline">{stripCodes(d.people_resources, lookup)}</dd>
+              </div>
+            )}
+            {d.evidence_status && (
+              <div className="fact">
+                <dt>What we have checked</dt>
+                <dd className="preline">{stripCodes(d.evidence_status, lookup)}</dd>
+              </div>
+            )}
+            {d.evidence_caution && (
+              <div className="fact fact--wide">
+                <dt>Take care</dt>
+                <dd className="preline">{stripCodes(d.evidence_caution, lookup)}</dd>
+              </div>
+            )}
+          </dl>
+        </More>
+      )}
       <LinkedKeys keys={d.milestone_links} idx={idx} label="Linked work" />
     </Card>
   );
@@ -192,12 +191,13 @@ function ObligationItem({ title, meta, children }: { title: React.ReactNode; met
 
 function ContinuingObligations({ idx, dir, who }: { idx: Indexes; dir: Directory; who: { id: string; display_name: string } }) {
   const plain = usePlain();
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   const rules = idx.rules.filter((r) => r.data?.anchor === 'other' && r.data.applies !== 'no' && !r.data.superseded_by);
   const horizon = idx.all.filter((r) => r.type === 'horizon' && !/^EX/i.test(r.key));
   const mine = rules.filter((r) => ruleAudience(r.data?.traveler_scope, who.id, dir) === 'mine');
   const shared = rules.filter((r) => ruleAudience(r.data?.traveler_scope, who.id, dir) === 'shared');
   if (mine.length === 0 && shared.length === 0 && horizon.length === 0) {
-    return <p className="muted">Nothing has been listed yet for after the first months.</p>;
+    return <p className="muted">Nothing listed yet.</p>;
   }
   const ruleRow = (r: (typeof rules)[number]) => {
     const d = dataOf<DeadlineRuleData>(r);
@@ -206,55 +206,52 @@ function ContinuingObligations({ idx, dir, who }: { idx: Indexes; dir: Directory
         key={r.id}
         title={
           <RecordLink id={r.id} className="item__title">
-            When {plain(d.applies_when || 'it applies').replace(/^when\s+/i, '').replace(/\.$/, '')}: {plain(d.label || r.title)}
+            When {stripCodes(plain(d.applies_when || 'it applies'), lookup).replace(/^when\s+/i, '').replace(/\.$/, '')}: {stripCodes(plain(d.label || r.title), lookup)}
           </RecordLink>
         }
-        meta={
-          <>
-            {d.kind && <DeadlineBadge kind={d.kind} />}
-            <span className="faint small">No date until it happens</span>
-          </>
-        }
+        meta={d.kind ? <DeadlineBadge kind={d.kind} /> : undefined}
       >
         <VerificationNote verification={d.verification ?? 'not_verified'} kind={d.kind} />
       </ObligationItem>
     );
   };
+  // "Done when" is said once when every ongoing item shares it.
+  const criteria = new Set(horizon.map((h) => dataOf<HorizonData>(h).completion_criteria ?? ''));
+  const commonDone = horizon.length > 1 && criteria.size === 1 ? ([...criteria][0] ?? '') : '';
+  const horizonRows = horizon.map((h) => {
+    const d = dataOf<HorizonData>(h);
+    return (
+      <ObligationItem
+        key={h.id}
+        title={
+          <RecordLink id={h.id} className="item__title">
+            When {stripCodes(plain(d.trigger || h.title), lookup).replace(/^when\s+/i, '')}: {stripCodes(plain(d.scope || h.title), lookup)}
+          </RecordLink>
+        }
+        meta={
+          <>
+            {d.cadence && <span className="muted">{CADENCE_LABEL[d.cadence] ?? d.cadence}</span>}
+            <StatusBadge status={h.status} small />
+          </>
+        }
+      >
+        {d.completion_criteria && !commonDone && <p className="small muted preline">Done when: {stripCodes(plain(d.completion_criteria), lookup)}</p>}
+      </ObligationItem>
+    );
+  });
   return (
     <div className="stack">
       {mine.length > 0 && (
         <div>
-          <h3 className="coming-group__title">For {who.display_name}</h3>
-          <ul className="item-list grid-wide">{mine.map(ruleRow)}</ul>
+          <h3 className="group-head">For {who.display_name}</h3>
+          <ShowAllList className="item-list grid-wide" rows={mine.map(ruleRow)} label={`for ${who.display_name}`} />
         </div>
       )}
       {(shared.length > 0 || horizon.length > 0) && (
         <div>
-          <h3 className="coming-group__title">Shared by the household</h3>
-          <ul className="item-list grid-wide">
-            {horizon.map((h) => {
-              const d = dataOf<HorizonData>(h);
-              return (
-                <ObligationItem
-                  key={h.id}
-                  title={
-                    <RecordLink id={h.id} className="item__title">
-                      When {plain(d.trigger || h.title).replace(/^when\s+/i, '')}: {plain(d.scope || h.title)}
-                    </RecordLink>
-                  }
-                  meta={
-                    <>
-                      {d.cadence && <Chip small tone="neutral">{CADENCE_LABEL[d.cadence] ?? d.cadence}</Chip>}
-                      <StatusBadge status={h.status} small />
-                    </>
-                  }
-                >
-                  {d.completion_criteria && <p className="small muted preline">Done when: {plain(d.completion_criteria)}</p>}
-                </ObligationItem>
-              );
-            })}
-            {shared.map(ruleRow)}
-          </ul>
+          <h3 className="group-head">Shared by the household</h3>
+          {commonDone && <p className="quiet-line">Done when: {stripCodes(plain(commonDone), lookup)}</p>}
+          <ShowAllList className="item-list grid-wide" rows={[...horizonRows, ...shared.map(ruleRow)]} label="shared by the household" />
         </div>
       )}
     </div>
@@ -270,7 +267,7 @@ function RenewalsRegister({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const [editing, setEditing] = useState<AnyRecord | null>(null);
   const anchors = idx.anchors.filter((a) => RENEWAL.test(dataOf<AnchorData>(a).code ?? a.key) && !dataOf<AnchorData>(a).coordination_only);
   if (anchors.length === 0) {
-    return <p className="muted">Each adult’s residence-status expiry and any plan to leave Japan will be listed here once they are recorded. Until then there is nothing to renew.</p>;
+    return <p className="muted">Nothing to renew yet.</p>;
   }
   const people = dir.adults.filter((p) => anchors.some((a) => dataOf<AnchorData>(a).traveler === p.id));
   const groups = people.length ? people : dir.adults;
@@ -304,10 +301,10 @@ function RenewalsRegister({ idx, dir }: { idx: Indexes; dir: Directory }) {
                 return (
                   <li key={rec.id} className="item item--flat">
                     <div className="item__main">
-                      <span className="item__title">{d.meaning ?? rec.title}</span>
+                      <span className="item__title">{stripCodes(d.meaning ?? rec.title)}</span>
                       <div className="item__meta">
                         <DateText date={d.date ?? null} today={today} />
-                        {d.confidence && d.confidence !== 'awaiting' && <span className="chip chip--neutral chip--sm">{ANCHOR_CONFIDENCE_LABEL[d.confidence] ?? d.confidence}</span>}
+                        {d.confidence && d.confidence !== 'awaiting' && <span className="muted small">{ANCHOR_CONFIDENCE_LABEL[d.confidence] ?? d.confidence}</span>}
                         <Button variant="quiet" small icon="pencil" onClick={() => setEditing(rec)} aria-label={`${d.date ? 'Change' : 'Enter'} date: ${d.meaning ?? rec.title}`}>
                           {d.date ? 'Change' : 'Enter date'}
                         </Button>
@@ -328,36 +325,38 @@ function RenewalsRegister({ idx, dir }: { idx: Indexes; dir: Directory }) {
 function ReturnPlanning({ idx }: { idx: Indexes }) {
   const items = idx.all.filter((r) => r.type === 'horizon' && /^EX/i.test(r.key));
   const plain = usePlain();
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   return (
     <div className="stack">
-      <p className="muted">Staying, extending and returning are all valid outcomes. This is a place to decide calmly, well before any date forces it.</p>
       {items.length === 0 ? (
-        <p className="muted">Nothing has been listed yet.</p>
+        <p className="muted">Nothing listed yet.</p>
       ) : (
-        <ul className="item-list grid-wide">
-          {items.map((h) => {
+        <ShowAllList
+          className="item-list grid-wide"
+          label="return or extension"
+          rows={items.map((h) => {
             const d = dataOf<HorizonData>(h);
             return (
               <li key={h.id} className="item item--flat">
                 <div className="item__main">
                   <RecordLink id={h.id} className="item__title">
-                    {h.title}
+                    {displayTitle(h, lookup)}
                   </RecordLink>
-                  {d.scope && <p className="item__action preline">{plain(d.scope)}</p>}
+                  {d.scope && <p className="item__action preline">{stripCodes(plain(d.scope), lookup)}</p>}
                   <div className="item__meta">
                     <StatusBadge status={h.status} small />
-                    {d.cadence && <Chip small tone="neutral">{CADENCE_LABEL[d.cadence] ?? d.cadence}</Chip>}
+                    {d.cadence && <span className="muted small">{CADENCE_LABEL[d.cadence] ?? d.cadence}</span>}
                   </div>
                   <LinkedKeys keys={d.milestone_links} idx={idx} label="Linked work" />
                 </div>
               </li>
             );
           })}
-        </ul>
+        />
       )}
       <p className="small">
         <Link to="/money" className="more-link">
-          See the protected return reserve on the Money page
+          See the return reserve on Money
         </Link>
       </p>
     </div>
@@ -369,7 +368,7 @@ function ReturnPlanning({ idx }: { idx: Indexes }) {
 export function Arrival() {
   return (
     <div className="page arrival">
-      <PageTitle kicker="After landing, and the months after">Arrival & living in Tokyo</PageTitle>
+      <PageTitle>Arrival & living in Tokyo</PageTitle>
       <DataGate>{({ idx, dir }) => <ArrivalBody idx={idx} dir={dir} />}</DataGate>
     </div>
   );
@@ -399,6 +398,9 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
     return map;
   }, [items]);
   const properties = idx.all.filter((r) => r.type === 'property');
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
+  // A step shared with the other adult is marked only when some steps are not shared.
+  const markShared = items.some((it) => !it.shared);
 
   if (travelers.length === 0) return <EmptyState icon="plane" title="No travelers are set up yet." />;
 
@@ -407,10 +409,11 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
       <SegmentedControl label="Traveler" value={who?.id ?? ''} onChange={setPerson} options={travelers.map((p) => ({ value: p.id, label: p.display_name }))} />
       {who && (
         <>
-          <Section title={`${who.display_name}’s arrival`} headingLevel={2} intro="Each traveler has their own list. Another person’s part never holds this one up.">
+          <Section title={`${who.display_name}’s arrival`} headingLevel={2}>
+            {items.some((it) => it.shared) && <p className="quiet-line">Shared steps are done together. Updating one changes only yours.</p>}
             {items.length === 0 ? (
               <Card>
-                <EmptyState icon="plane" title={`Nothing is listed for ${who.display_name}’s arrival yet.`} />
+                <EmptyState icon="plane" title={`Nothing listed for ${who.display_name} yet.`} />
               </Card>
             ) : (
               <div className="stack grid-wide grid-wide--2">
@@ -418,39 +421,36 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
                   const list = byWindow.get(k);
                   if (!list || list.length === 0) return null;
                   return (
-                    <Card key={k} as="section" aria-label={ARRIVAL_WINDOW_LABEL[k] ?? k}>
-                      <h3 className="coming-group__title">{ARRIVAL_WINDOW_LABEL[k] ?? k}</h3>
-                      {list.some((it) => it.shared) && (
-                        <p className="small muted">Steps marked “Shared” are done with the other adult. Updating one here changes only {who.display_name}’s part.</p>
-                      )}
-                      <ul className="item-list">
+                    <section key={k} aria-label={ARRIVAL_WINDOW_LABEL[k] ?? k} className="step-group">
+                      <h3 className="group-head">{ARRIVAL_WINDOW_LABEL[k] ?? k}</h3>
+                      <ul className="step-list">
                         {list.map((it) => (
-                          <ArrivalItem key={it.record.id} item={it} personId={who.id} today={today} />
+                          <ArrivalItem key={it.record.id} item={it} personId={who.id} today={today} lookup={lookup} markShared={markShared} />
                         ))}
                       </ul>
-                    </Card>
+                    </section>
                   );
                 })}
               </div>
             )}
           </Section>
-          <Section title="Dates that start at arrival" headingLevel={2} intro="Rules measured from this traveler’s own arrival, residence and eligibility dates.">
+          <Section title="Dates that start at arrival" headingLevel={2}>
             <AfterArrivalDeadlines person={who.id} idx={idx} dir={dir} />
           </Section>
         </>
       )}
 
-      <Section title="Continuing obligations" headingLevel={2} intro="These have no date. They start when something happens.">
+      <Section title="Ongoing, with no date" headingLevel={2}>
         {who && <ContinuingObligations idx={idx} dir={dir} who={who} />}
       </Section>
 
-      <Section title="Renewals register" headingLevel={2} intro="Each adult’s status expiry and any plan to leave. A date shows as awaiting until it is entered.">
+      <Section title="Renewals" headingLevel={2}>
         <RenewalsRegister idx={idx} dir={dir} />
       </Section>
 
-      <Section title="Property oversight" headingLevel={2} intro="Things that stay behind and still need watching.">
+      <Section title="Property left behind" headingLevel={2}>
         {properties.length === 0 ? (
-          <p className="muted">Nothing is listed yet.</p>
+          <p className="muted">Nothing listed yet.</p>
         ) : (
           <ul className="stack grid-wide">
             {properties.map((p) => (
@@ -462,7 +462,7 @@ function ArrivalBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
         )}
       </Section>
 
-      <Section title="Return or extension planning" headingLevel={2}>
+      <Section title="Return or extend" headingLevel={2}>
         <ReturnPlanning idx={idx} />
       </Section>
     </div>

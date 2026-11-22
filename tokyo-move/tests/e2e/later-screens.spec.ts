@@ -401,6 +401,11 @@ test.describe('Arrival and living in Tokyo', () => {
     await page.getByRole('group', { name: 'Traveler' }).getByRole('button', { name: who }).click();
     const region = page.getByRole('region', { name: new RegExp(`${who}.s arrival`) });
     const item = region.getByRole('listitem').filter({ has: page.locator(`a[href="/r/${enc(record)}"]`) });
+    // The list opens short (one part open, three steps): unfold until the step is on screen.
+    for (let pass = 0; pass < 4 && !(await item.isVisible()); pass += 1) {
+      await region.evaluate((el) => el.querySelectorAll<HTMLButtonElement>('.pgroup__btn[aria-expanded="false"], button.show-all').forEach((b) => b.click()));
+      await page.waitForTimeout(120);
+    }
     await expect(item).toBeVisible();
 
     const avery = await api('avery');

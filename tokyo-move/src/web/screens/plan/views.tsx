@@ -53,7 +53,8 @@ function PlanItemCard({ it, today, lookup, idx, showStatus = true, done, slim = 
       title={title}
       owner={m.owner}
       ownerProposed={ownerDisputed(m)}
-      nextAction={slim ? null : displayNext(m, lookup)}
+      // A stuck card says what it waits on instead of its next step (the same as Home's Stuck rows).
+      nextAction={slim || m.status === 'blocked' ? null : displayNext(m, lookup)}
       status={m.status}
       showStatus={showStatus && m.status !== 'planned'}
       when={checkIn || !it.when.primary ? undefined : it.when}
@@ -90,9 +91,25 @@ export function WorkstreamView({ items, idx, today, filtered = false, focusRef }
   const done = useDoneWithUndo(focusRef);
   const groups = useMemo(() => {
     const sorted = sortPlanItems(items, 'date', (o) => o ?? '');
-    return groupPlan(sorted, idx).groups.map((x) => ({ ...x, items: sortForGroup(x.items, today) }));
+    const all = groupPlan(sorted, idx).groups.map((x) => ({ ...x, items: sortForGroup(x.items, today) }));
+    // Groups with something still to do come first, so a finished group never pushes work down the page.
+    const hasWork = (g: (typeof all)[number]) => g.items.some((i) => isOpenWork(i.m.status));
+    return [...all.filter(hasWork), ...all.filter((g) => !hasWork(g))];
   }, [items, idx, today]);
-  const firstWithWork = groups.find((g) => g.items.some((i) => isOpenWork(i.m.status)))?.key ?? null;
+  // Opens first: the first group with unfinished items. After a filter, groups open in order until about five items are
+  // showing, so a long answer (such as Stuck) still opens short.
+  const opensFirst = useMemo(() => {
+    const keys = new Set<string>();
+    let shown = 0;
+    for (const g of groups) {
+      const n = g.items.filter((i) => isOpenWork(i.m.status)).length;
+      if (n === 0) continue;
+      if (keys.size > 0 && (!filtered || shown >= FIRST)) break;
+      keys.add(g.key);
+      shown += n;
+    }
+    return keys;
+  }, [groups, filtered]);
   const scope = filtered ? 'f' : 'a';
   return (
     <div className="stack grid-wide grid-wide--2">
@@ -110,7 +127,7 @@ export function WorkstreamView({ items, idx, today, filtered = false, focusRef }
             count={open.length}
             countLabel="to do"
             note={blocked ? (blocked === open.length ? 'all stuck' : `${blocked} stuck`) : undefined}
-            defaultOpen={filtered || g.key === firstWithWork}
+            defaultOpen={opensFirst.has(g.key)}
           >
             {open.length > 0 ? <ShowAllList first={FIRST} rows={open.map((it) => card(it, done))} label={`in ${g.title}`} /> : <p className="muted">All finished or set aside.</p>}
             {closed.length > 0 && (

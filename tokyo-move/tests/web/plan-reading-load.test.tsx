@@ -57,6 +57,7 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+const FIVE = 5;
 const focusRef = createRef<HTMLElement>();
 const list = (recs: BaseRecord[] = records) => mount(recs, (items, idx) => createElement(WorkstreamView, { items, idx, today: TODAY, focusRef }));
 const heads = (el: HTMLElement) => [...el.querySelectorAll<HTMLButtonElement>('.pgroup > .pgroup__head > .pgroup__btn')];
@@ -80,8 +81,33 @@ describe('Plan: List', () => {
       expect(panel).not.toBeNull();
       expect(panel!.hidden).toBe(h.getAttribute('aria-expanded') !== 'true');
     }
-    // The first group in the list has nothing left to do in the demo, so it is not the one that is open.
-    expect(open[0]).not.toBe(heads(el)[0]);
+    // Groups with work come first, so the open one is at the top; groups with nothing left to do sit at the end.
+    expect(open[0]).toBe(heads(el)[0]);
+    const top = [...el.querySelectorAll<HTMLButtonElement>('.grid-wide > .pgroup > .pgroup__head > .pgroup__btn')];
+    const counts = top.map((h) => Number(h.querySelector('.pgroup__count')?.textContent?.match(/\d+/)?.[0] ?? 0));
+    expect(counts[0]).toBeGreaterThan(0);
+    expect(counts.some((n) => n === 0)).toBe(true);
+    // No group with nothing left to do sits above a group with work.
+    const firstEmpty = counts.findIndex((n) => n === 0);
+    expect(counts.slice(firstEmpty).every((n) => n === 0)).toBe(true);
+  });
+
+  it('after a filter, groups open in order until about five items are showing', () => {
+    const only = records.filter((r) => r.type !== 'milestone' || r.status === 'blocked' || (r.data as { workstream_key?: string }).workstream_key === 'S09');
+    const idx = buildIndexes(only, taskLinks);
+    const dir = buildDirectory(people, 'avery');
+    const byRecord = new Map<string, typeof deadlines>();
+    const items = buildPlanItems(idx, byRecord, TODAY).filter((i) => !i.m.data.optional_future_work);
+    const ctx = { snapshot: null, idx, dir, status: 'ready', loadedAt: new Date(), error: null, refresh: async () => undefined, save: { kind: 'idle' }, setDirty: () => undefined, dirtyCount: 0, actions: {} as never } as SnapshotCtx;
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => root.render(createElement(MemoryRouter, null, createElement(SnapshotContext.Provider, { value: ctx }, createElement(WorkstreamView, { items, idx, today: TODAY, filtered: true, focusRef })))));
+    const withWork = heads(container).filter((h) => !/Finished/.test(h.textContent ?? ''));
+    const openOnes = withWork.filter((h) => h.getAttribute('aria-expanded') === 'true');
+    expect(openOnes.length).toBeGreaterThan(0);
+    const shown = openOnes.reduce((n, h) => n + document.getElementById(h.getAttribute('aria-controls')!)!.querySelectorAll(':scope > ul > li').length, 0);
+    expect(shown).toBeLessThanOrEqual(FIVE + 5);
   });
 
   it('each group heading shows its name and a count', () => {

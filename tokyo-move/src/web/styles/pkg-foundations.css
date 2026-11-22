@@ -54,6 +54,18 @@ a.item__title,
   align-items: center;
   min-height: 44px;
 }
+a.coming__title,
+.gate__title {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere; /* a long word wraps instead of pushing the row wider than the column (200% text) */
+}
+@media (min-width: 640px) {
+  /* The date column never takes more than 40% of the row, so a narrow column at large text still has room for the title. */
+  .coming {
+    grid-template-columns: minmax(0, min(9.5rem, 40%)) minmax(0, 1fr);
+  }
+}
 .cond-row__title {
   display: block;
   line-height: 44px; /* one line, cut with an ellipsis, 44px tall */

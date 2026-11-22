@@ -6,6 +6,7 @@
  * Original text is untouched in Source & history.
  */
 import { isCivilDate } from '@shared/dates';
+import { KEY_SHAPE, PAREN_KEYS, looksLikeKey as sharedLooksLike } from '@shared/plain';
 import { civil } from './format';
 import type { Indexes } from './records';
 
@@ -15,10 +16,6 @@ const MONTHS = 'January|February|March|April|May|June|July|August|September|Octo
 const GLUED_MONTH_YEAR = new RegExp(`\\b(${MONTHS})(\\d{4})\\b`, 'g');
 const ISO_DATE = /\b(\d{4})-(\d{2})-(\d{2})\b/g;
 
-/** Shapes that are record keys (never anchor offsets such as DP-10 or D-45). */
-const KEY_SHAPE = String.raw`(?:(?:W|S|Q|D|R|B|A|Y|I|P|M|C)\d{2,3}(?:\.[a-z][a-z0-9]*)?|(?:EX|FW|FN|DOC|INV|PROP|TA|RH|USER|XN|XR)\d{1,3}|(?:D|A|R|W)-RV\d{2}|IT-\d{3}|IT-RULE-\d+|FW-[A-Z])`;
-const KEY_TOKEN = new RegExp(`\\b${KEY_SHAPE}\\b`);
-const PAREN_KEYS = new RegExp(`\\(\\s*(?:${KEY_SHAPE})(?:\\s*(?:,|and|&|/|;|\\s)\\s*(?:${KEY_SHAPE}))*\\s*\\)`, 'g');
 const ANY_KEY = new RegExp(`\\b${KEY_SHAPE}\\b`, 'g');
 
 export function basicProse(text: string): string {
@@ -101,7 +98,8 @@ export function proseText(raw: string | null | undefined, idx: Indexes | null | 
   return tidy(s);
 }
 
-export const looksLikeKey = (s: string): boolean => KEY_TOKEN.test(s);
+/** Re-exported from the shared plain-language helpers, which own the record-key patterns. */
+export const looksLikeKey = sharedLooksLike;
 
 const ELLIPSIS = /(…|\.\.\.)\s*$/;
 const loose = (t: string) => t.trim().replace(ELLIPSIS, '').replace(/[.\s]+$/, '').toLowerCase();

@@ -161,6 +161,40 @@ editing tracked repository files:
   `data.next_action`); a new record uses an existing type.
 - Hand the file on with the rest of `private/` so every copy of the plan stays the same.
 
+### Plain wording
+
+Kadode can show short, plain words instead of the plan's long wording. The plan's own text is never changed. These
+are extra fields that the screens prefer when they exist. Leave a field out and the screen falls back to the plan's
+text with its internal codes (such as W04 or D02) taken out.
+
+| Field | Goes on | What to write |
+|---|---|---|
+| `data.plain_title` | any item | A short name. 12 words or fewer. |
+| `data.plain_question` | decisions and questions | One sentence that ends in "?". |
+| `data.plain_summary` | any item | Why it matters. 25 words or fewer. |
+| `data.plain_delay` | decisions | What happens if you do not decide. 15 words or fewer. |
+| `data.plain_next` | roadmap items | The next step. 12 words or fewer. |
+| `data.plain_options.<option id>` | decisions | A short name for one choice. 20 words or fewer. |
+
+Plain text only, on one line. People can also type these in the app. An edit made in the app is kept over a later
+correction, like any other edit. Example, in a file such as `private/corrections/96-plain-words.json`:
+
+```json
+{
+  "corrections": [
+    {
+      "id": "plain-words-1",
+      "title": "Plain words for the budget decision",
+      "rationale": "Say the question and the choices in everyday words.",
+      "ops": [
+        { "op": "set", "record": "decision:D04", "path": "data.plain_question", "value": "How much can we spend on moving?" },
+        { "op": "set", "record": "decision:D04", "path": "data.plain_options.opt-1", "value": "Set firm limits and keep a reserve." }
+      ]
+    }
+  ]
+}
+```
+
 ## 6. The task list: three states
 
 Actions live in your existing task list, not in Kadode. Kadode shows a **dated copy** and a **sync state**, and it never

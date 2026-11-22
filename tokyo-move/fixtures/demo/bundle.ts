@@ -285,6 +285,7 @@ function buildMilestones(): BundleRecord[] {
       source_status: 'Answered', phase: 'p1_now_nov2026', priority: 'now', source_ids: ['USER02'], review_date: '2026-11-11',
     }),
     ms('W02', "Establish Avery's residence route", 'in_progress', 'avery', {
+      plain_next: "Ask the adviser which route fits Avery.",
       work_area: 'Immigration', workstream_key: 'S02', next_action: 'Ask the adviser which route fits the planned activities.',
       completion_criteria: 'Written route, document list and timing from the adviser.', collaborators: ['Immigration adviser'],
       dependencies: ['W01', 'W04'], traveler_scope: ['avery'], phase: 'p2_nov_dec2026', priority: 'now', source_ids: ['I01'],
@@ -308,12 +309,14 @@ function buildMilestones(): BundleRecord[] {
       dependencies: ['W03'], phase: 'p7_three_year', priority: 'someday', target_window: 'No initial move deadline',
     }),
     ms('W06', 'Verify both passports and renewal outcomes', 'in_progress', 'together', {
+      plain_next: "Check when each passport expires.",
       work_area: 'Passports', workstream_key: 'S04', next_action: 'Check expiry dates and any renewal receipts.', source_status: 'Existing; verify',
       completion_criteria: 'Verified passport details and an accepted validity plan.', traveler_scope: ['avery', 'jun'], phase: 'p1_now_nov2026', priority: 'now',
       linked_task_ids: ['tl-fixture-FX-0001'], queue_disposition: 'existing queue / preserve status and receipts', review_date: '2026-11-11',
       deadline: { date: '2026-11-11', kind: 'user_committed', basis: 'The household agreed to check this by the first review.', source_ids: [], jurisdiction: 'household', timezone: 'Pacific/Honolulu', verified_on: null, traveler: 'household' },
     }),
     ms('W07', 'Build the route-specific immigration document set', 'in_progress', 'together', {
+      plain_next: "List the papers the adviser asked for.",
       work_area: 'Documents', workstream_key: 'S04', next_action: 'List documents per adult once each route is known.',
       completion_criteria: 'Adviser-accepted checklist per adult.', dependencies: ['W02', 'W03', 'W06'], dependency_scope: { W02: ['avery'], W03: ['jun'] },
       traveler_scope: ['avery', 'jun'], phase: 'p3_jan_mar2027', priority: 'soon',
@@ -324,11 +327,13 @@ function buildMilestones(): BundleRecord[] {
       review_note: "Shared row: Avery's part does not wait on Jun's route.",
     }),
     ms('W08', 'Get a coordinated US-Japan tax review', 'planned', 'together', {
+      plain_next: "Book one tax adviser for both countries.",
       owner_proposed: true, work_area: 'Tax', workstream_key: 'S06', next_action: 'Share residency and income facts with a qualified adviser.',
       collaborators: ['Tax adviser'], dependencies: ['W01', 'W04'], traveler_scope: ['avery', 'jun'], phase: 'p2_nov_dec2026', priority: 'soon',
       target_window: 'Nov-Dec before major transfers',
     }),
     ms('W09', 'Approve move, rent and reserve limits', 'planned', 'together', {
+      plain_next: "Agree the move, rent and reserve limits.",
       work_area: 'Funding', workstream_key: 'S07', next_action: 'Agree limits after the cash and cost inputs are filled in.',
       dependencies: ['W04', 'W08'], phase: 'p2_nov_dec2026', priority: 'soon', completion_criteria: 'Dated, approved limits (see decision D04).',
     }),
@@ -341,6 +346,7 @@ function buildMilestones(): BundleRecord[] {
       dependencies: ['W01', 'W08'], traveler_scope: ['jun'], phase: 'p3_jan_mar2027', priority: 'later',
     }),
     ms('W12', "Reconcile Mochi's identity, health and history", 'in_progress', 'jun', {
+      plain_next: "Get Mochi's vet records in one folder.",
       work_area: 'Pet', workstream_key: 'S09', next_action: 'Collect current vet records and microchip details.', collaborators: ['Veterinarian'],
       traveler_scope: ['mochi'], phase: 'p2_nov_dec2026', priority: 'now', completion_criteria: 'Vet records with identity matched and gaps resolved.', source_ids: ['P01'],
     }),
@@ -373,6 +379,7 @@ function buildMilestones(): BundleRecord[] {
       dependencies: ['W17'], traveler_scope: ['avery', 'jun'], phase: 'p3_jan_mar2027', priority: 'later',
     }),
     ms('W19', 'Choose a housing shortlist', 'planned', 'avery', {
+      plain_next: "Pick three areas to look at.",
       work_area: 'Housing', workstream_key: 'S11', next_action: 'Draft criteria: pets allowed, commute, lease eligibility.', dependencies: ['W10'],
       phase: 'p3_jan_mar2027', priority: 'later',
     }),
@@ -490,7 +497,7 @@ function decision(key: string, title: string, rec_text: string, state: string, d
     approvals: [],
     decided_option_id: null,
     decided_at: null,
-    history_note: 'Only the imported recommendation is recorded. Add alternatives here when you have considered them.',
+    history_note: null,
     related: [],
     ...d,
   };
@@ -505,14 +512,32 @@ function buildDecisions(): BundleRecord[] {
         { person_id: 'jun', at: '2026-10-20T18:05:00Z', option_id: 'opt-1', note: 'Agreed.' },
       ],
       decided_option_id: 'opt-1', decided_at: '2026-10-20T18:05:00Z', related: ['S01'],
+      plain_question: 'Is the move month and three-year plan settled?',
+      plain_options: { 'opt-1': 'Yes. Move in the target month for three years.' },
     }),
-    decision('D02', 'Select the durable plan home', 'Use this app for the plan and keep the existing task list as the only action queue.', 'open', { related: ['S01'] }),
+    decision('D02', 'Select the durable plan home', 'Use this app for the plan and keep the existing task list as the only action queue.', 'open', { related: ['S01'] }), // deliberately has no plain wording: shows the "Write the question" fallback
     decision('D03', "Avery's employer-support route", "Establish Avery's real activity and whether the employer will support a qualifying route.", 'open', {
       needed_by: { date: '2026-11-30', kind: 'user_committed', basis: 'Before any housing commitment.', source_ids: [], jurisdiction: 'household', timezone: 'Pacific/Honolulu', verified_on: null, traveler: 'avery' },
       consequence_of_delay: 'Housing and flights cannot be committed.', related: ['S02'],
+      options: [
+        { id: 'opt-1', label: "Establish Avery's real activity and whether the employer will support a qualifying route.", consequences: null, source: 'imported' },
+        { id: 'opt-2', label: 'Ask the employer for a written answer first, then choose a route.', consequences: 'Slower, but the answer is on paper.', source: 'household' },
+        { id: 'opt-3', label: 'Plan a route that does not need the employer.', consequences: 'Needs a new look at the budget.', source: 'household' },
+      ],
+      plain_question: "Will we rely on Avery's employer for the visa?",
+      plain_summary: 'The employer has not replied yet. Housing and flights wait on the answer.',
+      plain_delay: 'We cannot book housing or flights.',
+      plain_options: { 'opt-1': 'Check what Avery does and ask the employer.', 'opt-2': "Get the employer's answer in writing first.", 'opt-3': 'Plan a visa that needs no employer.' },
     }),
     decision('D04', 'Move, rent and reserve limits', 'Set cash-based limits with a protected return reserve.', 'proposed', {
       approvals: [{ person_id: 'avery', at: '2026-10-21T09:00:00Z', option_id: 'opt-1', note: 'Fine with these limits.' }],
+      options: [
+        { id: 'opt-1', label: 'Set cash-based limits with a protected return reserve.', consequences: null, source: 'imported' },
+        { id: 'opt-2', label: 'Set lower limits until the tax review is done.', consequences: 'Fewer housing choices at first.', source: 'household' },
+      ],
+      plain_question: 'How much can we spend on moving, rent and a reserve?',
+      plain_delay: 'We cannot pick a home or book flights.',
+      plain_options: { 'opt-1': 'Set firm limits and keep a return reserve.', 'opt-2': 'Set lower limits until the tax review.' },
       related: ['S07'],
     }),
     decision('D05', "Mochi's travel stage", "Mochi follows Jun; choose the actual stage after the import and carrier checks.", 'deferred', {
@@ -521,6 +546,9 @@ function buildDecisions(): BundleRecord[] {
         { id: 'opt-2', label: 'Mochi travels with Avery in July.', consequences: 'Needs the import notice about two months earlier.', source: 'household' },
       ],
       history_note: 'Deferred until the vet records are complete.', related: ['S09'],
+      plain_question: 'Does Mochi fly with Jun or with Avery?',
+      plain_delay: 'The import notice may start too late.',
+      plain_options: { 'opt-1': 'Mochi flies later, with Jun.', 'opt-2': 'Mochi flies with Avery in July.' },
     }),
   ];
 }

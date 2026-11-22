@@ -125,6 +125,19 @@ const decisionOption = z.strictObject({
 });
 
 /**
+ * Plain-language wording (see src/shared/plain.ts). Plain text on one line; the caps are generous versions of the
+ * word budgets (title 12 words, summary 25, delay 15, next step 12, option label 20). Null or "" clears a field.
+ */
+const plainLine = (max: number) => line(max).nullable();
+const PLAIN_TITLE = plainLine(160);
+const PLAIN_QUESTION = plainLine(300);
+const PLAIN_SUMMARY = plainLine(300);
+const PLAIN_DELAY = plainLine(200);
+const PLAIN_NEXT = plainLine(160);
+/** Option id to short label. Merged per key on PATCH; "" removes one label from view. */
+const PLAIN_OPTIONS = z.record(slug, line(240)).refine((o) => Object.keys(o).length <= 20, 'At most 20 options').nullable();
+
+/**
  * Fields intentionally NOT editable through PATCH, even for types listed below: `source`, `id`, `key`, `type`,
  * `household_id`, `version` (record envelope); `traveler_progress` (status endpoint only); `dependency_scope`,
  * `traveler_scope`, `dependencies`, `phase` (import/corrections only); `status_reason` and `completion_evidence`
@@ -132,6 +145,9 @@ const decisionOption = z.strictObject({
  */
 export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
   milestone: {
+    plain_title: PLAIN_TITLE,
+    plain_summary: PLAIN_SUMMARY,
+    plain_next: PLAIN_NEXT,
     next_action: requiredText(2000),
     completion_criteria: text(2000),
     contingency: text(2000),
@@ -169,11 +185,19 @@ export const PATCHABLE_DATA: Partial<Record<RecordType, FieldMap>> = {
     evidence_status: text(500).nullable(),
   },
   question: {
+    plain_title: PLAIN_TITLE,
+    plain_question: PLAIN_QUESTION,
+    plain_summary: PLAIN_SUMMARY,
     answer: text(5000).nullable(),
     local_note: text(5000).nullable(),
     disposition: z.enum(['question', 'carry_forward', 'waiting_blocked', 'already_answered', 'not_applicable', 'explicitly_excluded']),
   },
   decision: {
+    plain_title: PLAIN_TITLE,
+    plain_question: PLAIN_QUESTION,
+    plain_summary: PLAIN_SUMMARY,
+    plain_delay: PLAIN_DELAY,
+    plain_options: PLAIN_OPTIONS,
     question: requiredText(2000),
     options: z.array(decisionOption).max(20),
     recommended_option_id: slug.nullable(),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countMyTurn, isMyTurn, myTurnDecisions, turnInfo } from '../../src/web/lib/turn';
+import { countMyTurn, isMyTurn, myTurnDecisions, neededByDate, turnBadge, turnInfo } from '../../src/web/lib/turn';
 
 const dec = (status: string, approvals: { person_id: string; option_id: string }[], approvers = ['avery', 'jun']) => ({
   status,
@@ -39,5 +39,33 @@ describe('whose turn is it on a decision', () => {
     expect(myTurnDecisions(list, 'avery').map((t) => t.turn)).toEqual(['mine_after_partner', 'mine_first']);
     expect(countMyTurn(list, 'avery')).toBe(2);
     expect(countMyTurn(list, 'jun')).toBe(2);
+  });
+});
+
+describe('the Decide tab badge', () => {
+  const TODAY = '2026-11-22';
+  const withDate = (date: string | null, approvals: { person_id: string; option_id: string }[] = []) => {
+    const d = dec(approvals.length ? 'proposed' : 'open', approvals);
+    return { ...d, data: { ...d.data, needed_by: date ? { date } : null } };
+  };
+  const badge = (list: ReturnType<typeof withDate>[], me = 'avery') => turnBadge(list.map((r) => turnInfo(r, me)), TODAY);
+
+  it('counts my turn needed within 14 days, or already late', () => {
+    expect(badge([withDate('2026-12-06'), withDate('2026-11-01'), withDate('2026-12-07')])).toEqual({ count: 2, mine: 3 });
+  });
+  it('counts my turn when my partner already chose, whatever the date', () => {
+    expect(badge([withDate(null, [{ person_id: 'jun', option_id: 'opt-1' }]), withDate(null)])).toEqual({ count: 1, mine: 2 });
+    // A disagreement: my partner chose too.
+    expect(badge([withDate(null, [{ person_id: 'avery', option_id: 'opt-1' }, { person_id: 'jun', option_id: 'opt-2' }])]).count).toBe(1);
+  });
+  it('does not count decisions waiting for my partner', () => {
+    expect(badge([withDate('2026-11-23', [{ person_id: 'avery', option_id: 'opt-1' }])])).toEqual({ count: 0, mine: 0 });
+  });
+  it('has nothing urgent but still some of mine: count 0 and mine above 0 (the tab shows a dot)', () => {
+    expect(badge([withDate(null), withDate('2027-03-01')])).toEqual({ count: 0, mine: 2 });
+  });
+  it('ignores a needed-by that is not a real date', () => {
+    expect(neededByDate(withDate('T+90 internal project gate'))).toBeNull();
+    expect(badge([withDate('T+90 internal project gate')]).count).toBe(0);
   });
 });

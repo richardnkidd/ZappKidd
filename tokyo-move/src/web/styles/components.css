@@ -813,20 +813,6 @@ legend {
 .table th[scope='row'] {
   font-weight: 600;
 }
-.sort-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 32px;
-  border: 0;
-  background: none;
-  font-weight: 600;
-  color: inherit;
-  padding: 0;
-}
-.sort-btn[aria-pressed='true'] {
-  color: var(--ai);
-}
 
 /* Standalone links (not inside a sentence) get a full-size touch target. */
 .more-link {
@@ -911,7 +897,6 @@ legend {
   border-radius: var(--r-ctl);
 }
 
-
 /* ---------- Clamped text (More / Show less) ---------- */
 .clamp {
   max-width: none;
@@ -922,7 +907,6 @@ legend {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-
 
 /* ---------- Conflict: a table on wide screens, two stacked cards on phones ---------- */
 .conflict-cards {

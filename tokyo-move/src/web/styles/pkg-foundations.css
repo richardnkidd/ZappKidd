@@ -75,9 +75,7 @@ a.coming__title,
 .coming {
   padding-block: var(--s-1);
 }
-.coming__body {
-  gap: 0;
-}
+
 .gate {
   padding-block: var(--s-1);
 }

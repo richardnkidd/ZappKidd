@@ -17,20 +17,7 @@
 }
 
 /* Money */
-.fx__effect {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
-  max-width: none;
-  padding: var(--s-2) var(--s-3);
-  background: var(--ai-soft);
-  color: var(--ink);
-  border-radius: var(--r-ctl);
-}
-.fx__effect .icon {
-  margin-top: 3px;
-  color: var(--ai);
-}
+
 .cash {
   display: flex;
   flex-direction: column;
@@ -60,9 +47,7 @@
     text-align: right;
   }
 }
-.money-reserve {
-  margin: var(--s-2) 0;
-}
+
 .cost-lines {
   display: flex;
   flex-direction: column;
@@ -123,12 +108,6 @@
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
-}
-.income__who {
-  font-weight: 600;
-}
-.not-counted .plain-list {
-  margin-top: var(--s-2);
 }
 
 /* Documents */
@@ -259,13 +238,7 @@
 .item--flat {
   position: relative;
 }
-.renewal-rules {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-  margin-top: var(--s-1);
-}
+
 .preview {
   display: flex;
   flex-direction: column;
@@ -287,13 +260,7 @@
 }
 
 /* Future work: calm, optional */
-.future-intro__line {
-  font-family: var(--font-head);
-  font-size: var(--fs-3);
-  font-weight: 600;
-  max-width: none;
-  margin-bottom: var(--s-2);
-}
+
 .future-card {
   display: flex;
   flex-direction: column;
@@ -467,12 +434,7 @@
 }
 
 /* What if */
-.whatif-promise p {
-  max-width: none;
-}
-.whatif-promise .icon {
-  color: var(--ai);
-}
+
 .chip-radios {
   display: flex;
   flex-wrap: wrap;
@@ -493,19 +455,7 @@
   color: var(--matcha);
 }
 /* A calm prompt under the comparison: something to settle, not a warning. */
-.whatif-waiting {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  background: var(--ai-soft, var(--surface-inset, transparent));
-  border-radius: var(--r-ctl);
-}
-.whatif-waiting .icon {
-  flex: none;
-  margin-top: 3px;
-  color: var(--ai);
-}
+
 .overlap-lines {
   display: flex;
   flex-direction: column;
@@ -686,22 +636,5 @@
   }
 }
 
-
 /* Documents: one compact row per document; the lifecycle and fields live under Details. */
-.doc--row {
-  gap: var(--s-2);
-}
-.doc__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--s-3);
-}
-.doc__row-main {
-  flex: 1 1 18rem;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-1);
-}
+

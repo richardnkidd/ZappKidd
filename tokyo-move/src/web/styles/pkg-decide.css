@@ -189,25 +189,7 @@ label.dopt:has(input:focus-visible) {
     text-align: center;
   }
 }
-.dcard__link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ai);
-  font: inherit;
-  font-size: var(--fs-0);
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.dcard__link:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
+
 .dcard__chosen,
 .dcard__chosen p,
 .dcard__outcome,

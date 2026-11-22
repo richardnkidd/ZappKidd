@@ -51,7 +51,7 @@ export function DirectCheck({ data, showLink = true }: { data: unknown; showLink
               <Icon name={c.tone === 'matcha' ? 'check' : c.tone === 'kaki' ? 'alert' : 'info'} size={14} />{' '}
               <strong>
                 {c.who ? `${c.who} checked` : 'Checked'}
-                {c.on && isCivilDate(c.on) ? ` ${civil(c.on, 'short')}` : ''}:
+                {c.on && isCivilDate(c.on) ? ` ${civil(c.on, 'weekday')}` : ''}:
               </strong>{' '}
               {c.statusLabel}.
             </p>
@@ -248,7 +248,7 @@ function ContactList({ idx }: { idx: Indexes }) {
 export function EvidenceCard({ record, headingLevel = 3 }: { record: AnyRecord; headingLevel?: 2 | 3 }) {
   const d = dataOf<EvidenceData>(record);
   const href = safeHref(d.url_or_reference);
-  const ver = evidenceVerification(record.data, (x) => civil(x, 'short'));
+  const ver = evidenceVerification(record.data, (x) => civil(x, 'weekday'));
   const H = headingLevel === 2 ? 'h2' : 'h3';
   return (
     <Card as="article" className="evidence-card" aria-labelledby={`ev-${record.key}`}>
@@ -266,7 +266,7 @@ export function EvidenceCard({ record, headingLevel = 3 }: { record: AnyRecord; 
       <dl className="facts facts--tight">
         <div className="fact">
           <dt>Last checked</dt>
-          <dd>{(lastCheckedOf(record.data) ?? d.checked_on) ? civil((lastCheckedOf(record.data) ?? d.checked_on)!, 'short') : 'Not known yet'}</dd>
+          <dd>{(lastCheckedOf(record.data) ?? d.checked_on) ? civil((lastCheckedOf(record.data) ?? d.checked_on)!, 'weekday') : 'Not known yet'}</dd>
         </div>
         <div className="fact">
           <dt>Supports</dt>

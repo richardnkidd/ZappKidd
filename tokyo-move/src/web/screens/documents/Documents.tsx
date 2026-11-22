@@ -44,7 +44,7 @@ function Lifecycle({ d }: { d: Partial<DocumentData> }) {
           <Icon name={s.date ? 'check' : 'circle'} size={16} />
           <span className="lifecycle__label">{s.label}</span>
           <span className="lifecycle__when">
-            {s.date ? civil(s.date, 'short') : 'Not yet'}
+            {s.date ? civil(s.date, 'weekday') : 'Not yet'}
             {s.date && s.extra ? <span className="faint small"> · {s.extra}</span> : null}
           </span>
         </li>
@@ -114,7 +114,7 @@ export function DocumentCard({
         </div>
         <div className="fact">
           <dt>Expires</dt>
-          <dd>{d.expiry ? civil(d.expiry, 'short') : d.validity || 'Not known yet'}</dd>
+          <dd>{d.expiry ? civil(d.expiry, 'weekday') : d.validity || 'Not known yet'}</dd>
         </div>
         <div className="fact">
           <dt>Check again when</dt>

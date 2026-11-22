@@ -43,10 +43,10 @@ export function describeValue(path: string, value: unknown, dir?: Directory): st
   if (value === null || value === undefined || value === '') return 'Not set';
   if (last === 'owner') return dir ? dir.ownerLabel(String(value)) : String(value);
   if (last === 'status') return WORK_STATUS_LABEL[value as WorkStatus] ?? String(value);
-  if (last === 'review_date') return civil(String(value), 'short');
+  if (last === 'review_date') return civil(String(value), 'weekday');
   if (last === 'deadline' && typeof value === 'object') {
     const d = (value as { date?: string | null }).date;
-    return d ? civil(d, 'short') : 'Awaiting date';
+    return d ? civil(d, 'weekday') : 'Awaiting date';
   }
   if (Array.isArray(value)) return value.length ? value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ') : 'None';
   if (typeof value === 'object') return 'Updated';

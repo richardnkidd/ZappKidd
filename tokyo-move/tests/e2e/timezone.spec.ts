@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, loaded, newContext, openAccount, test } from './support/fixtures';
+import { expect, loaded, newContext, openAccount, openMore, test } from './support/fixtures';
 
 /**
  * A date-only deadline ("Wed, Nov 11") is a calendar date, not a moment. Changing the display time zone may change
@@ -90,25 +90,30 @@ test.describe('Time zones', () => {
   });
 
   test('times of day do follow the zone, and the page says which zone it is using', async ({ page, signIn }) => {
-    await signIn(page, 'avery', '/');
+    // Home no longer shows any time of day; a record's history does (who changed what, and when).
+    await signIn(page, 'avery', '/r/milestone%3AW06');
     await loaded(page);
     await chooseZone(page, 'Honolulu (HST)');
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Avery');
-    await expect(page.getByText(/· Hawaii time/)).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await openMore(page, 'History and source');
+    // The header's account control names the zone as a place (on phones it is part of its name only), and every
+    // time of day carries the zone's short name, so a time is never ambiguous.
+    const zoneLine = (place: string) => page.getByRole('button', { name: new RegExp(`^Avery\\b.*\\b${place} time\\b.*Account and display time zone`) });
+    await expect(zoneLine('Hawaii')).toBeVisible();
+    await expect.poll(async () => (await instants(page)).length).toBeGreaterThan(0);
     const hst = await instants(page);
-    expect(hst.length).toBeGreaterThan(0);
     for (const t of hst) expect(t).toMatch(/HST/);
 
     await chooseZone(page, 'Tokyo (JST)');
-    await expect(page.getByText(/· Tokyo time/)).toBeVisible();
+    await expect(zoneLine('Tokyo')).toBeVisible();
+    await expect.poll(async () => (await instants(page)).every((t) => /JST/.test(t))).toBe(true);
     const jst = await instants(page);
     expect(jst).toHaveLength(hst.length);
-    for (const t of jst) expect(t).toMatch(/JST/);
     expect(jst, 'the same moments are written differently in another zone').not.toEqual(hst);
 
     await chooseZone(page, 'New York (EST/EDT)');
-    await expect(page.getByText(/· New York time/)).toBeVisible();
-    for (const t of await instants(page)) expect(t).toMatch(/E[SD]T/);
+    await expect(zoneLine('New York')).toBeVisible();
+    await expect.poll(async () => (await instants(page)).every((t) => /E[SD]T/.test(t))).toBe(true);
   });
 
   test('the zone choice is remembered for this person, and the dates are the same', async ({ page, signIn }) => {

@@ -108,21 +108,21 @@ describe('people are never shown by colour alone', () => {
 describe('status and deadline badges carry words and icons', () => {
   it('shows status as a small icon with the words for screen readers, not a pill', () => {
     const el = mount(createElement('div', null, createElement(StatusBadge, { status: 'waiting_external', small: true }), createElement(StatusBadge, { status: 'completed', small: true }), createElement(StatusBadge, { status: 'eliminated', small: true })));
-    expect(el.textContent).toBe('Waiting on someone elseDoneDropped');
+    expect(el.textContent).toBe('Waiting on someoneDoneDropped');
     expect(el.querySelectorAll('svg')).toHaveLength(3);
     expect(el.querySelectorAll('.chip')).toHaveLength(0);
     expect(el.querySelectorAll('.visually-hidden')).toHaveLength(3);
-    expect(el.querySelector('.status-icon')?.getAttribute('title')).toBe('Waiting on someone else');
+    expect(el.querySelector('.status-icon')?.getAttribute('title')).toBe('Waiting on someone');
   });
   it('the larger form prints the word as plain text beside the icon', () => {
     const el = mount(createElement(StatusBadge, { status: 'blocked' }));
-    expect(el.querySelector('.status-icon__label')?.textContent).toBe('Blocked');
+    expect(el.querySelector('.status-icon__label')?.textContent).toBe('Stuck');
     expect(el.querySelector('.visually-hidden')).toBeNull();
     expect(el.querySelector('.chip')).toBeNull();
   });
   it('the full status chip is still available', () => {
     const el = mount(createElement(StatusBadge, { status: 'blocked', variant: 'chip' }));
-    expect(el.querySelector('.chip--kaki')?.textContent).toBe('Blocked');
+    expect(el.querySelector('.chip--kaki')?.textContent).toBe('Stuck');
   });
   it('flags only legal and contract dates; a check-in keeps its word so it never reads as a deadline', () => {
     const kinds = ['legal', 'contractual', 'review_date', 'internal_target', 'user_committed', 'estimate'] as const;
@@ -393,11 +393,34 @@ describe('one date format', () => {
     expect(text({ date: '2026-11-30' })).toBe('Mon, Nov 30 (8 days)');
     expect(text({ date: '2026-12-01', prefix: 'Due by ' })).toBe('Due by Tue, Dec 1 (9 days)');
   });
+  /** What a sighted person reads: the text without the screen-reader-only parts. */
+  const seen = (props: Partial<Parameters<typeof DateText>[0]> & { date: string | null }) => {
+    const el = mount(<DateText today={T} {...props} />);
+    const t = el.querySelector('.date-text')!.cloneNode(true) as HTMLElement;
+    t.querySelectorAll('.visually-hidden').forEach((n) => n.remove());
+    const out = (t.textContent ?? '').replace(/\s+/g, ' ').trim();
+    act(() => root.unmount());
+    container.remove();
+    return out;
+  };
   it('today and tomorrow are words, and the date is never printed twice', () => {
-    expect(text({ date: T })).toBe('Today');
-    expect(text({ date: '2026-11-23' })).toBe('Tomorrow');
-    expect(text({ date: T, prefix: 'Due by ' })).toBe('Due by today');
-    expect(text({ date: '2026-11-23', prefix: 'On ' })).toBe('Tomorrow');
+    expect(seen({ date: T })).toBe('Today');
+    expect(seen({ date: '2026-11-23' })).toBe('Tomorrow');
+    expect(seen({ date: T, prefix: 'Due by ' })).toBe('Due by today');
+    expect(seen({ date: '2026-11-23', prefix: 'On ' })).toBe('Tomorrow');
+    // Screen readers also hear the calendar date, once.
+    expect(text({ date: T })).toBe('Today (Sun, Nov 22)');
+  });
+  it('the <time> element holds only the calendar date; the distance from today sits outside it', () => {
+    for (const [date, state] of [['2026-11-30', undefined], [T, undefined], ['2026-11-23', undefined], ['2026-11-11', 'overdue']] as const) {
+      const el = mount(<DateText date={date} today={T} state={state} />);
+      const times = [...el.querySelectorAll('time')];
+      expect(times).toHaveLength(1);
+      expect(times[0]!.getAttribute('datetime')).toBe(date);
+      expect(times[0]!.textContent).toMatch(/^[A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}$/);
+      act(() => root.unmount());
+      container.remove();
+    }
   });
   it('a past date on an open item reads "11 days late", in the late colour, with the date for screen readers only', () => {
     const el = mount(<DateText date="2026-11-11" state="overdue" today={T} />);
@@ -490,7 +513,7 @@ describe('the slim list card', () => {
     const el = card();
     expect(el.querySelectorAll('.chip')).toHaveLength(0);
     expect(el.querySelector('.kind-flag--legal')).not.toBeNull();
-    expect(el.querySelector('.status-icon')?.textContent).toBe('Blocked');
+    expect(el.querySelector('.status-icon')?.textContent).toBe('Stuck');
     expect(el.querySelector('.owner__name')?.textContent).toBe('Ann');
     expect(el.textContent).not.toMatch(/not agreed yet/);
   });

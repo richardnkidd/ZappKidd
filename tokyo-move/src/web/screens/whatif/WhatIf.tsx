@@ -374,7 +374,7 @@ function WhatIfBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
               {noAnchors && (
                 <div>
                   <Button variant="secondary" small onClick={() => setHypo(EXAMPLE_ARRIVAL.date)}>
-                    Try {EXAMPLE_ARRIVAL.label}
+                    Try {civil(EXAMPLE_ARRIVAL.date, 'weekday')}
                   </Button>
                 </div>
               )}

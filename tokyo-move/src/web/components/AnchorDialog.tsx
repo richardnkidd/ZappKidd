@@ -108,7 +108,7 @@ export function AnchorDialog({ record, onClose }: { record: AnyRecord; onClose: 
                       <strong>{c.label}</strong>
                       <span className="muted">
                         {' '}
-                        {c.before ? civil(c.before, 'short') : 'Awaiting date'} → {c.after ? civil(c.after, 'short') : 'Awaiting date'}
+                        {c.before ? civil(c.before, 'weekday') : 'Awaiting date'} → {c.after ? civil(c.after, 'weekday') : 'Awaiting date'}
                       </span>
                     </li>
                   ))}

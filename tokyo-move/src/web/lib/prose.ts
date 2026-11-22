@@ -24,7 +24,7 @@ export function basicProse(text: string): string {
     .replace(/\bexisting canonical task\b/gi, 'Already in your task list')
     .replace(/\bpending task capture\b/gi, 'Waiting to be added')
     .replace(GLUED_MONTH_YEAR, '$1 $2')
-    .replace(ISO_DATE, (m) => (isCivilDate(m) ? civil(m, 'short') : m));
+    .replace(ISO_DATE, (m) => (isCivilDate(m) ? civil(m, 'weekday') : m));
 }
 
 function tidy(s: string): string {

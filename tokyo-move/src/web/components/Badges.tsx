@@ -14,7 +14,7 @@ import { dateParts, windowPairOf, type DateParts } from '../lib/dateWords';
 import { dataOf } from '../lib/records';
 import { useData } from '../state/data';
 import { civil } from '../lib/format';
-import { dateLine } from '../lib/dateLine';
+import { dateLine, type DateLine } from '../lib/dateLine';
 import { useOptionalSnapshot } from '../state/snapshot';
 import { Icon, type IconName } from './Icon';
 import { InfoNote } from './InfoNote';
@@ -156,6 +156,35 @@ export function VerificationNote({ verification, kind, variant = 'short' }: { ve
   );
 }
 
+/**
+ * One date in the shared format, with the `<time>` element holding only the calendar date ("Mon, Nov 30").
+ * The distance from today ("(8 days)", "Today", "11 days late") sits outside it: today can change with the display
+ * time zone, but the date itself never does, so the machine-readable date and its text always agree.
+ */
+export function LineTime({ date, line, lower = false }: { date: string; line: DateLine; lower?: boolean }) {
+  const words = lower ? line.text.toLowerCase() : line.text;
+  if (line.when === 'future') {
+    return (
+      <>
+        <time dateTime={date}>{line.dateText}</time>
+        {line.text.slice(line.dateText.length)}
+      </>
+    );
+  }
+  if (line.when === 'plain') return <time dateTime={date}>{line.dateText}</time>;
+  // "Today", "Tomorrow", "11 days late": the words are what a person reads; the date is kept for screen readers.
+  return (
+    <>
+      {words}
+      <span className="visually-hidden">
+        {line.when === 'late' ? ' (was ' : ' ('}
+        <time dateTime={date}>{line.dateText}</time>
+        {')'}
+      </span>
+    </>
+  );
+}
+
 interface DateTextProps {
   date: string | null | undefined;
   today?: string;
@@ -188,7 +217,7 @@ export function DateText({ date, today, state, prefix = '', suffix = '', endDate
     // A past date from a dated copy or an old record: neutral, and it says nothing about whether the thing was done.
     return (
       <span className="date-text date-text--old">
-        <time dateTime={date}>{civil(date, 'short')}</time>
+        <time dateTime={date}>{civil(date, 'weekday')}</time>
         <span> — {DEADLINE_STATE_LABEL.historical}</span>
       </span>
     );
@@ -210,10 +239,7 @@ export function DateText({ date, today, state, prefix = '', suffix = '', endDate
       <span className={`date-text${late || state === 'overdue' ? ' date-text--past' : ''}${soon ? ' date-text--soon' : ''}`}>
         {shownPrefix}
         {line ? (
-          <time dateTime={date}>
-            {lower ? line.text.toLowerCase() : line.text}
-            {late && <span className="visually-hidden"> (was {line.dateText})</span>}
-          </time>
+          <LineTime date={date} line={line} lower={lower} />
         ) : (
           <>
             <time dateTime={date}>{civil(date, 'weekday')}</time>

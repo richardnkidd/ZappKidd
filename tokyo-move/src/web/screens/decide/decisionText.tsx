@@ -36,7 +36,7 @@ function listNames(names: string[]): string {
  */
 export function approvalSummary(d: Decision, dir: Directory): ApprovalSummary {
   const rec = recordedDecision(d);
-  if (rec) return { text: `Decided ${rec.on ? civil(rec.on, 'short') : 'earlier'} (recorded in the plan)`, state: 'agreed' };
+  if (rec) return { text: `Decided ${rec.on ? civil(rec.on, 'weekday') : 'earlier'} (recorded in the plan)`, state: 'agreed' };
   const data = d.data ?? ({} as Partial<DecisionData>);
   const required = requiredApproverIds(d, dir);
   // Latest approval per person wins.

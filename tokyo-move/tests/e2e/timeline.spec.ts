@@ -43,12 +43,12 @@ test.describe('Timeline chart', () => {
     // A real date: solid ("firm"), ending where the date is, with the kind of date in words.
     const firm = bar(page, 'Verify both passports and renewal outcomes');
     await expect(firm).toHaveAttribute('data-basis', 'firm');
-    await expect(firm).toHaveAccessibleName(/ends Nov 11, 2026 \(we committed\)/);
+    await expect(firm).toHaveAccessibleName(/ends Wed, Nov 11(, 2026)? \(our date\)/);
 
     // No date: timing comes from its phase, and says so.
     const phase = bar(page, 'Choose a housing shortlist');
     await expect(phase).toHaveAttribute('data-basis', 'phase');
-    await expect(phase).toHaveAccessibleName(/owner Avery, planned, timing from its phase \(Jan–Mar 2027\), no firm date/);
+    await expect(phase).toHaveAccessibleName(/owner Avery, not started, timing from its phase \(Jan–Mar 2027\), no firm date/);
 
     // Hangs on a departure date that is not set: drawn using the planning target, and says so.
     const target = bar(page, 'Release Jun to travel');
@@ -58,10 +58,10 @@ test.describe('Timeline chart', () => {
     await expect(bar(page, 'Release Avery to travel')).toHaveAttribute('data-basis', 'phase');
 
     // A check-in is a marker, never a deadline.
-    await expect(bar(page, 'Collect mover quotes')).toHaveAccessibleName(/check-in on Nov 11, 2026, not a deadline/);
+    await expect(bar(page, 'Collect mover quotes')).toHaveAccessibleName(/check-in on Wed, Nov 11(, 2026)?, not a deadline/);
 
     // Blocked and finished work say so in words as well as in the look of the bar.
-    await expect(bar(page, "Establish Jun's nonworking residence route")).toHaveAccessibleName(/, blocked, /);
+    await expect(bar(page, "Establish Jun's nonworking residence route")).toHaveAccessibleName(/, stuck, /);
     await expect(bar(page, 'Confirm target month and three-year scope')).toHaveAccessibleName(/, done, /);
   });
 
@@ -134,7 +134,7 @@ test.describe('Timeline chart', () => {
     await expect(b).toHaveAttribute('aria-expanded', 'true');
     await expect(details).toBeFocused();
     await expect(details.getByText('Avery', { exact: true })).toBeVisible();
-    await expect(details.getByText('Planned', { exact: true })).toBeVisible();
+    await expect(details.getByText('Not started', { exact: true })).toBeVisible();
     await expect(details.getByText(/No firm date/)).toBeVisible();
     await expect(details.getByText('Waits on')).toBeVisible();
     await expect(details.getByRole('link', { name: "Reconcile Mochi's identity, health and history" })).toBeVisible();
@@ -163,21 +163,21 @@ test.describe('Timeline chart', () => {
     await signIn(page, 'avery', '/plan?view=timeline');
     await loaded(page);
     const region = chart(page);
-    const marker = region.getByRole('button', { name: 'Check-in · Nov 11, 2026 · 4 items · not scheduled' });
+    const marker = region.getByRole('button', { name: /^Check-in · Wed, Nov 11(, 2026)? · 4 items · not scheduled$/ });
     await expect(marker).toBeVisible();
     // No row carries a check-in circle or a dotted leader for it...
     await expect(region.locator('[data-check]')).toHaveCount(0);
     await expect(region.locator('[data-leader]')).toHaveCount(0);
     // ...but nothing is lost for a screen reader: each bar's name still says so, and that it is not a deadline.
-    await expect(bar(page, 'Collect mover quotes')).toHaveAccessibleName(/household check-in on Nov 11, 2026, not a deadline/);
-    await expect(bar(page, "Establish Avery's residence route")).toHaveAccessibleName(/household check-in on Nov 11, 2026, not a deadline/);
+    await expect(bar(page, 'Collect mover quotes')).toHaveAccessibleName(/household check-in on Wed, Nov 11(, 2026)?, not a deadline/);
+    await expect(bar(page, "Establish Avery's residence route")).toHaveAccessibleName(/household check-in on Wed, Nov 11(, 2026)?, not a deadline/);
     // The bars themselves are untouched.
     await expect(bar(page, 'Collect mover quotes')).toHaveAttribute('data-basis', 'phase');
 
     // Keyboard: Enter lists the items, each linking to its own page; Escape closes and focus returns to the marker.
     await marker.focus();
     await page.keyboard.press('Enter');
-    const list = page.getByRole('dialog', { name: 'Check-in · Nov 11, 2026' });
+    const list = page.getByRole('dialog', { name: /^Check-in · Wed, Nov 11(, 2026)?$/ });
     await expect(list).toBeVisible();
     await expect(marker).toHaveAttribute('aria-expanded', 'true');
     await expect(list.getByText(/Not a deadline/)).toBeVisible();
@@ -191,7 +191,7 @@ test.describe('Timeline chart', () => {
     await marker.click();
     await list.getByRole('link', { name: 'Collect mover quotes' }).click();
     await expect(page).toHaveURL(/\/r\/milestone%3AW22/);
-    await expect(page.getByRole('dialog', { name: 'Check-in · Nov 11, 2026' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: /^Check-in · Wed, Nov 11(, 2026)?$/ })).toHaveCount(0);
   });
 
   test('a check-in that only one or two items have keeps its own circle on the row', async ({ page, signIn }) => {
@@ -201,7 +201,7 @@ test.describe('Timeline chart', () => {
     const region = chart(page);
     await expect(region.getByRole('button', { name: /^Check-in ·/ })).toHaveCount(0);
     await expect(region.locator('[data-check]')).toHaveCount(2);
-    await expect(bar(page, "Establish Avery's residence route")).toHaveAccessibleName(/; check-in on Nov 11, 2026, not a deadline/);
+    await expect(bar(page, "Establish Avery's residence route")).toHaveAccessibleName(/; check-in on Wed, Nov 11(, 2026)?, not a deadline/);
     await expect(bar(page, "Establish Avery's residence route")).not.toHaveAccessibleName(/household check-in/);
     await expectNoPageScroll(page, 'one-off check-ins');
   });
@@ -235,7 +235,7 @@ test.describe('Timeline chart', () => {
     await b.click();
     const details = page.getByRole('dialog', { name: 'Verify both passports and renewal outcomes' });
     await expect(details.locator('time[datetime="2026-11-11"]')).toBeVisible();
-    await expect(details.getByText('We committed', { exact: true })).toBeVisible();
+    await expect(details.getByText('Our date', { exact: true })).toBeVisible();
     await expect(details.getByText(/No firm date/)).toHaveCount(0);
   });
 
@@ -244,7 +244,7 @@ test.describe('Timeline chart', () => {
     await loaded(page);
     const group = chart(page).getByRole('button', { name: /^Mochi / });
     await expect(group).toHaveAttribute('aria-expanded', 'true');
-    await expect(group).toContainText(/6 items · 6 to do · 1 blocked/);
+    await expect(group).toContainText(/6 items · 6 to do · 1 stuck/);
     const bars = await chart(page).locator('[data-gantt-bar]').count();
     await group.click();
     await expect(group).toHaveAttribute('aria-expanded', 'false');
@@ -261,6 +261,7 @@ test.describe('Timeline chart', () => {
     await expect(grouping.getByRole('button', { name: 'By traveler' })).toHaveAttribute('aria-pressed', 'true');
     await expect(range.getByRole('button', { name: 'To day 90' })).toHaveAttribute('aria-pressed', 'true');
 
+    await expect(chart(page).getByRole('heading')).toHaveCount(4);
     const titles = await chart(page).getByRole('heading').evaluateAll((hs) => hs.map((h) => (h.textContent ?? '').replace(/\d+ items?.*$/, '').trim()));
     expect(titles).toEqual(['Avery', 'Jun', 'Mochi', 'Shared']);
 
@@ -312,8 +313,9 @@ test.describe('Timeline chart', () => {
     await loaded(page);
     const region = chart(page);
     const toggles = region.getByRole('heading').getByRole('button');
+    // Wait for the chart's four group headings (count() alone does not wait, and the chart draws after the data loads).
+    await expect(toggles).toHaveCount(4);
     const n = await toggles.count();
-    expect(n).toBe(4);
     const todayBox = (await region.getByText(/^Today/).boundingBox())!;
     const todayX = todayBox.x - 2; // the Today line is just left of its label
     for (let i = 0; i < n; i += 1) {
@@ -370,9 +372,9 @@ test.describe('Timeline: travel dates', () => {
     await loaded(page);
     const summary = page.locator('summary').filter({ has: page.getByRole('heading', { name: 'Travel dates' }) });
     await expect(summary).toBeVisible();
-    await expect(summary).toContainText('Avery: Jul 5, 2027');
+    await expect(summary).toContainText('Avery: Mon, Jul 5, 2027');
     await expect(summary).toContainText('Jun: not set (uses the July 2027 target)');
-    await expect(summary).toContainText('Mochi: Sep 13, 2027');
+    await expect(summary).toContainText('Mochi: Mon, Sep 13, 2027');
     const details = page.locator('details').filter({ has: summary });
     expect(await details.evaluate((el) => (el as HTMLDetailsElement).open)).toBe(false);
     await expect(page.getByRole('button', { name: 'Set date: Jun departure' })).toBeHidden();
@@ -415,7 +417,7 @@ test.describe('Timeline: editing a travel date', () => {
 
       // The summary and the chart now use Jun's own date: no more "uses the target", no dashed marker for Jun.
       const summary = page.locator('summary').filter({ has: page.getByRole('heading', { name: 'Travel dates' }) });
-      await expect(summary).toContainText('Jun: Aug 2, 2027');
+      await expect(summary).toContainText('Jun: Mon, Aug 2, 2027');
       await expect(summary).not.toContainText('Jun: not set');
       await expect(chart(page).getByText('Jun departs')).toBeAttached();
       await expect(chart(page).getByText('Jun: not set — July 2027 target')).toHaveCount(0);

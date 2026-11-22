@@ -146,21 +146,21 @@ describe('timeline chart', () => {
 
   it('a check-in shared by several items is one quiet marker in Key dates, not a circle on every row', () => {
     const el = chart(TARGET);
-    const marker = [...el.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Check-in · Nov 11, 2026 · 4 items · not scheduled')!;
+    const marker = [...el.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === 'Check-in · Wed, Nov 11, 2026 · 4 items · not scheduled')!;
     expect(marker).toBeTruthy();
     expect(el.querySelectorAll('[data-check]')).toHaveLength(0);
     expect(el.querySelectorAll('[data-leader]')).toHaveLength(0);
     expect(el.querySelectorAll('.gline--checkin')).toHaveLength(1);
     // Nothing is lost for a screen reader: each row's name still mentions it.
     for (const title of ['Confirm target month and three-year scope', "Establish Avery's residence route", 'Clarify Avery\'s employer support', 'Collect mover quotes']) {
-      expect(barFor(el, title).getAttribute('aria-label'), title).toContain('household check-in on Nov 11, 2026, not a deadline');
+      expect(barFor(el, title).getAttribute('aria-label'), title).toContain('household check-in on Wed, Nov 11, 2026, not a deadline');
     }
     // Focus or click lists the items, each linking to its own page.
     marker.focus();
     act(() => marker.click());
     const dialog = document.querySelector<HTMLElement>('[role=dialog]')!;
     expect(marker.getAttribute('aria-expanded')).toBe('true');
-    expect(dialog.textContent).toContain('Check-in · Nov 11, 2026');
+    expect(dialog.textContent).toContain('Check-in · Wed, Nov 11, 2026');
     expect(dialog.textContent).toContain('Not a deadline');
     expect([...dialog.querySelectorAll('a')].map((a) => a.getAttribute('href'))).toEqual(['/r/milestone%3AW04', '/r/milestone%3AW22', '/r/milestone%3AW01', '/r/milestone%3AW02']);
     expect(document.activeElement).toBe(dialog);
@@ -180,13 +180,13 @@ describe('timeline chart', () => {
     expect(el.querySelectorAll('[data-leader]')).toHaveLength(1);
     expect(barFor(el, 'Collect mover quotes').querySelector('[data-leader]')).not.toBeNull();
     expect(barFor(el, 'Confirm target month and three-year scope').querySelector('[data-leader]')).toBeNull();
-    expect(barFor(el, 'Collect mover quotes').getAttribute('aria-label')).toContain('; check-in on Nov 11, 2026, not a deadline');
+    expect(barFor(el, 'Collect mover quotes').getAttribute('aria-label')).toContain('; check-in on Wed, Nov 11, 2026, not a deadline');
   });
 
   it('a check-in is explained as not a deadline', () => {
     const el = chart(TARGET);
     const b = barFor(el, 'Collect mover quotes');
-    expect(b.getAttribute('aria-label')).toContain('check-in on Nov 11, 2026, not a deadline');
+    expect(b.getAttribute('aria-label')).toContain('check-in on Wed, Nov 11, 2026, not a deadline');
     act(() => b.click());
     const dialog = document.querySelector('[role=dialog]')!;
     expect(dialog.textContent).toContain('Not a deadline.');
@@ -205,7 +205,7 @@ describe('timeline chart', () => {
   it('folds a group away, and groups by area on request', () => {
     const el = chart(TARGET);
     const toggle = [...el.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].find((b) => b.textContent?.startsWith('Mochi'))!;
-    expect(toggle.textContent).toContain('6 items · 6 to do · 1 blocked');
+    expect(toggle.textContent).toContain('6 items · 6 to do · 1 stuck');
     const before = bars(el).length;
     act(() => toggle.click());
     expect(toggle.getAttribute('aria-expanded')).toBe('false');

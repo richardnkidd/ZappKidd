@@ -252,7 +252,7 @@ export function sharedCheckIns(placed: GanttItem[]): SharedCheckIn[] {
   for (const g of placed) if (g.sharedCheckIn && g.checkIn) byDate.set(g.checkIn, [...(byDate.get(g.checkIn) ?? []), g]);
   return [...byDate.entries()]
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([date, items]) => ({ date, items, label: `Check-in · ${civil(date, 'short')} · ${items.length} ${items.length === 1 ? 'item' : 'items'} · not scheduled` }));
+    .map(([date, items]) => ({ date, items, label: `Check-in · ${civil(date, 'weekday')} · ${items.length} ${items.length === 1 ? 'item' : 'items'} · not scheduled` }));
 }
 
 /** Position used to order a row: where its bar starts (or its check-in sits), then where it ends. */
@@ -374,7 +374,7 @@ export function referenceDeparture(dep: DepartureAnchors, target: PlanningTarget
 }
 
 /** One line for the collapsed "Travel dates" summary. `fmt` writes a civil date. */
-export function travelSummary(dep: DepartureAnchors, people: Pick<Person, 'id' | 'display_name'>[], target: PlanningTarget | null, fmt: (d: string) => string = (d) => civil(d, 'short')): string {
+export function travelSummary(dep: DepartureAnchors, people: Pick<Person, 'id' | 'display_name'>[], target: PlanningTarget | null, fmt: (d: string) => string = (d) => civil(d, 'weekday')): string {
   const rows = people.map((p) => ({ name: p.display_name, date: dep.byTraveler[p.id] ?? null }));
   if (rows.every((r) => !r.date)) {
     return target ? `Not set yet — the chart uses the ${target.label} target` : 'Not set yet — later phases cannot be placed on the chart';
@@ -534,7 +534,7 @@ export function phaseBands(ctx: PhaseContext, range: GanttRange): PhaseBand[] {
     out.push({
       phase: w.phase,
       label: PHASE_SHORT_LABEL[w.phase],
-      title: `${PHASE_LABEL[w.phase]} (${civil(w.start, 'short')} to ${civil(w.end, 'short')})`,
+      title: `${PHASE_LABEL[w.phase]} (${civil(w.start, 'weekday')} to ${civil(w.end, 'weekday')})`,
       start: c.start,
       end: c.end,
       source: w.source,
@@ -571,7 +571,7 @@ export function timingText(g: GanttItem, target: PlanningTarget | null, range?: 
   }
   if (g.basis === 'firm' && g.deadline) {
     kind = 'firm';
-    parts.push(`ends ${civil(g.deadline.date, 'short')} (${DEADLINE_KIND_LABEL[g.deadline.kind].toLowerCase()})`);
+    parts.push(`ends ${civil(g.deadline.date, 'weekday')} (${DEADLINE_KIND_LABEL[g.deadline.kind].toLowerCase()})`);
   } else if (g.basis === 'target') {
     kind = 'target';
     parts.push(`placed using the ${target?.label ?? 'planning'} target; set travel dates to make it exact`);
@@ -582,7 +582,7 @@ export function timingText(g: GanttItem, target: PlanningTarget | null, range?: 
   } else {
     kind = 'checkin';
   }
-  if (g.checkIn) parts.push(`${g.sharedCheckIn ? 'household check-in' : 'check-in'} on ${civil(g.checkIn, 'short')}, not a deadline`);
+  if (g.checkIn) parts.push(`${g.sharedCheckIn ? 'household check-in' : 'check-in'} on ${civil(g.checkIn, 'weekday')}, not a deadline`);
   if (range && g.start && g.end) {
     const c = clipSpan(g.start, g.end, range);
     if (c.offRange === 'before') parts.push('this falls before the chart starts');

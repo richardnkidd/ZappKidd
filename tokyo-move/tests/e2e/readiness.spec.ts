@@ -253,7 +253,7 @@ test.describe('The pet’s dates', () => {
       await setAnchor(avery, 'TN', null, 'awaiting');
       await page.reload();
       await loaded(page);
-      const field = page.getByRole('textbox', { name: 'If the first adult arrived on… (optional)' });
+      const field = page.getByRole('textbox', { name: 'First adult arrives on (optional)' });
       await expect(field).toBeVisible();
       await expect(page.getByRole('button', { name: /^Try / })).toHaveCount(0);
 
@@ -261,12 +261,12 @@ test.describe('The pet’s dates', () => {
       await setAnchor(avery, 'TP', null, 'awaiting');
       await page.reload();
       await loaded(page);
-      const needed = page.getByRole('textbox', { name: 'Needed for the comparison — no dates are set yet' });
+      const needed = page.getByRole('textbox', { name: 'Add an arrival date to compare' });
       await expect(needed).toBeVisible();
       await expect(page.getByText('(optional)')).toHaveCount(0);
-      await expect(page.getByText(/A date here is only for the comparison and is never saved/)).toBeVisible();
+      await expect(page.getByText('Only for this comparison. Never saved.')).toBeVisible();
       await expect(page.getByText('Pick when, and the comparison appears here.')).toBeVisible();
-      const example = page.getByRole('button', { name: /^Try July 1, 2027 — start of your target month \(example only, never saved\)$/ });
+      const example = page.getByRole('button', { name: /^Try Thu, Jul 1(, 2027)?$/ });
       await expect(example).toBeVisible();
 
       await example.click();
@@ -278,7 +278,7 @@ test.describe('The pet’s dates', () => {
       expect((await anchor(avery, 'TP')).data.date).toBeNull();
       await page.reload();
       await loaded(page);
-      await expect(page.getByRole('textbox', { name: 'Needed for the comparison — no dates are set yet' })).toHaveValue('');
+      await expect(page.getByRole('textbox', { name: 'Add an arrival date to compare' })).toHaveValue('');
     } finally {
       await setAnchor(avery, 'TP', tp.data.date, tp.data.confidence).catch(() => undefined);
       await setAnchor(avery, 'TN', tn.data.date, tn.data.confidence).catch(() => undefined);

@@ -219,7 +219,7 @@ describe('placing items', () => {
   it('a real date ends a firm bar at that date and starts it at the phase window start', () => {
     const g = placeItem(item({ phase: 'p3_jan_mar2027', date: '2027-02-12', kind: 'internal_target' }), input());
     expect(g).toMatchObject({ basis: 'firm', start: '2027-01-01', end: '2027-02-12', deadline: { date: '2027-02-12', kind: 'internal_target' } });
-    expect(barLabel(g, 'Jun', TARGET)).toBe('Item, owner Jun, planned, ends Feb 12, 2027 (our target)');
+    expect(barLabel(g, 'Jun', TARGET)).toBe('Item, owner Jun, not started, ends Fri, Feb 12, 2027 (our target)');
   });
 
   it('starts 14 days before the date when the window starts on or after it, or when there is no window', () => {
@@ -246,7 +246,7 @@ describe('placing items', () => {
   it('a check-in is a hollow marker on the phase bar and never a deadline', () => {
     const g = placeItem(item({ phase: 'p3_jan_mar2027', date: '2026-11-11', kind: 'review_date' }), input());
     expect(g).toMatchObject({ placed: true, basis: 'phase', start: '2027-01-01', end: '2027-03-31', checkIn: '2026-11-11', deadline: null });
-    expect(timingText(g, TARGET).text).toBe('timing from its phase (Jan–Mar 2027), no firm date; check-in on Nov 11, 2026, not a deadline');
+    expect(timingText(g, TARGET).text).toBe('timing from its phase (Jan–Mar 2027), no firm date; check-in on Wed, Nov 11, 2026, not a deadline');
   });
 
   it('a check-in with no phase window is only a marker, and a target-placed phase stays target', () => {
@@ -265,7 +265,7 @@ describe('placing items', () => {
     for (const s of ['planned', 'in_progress', 'waiting_external']) expect(toneOf(s), s).toBe('normal');
     const blocked = placeItem(item({ phase: 'p2_nov_dec2026', status: 'blocked' }), input());
     expect(blocked.tone).toBe('blocked');
-    expect(barLabel(blocked, 'Jun', TARGET)).toContain(', blocked, ');
+    expect(barLabel(blocked, 'Jun', TARGET)).toContain(', stuck, ');
     const done = placeItem(item({ phase: 'p2_nov_dec2026', status: 'completed' }), input());
     expect(done.tone).toBe('done');
     expect(barLabel(done, 'Jun', TARGET)).toContain(', done, ');
@@ -365,18 +365,18 @@ describe('shared check-ins', () => {
     const rows = place([withCheckIn('W1'), withCheckIn('W2'), withCheckIn('W3'), withCheckIn('W4', {}, '2026-10-31'), withCheckIn('W5', {}, '2026-10-31'), withCheckIn('W6', {}, '2026-10-31'), withCheckIn('W7', {}, '2026-10-31')]);
     const shared = sharedCheckIns(rows);
     expect(shared.map((c) => [c.date, c.items.map((g) => g.key), c.label])).toEqual([
-      ['2026-10-31', ['W4', 'W5', 'W6', 'W7'], 'Check-in · Oct 31, 2026 · 4 items · not scheduled'],
-      [REVIEW, ['W1', 'W2', 'W3'], 'Check-in · Nov 11, 2026 · 3 items · not scheduled'],
+      ['2026-10-31', ['W4', 'W5', 'W6', 'W7'], 'Check-in · Sat, Oct 31, 2026 · 4 items · not scheduled'],
+      [REVIEW, ['W1', 'W2', 'W3'], 'Check-in · Wed, Nov 11, 2026 · 3 items · not scheduled'],
     ]);
   });
 
   it('keeps the phase bar, and the accessible name still says there is a check-in that is not a deadline', () => {
     const [g] = place([withCheckIn('W1', { title: 'Choose a home', owner: 'jun' }), withCheckIn('W2'), withCheckIn('W3')]);
     expect(g).toMatchObject({ placed: true, basis: 'phase', start: '2027-01-01', end: '2027-03-31', deadline: null, sharedCheckIn: true });
-    expect(barLabel(g!, 'Jun', TARGET)).toBe('Choose a home, owner Jun, planned, timing from its phase (Jan–Mar 2027), no firm date; household check-in on Nov 11, 2026, not a deadline');
+    expect(barLabel(g!, 'Jun', TARGET)).toBe('Choose a home, owner Jun, not started, timing from its phase (Jan–Mar 2027), no firm date; household check-in on Wed, Nov 11, 2026, not a deadline');
     // A one-off check-in keeps the plain wording.
     const [one] = place([withCheckIn('W1')]);
-    expect(timingText(one!, TARGET).text).toContain('; check-in on Nov 11, 2026, not a deadline');
+    expect(timingText(one!, TARGET).text).toContain('; check-in on Wed, Nov 11, 2026, not a deadline');
   });
 
   it('a row whose only date was the shared check-in and that has no bar is not placed, with the reason', () => {
@@ -393,7 +393,7 @@ describe('shared check-ins', () => {
 
   it('group spans and the staircase ignore a shared check-in, but not a one-off one', () => {
     const rows = place([withCheckIn('W1'), withCheckIn('W2'), withCheckIn('W3')]);
-    // Without the shared date this group would start on Nov 11, 2026; it starts with its bars.
+    // Without the shared date this group would start on Wed, Nov 11, 2026; it starts with its bars.
     expect(groupSpan(rows)).toEqual({ start: '2027-01-01', end: '2027-03-31' });
     const [one] = place([withCheckIn('W1')]);
     expect(groupSpan([one!])).toEqual({ start: '2026-11-11', end: '2027-03-31' });
@@ -535,8 +535,8 @@ describe('departure anchors and markers', () => {
   it('summarises the travel dates in one line', () => {
     expect(travelSummary(NO_ANCHORS, PEOPLE, TARGET)).toBe('Not set yet — the chart uses the July 2027 target');
     expect(travelSummary(NO_ANCHORS, PEOPLE, null)).toBe('Not set yet — later phases cannot be placed on the chart');
-    expect(travelSummary(SET, PEOPLE, TARGET)).toBe('Avery: Jul 5, 2027 · Jun: not set (uses the July 2027 target) · Mochi: Sep 13, 2027');
-    expect(travelSummary(SET, PEOPLE, null)).toBe('Avery: Jul 5, 2027 · Jun: not set · Mochi: Sep 13, 2027');
+    expect(travelSummary(SET, PEOPLE, TARGET)).toBe('Avery: Mon, Jul 5, 2027 · Jun: not set (uses the July 2027 target) · Mochi: Mon, Sep 13, 2027');
+    expect(travelSummary(SET, PEOPLE, null)).toBe('Avery: Mon, Jul 5, 2027 · Jun: not set · Mochi: Mon, Sep 13, 2027');
   });
 });
 
@@ -604,7 +604,7 @@ describe('the fictional demo household', () => {
   it('the four items that share the proposed Nov 11 check-in get one marker, not four circles', () => {
     const shared = sharedCheckIns(placed);
     expect(shared).toHaveLength(1);
-    expect(shared[0]!.label).toBe('Check-in · Nov 11, 2026 · 4 items · not scheduled');
+    expect(shared[0]!.label).toBe('Check-in · Wed, Nov 11, 2026 · 4 items · not scheduled');
     expect(shared[0]!.items.map((g) => g.key).sort()).toEqual(['W01', 'W02', 'W04', 'W22']);
     for (const g of shared[0]!.items) expect(g.basis, g.key).toBe('phase'); // their phase bars stay
     expect(groupSpan(shared[0]!.items.filter((g) => g.key === 'W22'))).toEqual({ start: '2027-01-01', end: '2027-03-31' });

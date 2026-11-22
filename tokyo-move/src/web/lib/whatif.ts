@@ -150,7 +150,7 @@ export function monthsBetween(a: string, b: string): number {
 }
 
 /** An example date offered when no arrival date exists anywhere yet. It only fills the comparison and is never saved. */
-export const EXAMPLE_ARRIVAL = { date: '2027-07-01', label: 'July 1, 2027' } as const;
+export const EXAMPLE_ARRIVAL = { date: '2027-07-01' } as const;
 
 /**
  * One calm sentence for when the pet's chosen arrival is later than the adult it would travel with: someone has to look

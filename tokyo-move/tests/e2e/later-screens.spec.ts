@@ -58,7 +58,7 @@ test.describe('Money', () => {
     await expect(main).toContainText(/\d+ lines? still needs? an amount/);
     // A missing amount is "Not known yet", never 0 (what is left over is unknown while anything is missing).
     await expect(main.getByText('Left over').locator('xpath=..')).toContainText('Not known yet');
-    await expect(main.getByText('Other bills we already owe')).toHaveCount(0);
+    await expect(main).not.toContainText(/Headroom|Other commitments/);
     // The cash picture comes before the exchange-rate card, and the figures are the biggest text on the page.
     const cash = main.getByRole('region', { name: 'The cash picture' });
     const rateCard = page.getByRole('region', { name: 'Exchange rate' });
@@ -169,7 +169,7 @@ test.describe('Documents', () => {
     const first = rowOf(page).first();
     await expect(first.getByRole('link').first()).toBeVisible();
     await expect(first.getByRole('button', { name: /^Update status: / })).toBeVisible();
-    await expect(page.getByText(/^(Held by: |Holder not set yet)/)).toHaveCount(1);
+    await expect(page.locator('.quiet-line').filter({ hasText: /^(Held by: |Holder not set yet)/ })).toHaveCount(1);
     await expect(page.getByRole('main')).not.toContainText(/Each document holder/);
     expect(await page.getByRole('main').innerText()).not.toMatch(/\(proposed\)/i);
     await first.getByRole('button', { name: /^Details/ }).click();

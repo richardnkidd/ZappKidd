@@ -3,7 +3,7 @@
  * Reads the real tokens.css so a changed value that breaks contrast fails the build.
  * (File is .tsx only because vitest.config.ts includes tests/web/**\/*.test.tsx.)
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -134,6 +134,52 @@ describe('button states keep their contrast in light and dark', () => {
     it(`${theme}: the primary button is a clear shape against the page and against a card (WCAG 1.4.11)`, () => {
       expect(contrast(tokens.ai!, tokens.paper!)).toBeGreaterThanOrEqual(UI);
       expect(contrast(tokens.ai!, tokens.surface!)).toBeGreaterThanOrEqual(UI);
+    });
+  }
+});
+
+/** Readability rules from the usability rebuild: the type scale and weights are checked in the CSS itself. */
+describe('readability rules in the stylesheets', () => {
+  const dir = join(process.cwd(), 'src/web/styles');
+  const files = readdirSync(dir).filter((f) => f.endsWith('.css'));
+  const sources = files.map((f) => ({ f, text: readFileSync(join(dir, f), 'utf8') }));
+
+  it('the smallest text token is at least 14px', () => {
+    const m = /--fs-0:\s*([0-9.]+)rem/.exec(css);
+    expect(m).not.toBeNull();
+    expect(Number(m![1]) * 16).toBeGreaterThanOrEqual(14);
+  });
+
+  it('no stylesheet sets a font size under 14px', () => {
+    const bad: string[] = [];
+    for (const { f, text } of sources) {
+      for (const m of text.matchAll(/font-size:\s*([0-9.]+)(rem|px|em)\b/g)) {
+        const px = m[2] === 'px' ? Number(m[1]) : Number(m[1]) * 16;
+        // `em` sizes are relative (print link addresses, code); everything else must be a real size.
+        if (m[2] !== 'em' && px < 14) bad.push(`${f}: ${m[0]}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it('only two font weights are used: 400 and 600', () => {
+    const used = new Set<string>();
+    for (const { text } of sources) for (const m of text.matchAll(/font-weight:\s*([^;]+);/g)) used.add(m[1]!.trim());
+    // `inherit`, `normal` and token references are fine; numbers must be 400 or 600.
+    const numbers = [...used].filter((v) => /^\d+$/.test(v));
+    expect(numbers.sort()).toEqual(['400', '600']);
+  });
+});
+
+describe('colours added for the quiet components', () => {
+  const t = themes();
+  for (const theme of ['light', 'dark'] as const) {
+    it(`${theme}: "your turn" text, the info note, and quiet status and flag icons are readable`, () => {
+      const tokens = t[theme];
+      expect(contrast(tokens['on-ai']!, tokens['ai']!)).toBeGreaterThanOrEqual(TEXT); // .chip--turn
+      expect(contrast(tokens['ink-2']!, tokens['surface-2']!)).toBeGreaterThanOrEqual(TEXT); // .info-note__body
+      expect(contrast(tokens['ai']!, tokens['ai-soft']!)).toBeGreaterThanOrEqual(UI); // .info-btn[aria-expanded]
+      for (const c of ['matcha', 'kaki', 'kin', 'ai', 'ink-2']) expect(contrast(tokens[c]!, tokens['surface']!)).toBeGreaterThanOrEqual(UI); // .status-icon, .kind-flag
     });
   }
 });

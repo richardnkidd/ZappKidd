@@ -2,13 +2,19 @@
 import { act, createElement, useState, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { DateText, DeadlineBadge, StatusBadge, VerificationNote } from '../../src/web/components/Badges';
+import { DateText, DeadlineBadge, StatusBadge, VerificationNote, YourTurnChip, OptionalTag } from '../../src/web/components/Badges';
+import { More } from '../../src/web/components/More';
+import { InfoNote } from '../../src/web/components/InfoNote';
+import { ClampText } from '../../src/web/components/ClampText';
+import { ItemCard } from '../../src/web/components/ItemCard';
+import { MemoryRouter } from 'react-router';
+import { setFormatToday } from '../../src/web/lib/format';
 import { FilterChips, SegmentedControl, Field, TextInput } from '../../src/web/components/Controls';
 import { Dialog } from '../../src/web/components/Dialog';
 import { Disclosure } from '../../src/web/components/Disclosure';
 import { ErrorBanner } from '../../src/web/components/Feedback';
 import { EmptyState } from '../../src/web/components/Layout';
-import { OwnerChip, PersonBadge } from '../../src/web/components/People';
+import { OwnerChip, PersonBadge, TogetherBadge } from '../../src/web/components/People';
 import { PendingUpdateNotice } from '../../src/web/components/PendingUpdateNotice';
 import { SnapshotContext, type SnapshotCtx } from '../../src/web/state/snapshot';
 import { buildDirectory, buildIndexes } from '../../src/web/lib/records';
@@ -68,10 +74,28 @@ describe('people are never shown by colour alone', () => {
     expect(text).toContain('Pip');
     expect(text).toContain('Together');
     expect(text).toContain('Unassigned');
-    expect(text).toContain('Bo? (not agreed yet)');
-    expect(el.querySelectorAll('.chip--proposed')).toHaveLength(1);
+    // Quiet by default: plain text, no pill; "not agreed yet" only for the provisional owner.
+    expect(text.match(/not agreed yet/g)).toHaveLength(1);
+    expect(el.querySelectorAll('.chip')).toHaveLength(0);
+    expect(el.querySelectorAll('.owner--proposed')).toHaveLength(1);
     // badges are decorative (name is in text)
     expect(el.querySelector('.pbadge')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('the full chip is still there for a screen that asks for it', () => {
+    const el = mount(withPeople(createElement('div', null, createElement(OwnerChip, { owner: 'bo', proposed: true, variant: 'chip' }), createElement(OwnerChip, { owner: 'ann', variant: 'chip' }))));
+    expect(el.textContent).toContain('Bo? (not agreed yet)');
+    expect(el.querySelectorAll('.chip--proposed')).toHaveLength(1);
+    expect(el.querySelectorAll('.chip--owner')).toHaveLength(2);
+  });
+
+  it('monograms are at least 18px with 11px letters, and "together" is one glyph, never two overlapping circles', () => {
+    const el = mount(withPeople(createElement('div', null, createElement(PersonBadge, { person: PEOPLE[0]!, size: 10 }), createElement(OwnerChip, { owner: 'together', compact: true }), createElement(TogetherBadge, {}))));
+    const badges = [...el.querySelectorAll<HTMLElement>('.pbadge')];
+    for (const b of badges) expect(parseInt(b.style.width, 10)).toBeGreaterThanOrEqual(18);
+    expect(parseInt(badges[0]!.style.fontSize, 10)).toBeGreaterThanOrEqual(11);
+    expect(el.querySelectorAll('.pbadge-pair')).toHaveLength(0);
+    expect(el.querySelectorAll('.pbadge--together')).toHaveLength(2);
   });
 
   it('the dog badge is an svg paw, not a letter', () => {
@@ -82,20 +106,105 @@ describe('people are never shown by colour alone', () => {
 });
 
 describe('status and deadline badges carry words and icons', () => {
-  it('shows plain status words with an icon', () => {
-    const el = mount(createElement('div', null, createElement(StatusBadge, { status: 'waiting_external' }), createElement(StatusBadge, { status: 'completed' }), createElement(StatusBadge, { status: 'eliminated' })));
+  it('shows status as a small icon with the words for screen readers, not a pill', () => {
+    const el = mount(createElement('div', null, createElement(StatusBadge, { status: 'waiting_external', small: true }), createElement(StatusBadge, { status: 'completed', small: true }), createElement(StatusBadge, { status: 'eliminated', small: true })));
     expect(el.textContent).toBe('Waiting on someone elseDoneDropped');
     expect(el.querySelectorAll('svg')).toHaveLength(3);
+    expect(el.querySelectorAll('.chip')).toHaveLength(0);
+    expect(el.querySelectorAll('.visually-hidden')).toHaveLength(3);
+    expect(el.querySelector('.status-icon')?.getAttribute('title')).toBe('Waiting on someone else');
   });
-  it('labels deadline kinds so a review checkpoint never reads as a deadline', () => {
-    const el = mount(createElement('div', null, createElement(DeadlineBadge, { kind: 'legal' }), createElement(DeadlineBadge, { kind: 'review_date' }), createElement(DeadlineBadge, { kind: 'internal_target' })));
+  it('the larger form prints the word as plain text beside the icon', () => {
+    const el = mount(createElement(StatusBadge, { status: 'blocked' }));
+    expect(el.querySelector('.status-icon__label')?.textContent).toBe('Blocked');
+    expect(el.querySelector('.visually-hidden')).toBeNull();
+    expect(el.querySelector('.chip')).toBeNull();
+  });
+  it('the full status chip is still available', () => {
+    const el = mount(createElement(StatusBadge, { status: 'blocked', variant: 'chip' }));
+    expect(el.querySelector('.chip--kaki')?.textContent).toBe('Blocked');
+  });
+  it('flags only legal and contract dates; a check-in keeps its word so it never reads as a deadline', () => {
+    const kinds = ['legal', 'contractual', 'review_date', 'internal_target', 'user_committed', 'estimate'] as const;
+    const el = mount(createElement('div', null, ...kinds.map((kind) => createElement(DeadlineBadge, { kind, key: kind }))));
+    expect(el.textContent).toBe('Legal deadlineContract dateCheck-in');
+    expect(el.querySelectorAll('.kind-flag')).toHaveLength(2);
+    expect(el.querySelectorAll('.chip')).toHaveLength(0);
+  });
+  it('labels every deadline kind in the full chip form', () => {
+    const el = mount(createElement('div', null, createElement(DeadlineBadge, { kind: 'legal', variant: 'chip' }), createElement(DeadlineBadge, { kind: 'review_date', variant: 'chip' }), createElement(DeadlineBadge, { kind: 'internal_target', variant: 'chip' })));
     expect(el.textContent).toBe('Legal deadlineCheck-inOur target');
   });
-  it('shows an honest note for any rule that is not verified from official text', () => {
+  it('"your turn" is one solid indigo chip', () => {
+    const el = mount(createElement(YourTurnChip));
+    expect(el.querySelector('.chip--turn')?.textContent).toBe('Your turn');
+  });
+  it('"Optional" is plain text', () => {
+    const el = mount(createElement(OptionalTag));
+    expect(el.querySelector('.chip')).toBeNull();
+    expect(el.textContent).toBe('Optional');
+  });
+  it('marks any rule that is not verified from official text as "Not checked yet", with the full wording behind an info button', () => {
     const el = mount(createElement('div', null, createElement(VerificationNote, { verification: 'indexed_only', kind: 'legal' }), createElement(VerificationNote, { verification: 'verified_official' }), createElement(VerificationNote, { verification: 'not_verified' })));
-    expect(el.textContent).toContain('official index only');
-    expect(el.textContent).toContain('Not verified');
     expect(el.querySelectorAll('.verify-note')).toHaveLength(2); // nothing for verified_official
+    expect(el.querySelectorAll('.verify-note__text')).toHaveLength(2);
+    const btn = el.querySelector<HTMLButtonElement>('button.info-btn')!;
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    const region = document.getElementById(btn.getAttribute('aria-controls')!)!;
+    expect(region.hidden).toBe(true);
+    expect(region.textContent).toContain('Rule not yet confirmed for you. ');
+    expect(region.textContent).toContain('official index only');
+    act(() => btn.click());
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    expect(region.hidden).toBe(false);
+  });
+  it('the full verification sentence can still be printed in the page', () => {
+    const el = mount(createElement(VerificationNote, { verification: 'not_verified', kind: 'legal', variant: 'full' }));
+    expect(el.textContent).toContain('Rule not yet confirmed for you. Not verified — check before relying on it');
+    expect(el.querySelector('button')).toBeNull();
+  });
+});
+
+describe('the info control', () => {
+  it('is a button with aria-expanded and aria-controls, opens on press, and Escape closes it', () => {
+    const el = mount(<InfoNote label="About this date">Because of a holiday.</InfoNote>);
+    const btn = el.querySelector<HTMLButtonElement>('button')!;
+    expect(btn.getAttribute('aria-label')).toBe('About this date');
+    const region = document.getElementById(btn.getAttribute('aria-controls')!)!;
+    expect(region.hidden).toBe(true);
+    act(() => btn.click());
+    expect(region.hidden).toBe(false);
+    act(() => {
+      btn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
+describe('the More disclosure', () => {
+  it('defaults to "More", is a button with aria-expanded and aria-controls, and the label can change', () => {
+    const el = mount(createElement('div', null, createElement(More, { children: createElement('p', null, 'Detail') }), createElement(More, { label: 'Why and history', children: 'History' })));
+    const [a, b] = [...el.querySelectorAll<HTMLButtonElement>('button')];
+    expect(a!.textContent).toBe('More');
+    expect(b!.textContent).toBe('Why and history');
+    const region = document.getElementById(a!.getAttribute('aria-controls')!)!;
+    expect(a!.getAttribute('aria-expanded')).toBe('false');
+    expect(region.hidden).toBe(true);
+    act(() => a!.click());
+    expect(a!.getAttribute('aria-expanded')).toBe('true');
+    expect(region.hidden).toBe(false);
+    expect(region.textContent).toBe('Detail');
+  });
+});
+
+describe('ClampText', () => {
+  it('takes any line limit and element', () => {
+    const el = mount(<ClampText lines={5} as="div">Long text</ClampText>);
+    const box = el.querySelector<HTMLElement>('.clamp')!;
+    expect(box.tagName).toBe('DIV');
+    expect(box.style.getPropertyValue('--clamp-lines')).toBe('5');
+    // jsdom has no layout, so nothing is cut and there is no toggle yet.
+    expect(el.querySelector('button')).toBeNull();
   });
 });
 
@@ -258,6 +367,62 @@ describe('dates are honest about what they are', () => {
   it('unknown stays unknown', () => {
     expect(mount(<DateText date={null} />).textContent).toBe('Awaiting date');
   });
+  it('holiday and weekend advice sits behind an info button, not in a paragraph', () => {
+    const el = mount(<DateText date="2026-11-07" prefix="Due by " advice="Falls on a public holiday. (The holiday calendar is computed; verify against the official calendar.)" today="2026-10-29" />);
+    expect(el.querySelector('.date-note')).toBeNull();
+    const btn = el.querySelector<HTMLButtonElement>('button.info-btn')!;
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    const region = document.getElementById(btn.getAttribute('aria-controls')!)!;
+    expect(region.hidden).toBe(true);
+    expect(region.textContent).toContain('The holiday calendar is computed');
+    act(() => btn.click());
+    expect(region.hidden).toBe(false);
+  });
+});
+
+describe('one date format', () => {
+  const T = '2026-11-22';
+  const text = (props: Partial<Parameters<typeof DateText>[0]> & { date: string | null }) => {
+    const el = mount(<DateText today={T} {...props} />);
+    const out = (el.querySelector('.date-text')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    act(() => root.unmount());
+    container.remove();
+    return out;
+  };
+  it('a future date reads "Mon, Nov 30 (8 days)"', () => {
+    expect(text({ date: '2026-11-30' })).toBe('Mon, Nov 30 (8 days)');
+    expect(text({ date: '2026-12-01', prefix: 'Due by ' })).toBe('Due by Tue, Dec 1 (9 days)');
+  });
+  it('today and tomorrow are words, and the date is never printed twice', () => {
+    expect(text({ date: T })).toBe('Today');
+    expect(text({ date: '2026-11-23' })).toBe('Tomorrow');
+    expect(text({ date: T, prefix: 'Due by ' })).toBe('Due by today');
+    expect(text({ date: '2026-11-23', prefix: 'On ' })).toBe('Tomorrow');
+  });
+  it('a past date on an open item reads "11 days late", in the late colour, with the date for screen readers only', () => {
+    const el = mount(<DateText date="2026-11-11" state="overdue" today={T} />);
+    const t = el.querySelector('.date-text')!;
+    expect(t.classList.contains('date-text--past')).toBe(true);
+    expect(t.textContent).toBe('11 days late (was Wed, Nov 11)');
+    expect(t.querySelector('.visually-hidden')?.textContent).toBe(' (was Wed, Nov 11)');
+    act(() => root.unmount());
+    container.remove();
+    expect(text({ date: '2026-11-21', state: 'overdue' })).toMatch(/^1 day late/);
+  });
+  it('a past date that is not an open due date stays a plain date', () => {
+    expect(text({ date: '2026-11-11', state: 'met' })).toBe('Wed, Nov 11');
+    expect(text({ date: '2026-11-11', prefix: 'Not before ', state: 'upcoming' })).toBe('Not before Wed, Nov 11');
+  });
+  it('without today there is no distance, and the long month form is never used', () => {
+    setFormatToday('2026-11-22'); // the data provider sets this; it decides whether a year is needed
+    const el = mount(<DateText date="2026-11-30" />);
+    expect(el.textContent).toBe('Mon, Nov 30');
+    expect(el.textContent).not.toMatch(/November/);
+    setFormatToday(null);
+  });
+  it('a date with its own bracket ("window opens") does not get a second one', () => {
+    expect(text({ date: '2026-12-10', prefix: 'Not before ', suffix: ' (window opens)' })).toBe('Not before Thu, Dec 10 (window opens)');
+  });
 });
 
 describe('phone filter chips and theme', () => {
@@ -297,5 +462,104 @@ describe('the "newer update is waiting" notice', () => {
   });
   it('renders nothing outside the snapshot provider (the sign-in screen)', () => {
     expect(mount(createElement(PendingUpdateNotice)).querySelector('aside')).toBeNull();
+  });
+});
+
+describe('the slim list card', () => {
+  const card = (props: Partial<Parameters<typeof ItemCard>[0]> = {}) =>
+    mount(
+      createElement(
+        MemoryRouter,
+        null,
+        withPeople(createElement('ul', null, createElement(ItemCard, { recordId: 'milestone:a', title: 'Renew the visa', owner: 'ann', nextAction: 'Book the appointment', today: '2026-11-22', date: '2026-11-30', dateKind: 'legal', status: 'blocked', showStatus: true, ...props }))),
+      ),
+    );
+  it('shows the title, the next step with no "Next" label, and one meta line with the date left and the person right', () => {
+    const el = card();
+    expect(el.querySelector('.item__title')?.textContent).toBe('Renew the visa');
+    const action = el.querySelector('.item__action')!;
+    expect(action.textContent).toBe('Book the appointment');
+    expect(action.getAttribute('style')).toContain('--clamp-lines: 2');
+    expect(el.querySelector('.item__label')).toBeNull();
+    const meta = el.querySelector('.item__meta')!;
+    expect(meta.firstElementChild?.classList.contains('item__meta-start')).toBe(true);
+    expect(meta.lastElementChild?.classList.contains('owner')).toBe(true);
+    expect(meta.querySelector('.item__meta-start')?.textContent).toContain('Mon, Nov 30 (8 days)');
+  });
+  it('is quiet by default: no chips at all, a flag for a legal date, status and owner as icon and plain text', () => {
+    const el = card();
+    expect(el.querySelectorAll('.chip')).toHaveLength(0);
+    expect(el.querySelector('.kind-flag--legal')).not.toBeNull();
+    expect(el.querySelector('.status-icon')?.textContent).toBe('Blocked');
+    expect(el.querySelector('.owner__name')?.textContent).toBe('Ann');
+    expect(el.textContent).not.toMatch(/not agreed yet/);
+  });
+  it("the household's own dates carry no flag, and \"not agreed yet\" shows only when true", () => {
+    const el = card({ dateKind: 'internal_target', owner: 'bo', ownerProposed: true });
+    expect(el.querySelector('.kind-flag')).toBeNull();
+    expect(el.textContent).toContain('not agreed yet');
+  });
+  it('carries at most one chip: "your turn"', () => {
+    const el = card({ turn: true });
+    expect(el.querySelectorAll('.chip')).toHaveLength(1);
+    expect(el.querySelector('.chip--turn')?.textContent).toBe('Your turn');
+  });
+  it('the full form brings the chips back', () => {
+    const el = card({ variant: 'full', owner: 'bo' });
+    expect(el.querySelector('.chip--owner')).not.toBeNull();
+    expect(el.querySelector('.chip--kind-legal')).not.toBeNull();
+    expect(el.querySelector('.chip--status')).not.toBeNull();
+  });
+});
+
+describe('dialog focus when the opener is gone', () => {
+  function Gone({ fallback }: { fallback?: string }) {
+    const [open, setOpen] = useState(false);
+    const [card, setCard] = useState(true);
+    return (
+      <div>
+        <h1 id="page-h1">Decide</h1>
+        <button id="other">Other</button>
+        {card && (
+          <button id="opener" onClick={() => setOpen(true)}>
+            Open
+          </button>
+        )}
+        <Dialog
+          open={open}
+          onClose={() => {
+            setCard(false);
+            setOpen(false);
+          }}
+          title="Answer"
+          fallbackFocus={fallback}
+        >
+          <input type="text" aria-label="x" />
+        </Dialog>
+      </div>
+    );
+  }
+  it('moves focus to the page heading when the card that opened the dialog left the list', () => {
+    const el = mount(<Gone />);
+    const opener = el.querySelector<HTMLButtonElement>('#opener')!;
+    opener.focus();
+    act(() => opener.click());
+    const dlg = document.body.querySelector('[role=dialog]') as HTMLElement;
+    act(() => {
+      dlg.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(el.querySelector('#opener')).toBeNull();
+    expect(document.activeElement?.id).toBe('page-h1');
+  });
+  it('accepts a selector for a different fallback', () => {
+    const el = mount(<Gone fallback="#other" />);
+    const opener = el.querySelector<HTMLButtonElement>('#opener')!;
+    opener.focus();
+    act(() => opener.click());
+    const dlg = document.body.querySelector('[role=dialog]') as HTMLElement;
+    act(() => {
+      dlg.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(document.activeElement?.id).toBe('other');
   });
 });

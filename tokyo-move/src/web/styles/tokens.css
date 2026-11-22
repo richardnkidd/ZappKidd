@@ -49,13 +49,20 @@
   --font-ui: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-head: 'Source Serif 4', 'Iowan Old Style', Georgia, serif;
   --font-jp: 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
-  --fs-0: 0.8125rem; /* 13 */
+  --fs-0: 0.875rem; /* 14: the smallest text anywhere (nothing renders under 14px; monogram letters are the one exception, 11px) */
   --fs-1: 0.9375rem; /* 15 */
   --fs-2: 1.0625rem; /* 17 */
   --fs-3: 1.25rem; /* 20 */
   --fs-4: 1.5rem; /* 24 */
   --fs-5: 1.875rem; /* 30 */
   --fs-6: 2.375rem; /* 38 */
+
+  /* Weights: two only */
+  --fw-regular: 400;
+  --fw-strong: 600;
+
+  /* Longest comfortable line of prose */
+  --measure: 68ch;
 
   /* Space (4px base) */
   --s-1: 4px;

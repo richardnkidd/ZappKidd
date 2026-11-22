@@ -55,8 +55,8 @@
 }
 .wordmark-jp {
   font-family: var(--font-jp);
-  font-weight: 500;
-  font-size: 0.8125rem;
+  font-weight: 400;
+  font-size: var(--fs-0);
   color: var(--ink-3);
   letter-spacing: 0.08em;
 }
@@ -135,11 +135,11 @@
   color: var(--ink-2);
   text-decoration: none;
   font-size: var(--fs-0);
-  font-weight: 500;
+  font-weight: 400;
 }
 .nav-link[aria-current='page'] {
   color: var(--ai);
-  font-weight: 650;
+  font-weight: 600;
 }
 .nav-link[aria-current='page']::before {
   content: '';
@@ -157,7 +157,7 @@
   width: 100%;
   max-width: calc(var(--content-max) + var(--gutter) * 2);
   margin-inline: auto;
-  padding: var(--s-5) var(--gutter) calc(var(--tab-h) + env(safe-area-inset-bottom) + var(--s-7));
+  padding: var(--s-5) var(--gutter) calc(var(--nav-h) + var(--s-7)); /* --nav-h is measured, so a taller bar at large text is cleared */
   min-width: 0;
 }
 .app-main:focus {
@@ -502,7 +502,7 @@ body.is-modal-open {
   place-items: center;
   background: var(--ai-soft);
   color: var(--ai);
-  font-weight: 700;
+  font-weight: 600;
   font-size: var(--fs-3);
   border: 1.5px solid var(--ai);
 }
@@ -540,23 +540,28 @@ body.is-modal-open {
     white-space: nowrap;
   }
 }
+/* Large text: the five tabs would not fit in one row, so they wrap onto two rows and the icons step aside. Every label
+   stays visible (it used to be hidden, leaving unlabelled icons). */
 @media (max-width: 1023.98px) {
   @container app-nav (max-width: 15rem) {
-    .nav-link > span {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      margin: -1px;
-      padding: 0;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
+    .app-nav__list {
+      flex-wrap: wrap;
+    }
+    .app-nav__list li {
+      flex: 1 1 30%;
+    }
+    .nav-link {
+      min-height: 44px;
+      padding: 4px 6px;
+    }
+    .nav-link .icon {
+      display: none;
     }
   }
 }
 .nav-link[aria-current='true'] {
   color: var(--ai);
-  font-weight: 650;
+  font-weight: 600;
 }
 @media (min-width: 1024px) {
   .nav-link[aria-current='true'] {

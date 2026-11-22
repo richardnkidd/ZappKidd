@@ -10,7 +10,7 @@ html {
   text-size-adjust: 100%;
   /* Phones have a sticky header and a fixed tab bar: a focused element must scroll clear of both (WCAG 2.4.11). */
   scroll-padding-top: calc(var(--header-h) + var(--s-4));
-  scroll-padding-bottom: calc(var(--nav-h) + var(--s-6));
+  scroll-padding-bottom: calc(var(--nav-h) + var(--s-4));
 }
 @media (min-width: 1024px) {
   html {
@@ -62,7 +62,7 @@ h3 {
 h4 {
   font-size: var(--fs-1);
   font-family: var(--font-ui);
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0;
 }
 @media (min-width: 768px) {
@@ -99,8 +99,12 @@ a:not([class]) {
   padding-block: 4px;
 }
 strong,
-b {
-  font-weight: 650;
+b,
+th,
+dt,
+summary,
+optgroup {
+  font-weight: 600; /* two weights only: 400 and 600 (the browser default 700 for these is never used) */
 }
 small {
   font-size: var(--fs-0);
@@ -133,7 +137,7 @@ button:disabled {
 :lang(ja),
 .jp {
   font-family: var(--font-jp), var(--font-head);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 /* Focus: visible everywhere, 3px, offset 2px */

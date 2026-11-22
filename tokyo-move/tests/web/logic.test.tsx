@@ -28,7 +28,19 @@ import {
 } from '../../src/web/lib/plan';
 import { buildIndexes, unmetDependencyKeys } from '../../src/web/lib/records';
 import { solarTermFor, solarTermLine, SOLAR_TERMS } from '../../src/web/lib/solarTerms';
-import { approvalSummary, needsMyApproval } from '../../src/web/screens/decide/decisionText';
+import {
+  agreeLabel,
+  approvalSummary,
+  canReopen,
+  decisionStatusWords,
+  initialChoice,
+  needsMyApproval,
+  orderedOptions,
+  partnerChoiceLine,
+  shortLabel,
+  triggerLine,
+} from '../../src/web/screens/decide/decisionText';
+import { groupDecisions } from '../../src/web/screens/decide/DecisionsTab';
 import { computed, DIR, decision, deadline, milestone, PEOPLE, rec } from './helpers';
 
 const TODAY = '2026-10-29';
@@ -344,6 +356,92 @@ describe('decisions: approvals read honestly', () => {
   it('closed decisions read plainly', () => {
     expect(approvalSummary(decision('D1', 'rejected') as never, DIR).state).toBe('closed');
     expect(approvalSummary(decision('D1', 'deferred') as never, DIR).text).toBe('Put off for now');
+  });
+});
+
+describe('decision card: whose turn, what is picked, what the button says', () => {
+  const ann = (option: string, at = '2026-10-28T10:00:00Z') => ({ person_id: 'ann', at, option_id: option, note: null });
+  const bo = (option: string, at = '2026-10-28T11:00:00Z') => ({ person_id: 'bo', at, option_id: option, note: null });
+  const three = {
+    options: [
+      { id: 'a', label: 'Option A', consequences: null, source: 'imported' as const },
+      { id: 'b', label: 'Option B', consequences: null, source: 'imported' as const },
+      { id: 'c', label: 'Option C', consequences: null, source: 'household' as const },
+    ],
+    recommended_option_id: 'b',
+  };
+
+  it('uses the status words everywhere (I am Ann)', () => {
+    expect(decisionStatusWords(decision('D1', 'open') as never, 'ann', DIR)).toBe('Your turn');
+    expect(decisionStatusWords(decision('D1', 'proposed', { approvals: [bo('a')] }) as never, 'ann', DIR)).toBe('Bo chose. Your turn');
+    expect(decisionStatusWords(decision('D1', 'proposed', { approvals: [ann('a')] }) as never, 'ann', DIR)).toBe('Waiting for Bo');
+    expect(decisionStatusWords(decision('D1', 'proposed', { approvals: [ann('a'), bo('b')] }) as never, 'ann', DIR)).toBe('You chose differently');
+    expect(decisionStatusWords(decision('D1', 'approved', { approvals: [ann('a'), bo('a')] }) as never, 'ann', DIR)).toBe('Decided');
+    expect(decisionStatusWords(decision('D1', 'deferred') as never, 'ann', DIR)).toBe('Put off');
+    expect(decisionStatusWords(decision('D1', 'rejected') as never, 'ann', DIR)).toBe('Not doing this');
+    // An empty approver list means both adults; someone who is not an approver sees who it waits for.
+    expect(decisionStatusWords(decision('D1', 'open', { required_approvers: [] }) as never, 'ann', DIR)).toBe('Your turn');
+    expect(decisionStatusWords(decision('D1', 'open', { required_approvers: ['bo'] }) as never, 'ann', DIR)).toBe('Waiting for Bo');
+  });
+
+  it('lists the suggestion first', () => {
+    expect(orderedOptions(decision('D1', 'open', three) as never).map((o) => o.id)).toEqual(['b', 'a', 'c']);
+  });
+
+  it('preselects mine, else nothing when my partner picked something else, else the suggestion', () => {
+    expect(initialChoice(decision('D1', 'open', three) as never, 'ann', DIR)).toBe('b');
+    expect(initialChoice(decision('D1', 'proposed', { ...three, approvals: [ann('c')] }) as never, 'ann', DIR)).toBe('c');
+    // Bo chose A, not the suggestion: nothing is preselected, so agreeing never silently disagrees with Bo.
+    expect(initialChoice(decision('D1', 'proposed', { ...three, approvals: [bo('a')] }) as never, 'ann', DIR)).toBeNull();
+    // Bo chose the suggestion: preselecting it agrees with Bo.
+    expect(initialChoice(decision('D1', 'proposed', { ...three, approvals: [bo('b')] }) as never, 'ann', DIR)).toBe('b');
+    // Disagreement: my own choice stays selected.
+    expect(initialChoice(decision('D1', 'proposed', { ...three, approvals: [ann('c'), bo('a')] }) as never, 'ann', DIR)).toBe('c');
+    // One option: that one.
+    expect(initialChoice(decision('D1', 'open', { options: [three.options[0]!], recommended_option_id: 'a' }) as never, 'ann', DIR)).toBe('a');
+    expect(initialChoice(decision('D1', 'open', { options: [], recommended_option_id: null }) as never, 'ann', DIR)).toBeNull();
+  });
+
+  it('names the choice on the button, in a few words', () => {
+    expect(agreeLabel('Protect a safety fund now. Sign nothing non-refundable until the budget is set.')).toBe('Agree: Protect a safety fund now…');
+    expect(agreeLabel('Check what Avery does and ask the employer.')).toBe('Agree: Check what Avery does…');
+    expect(agreeLabel('Wait for visa advice.')).toBe('Agree: Wait for visa advice');
+    expect(agreeLabel(null)).toBe('Agree');
+    expect(shortLabel('Set firm limits and keep a return reserve.', 5)).toBe('Set firm limits and keep…');
+  });
+
+  it('tells me what my partner chose, with a question', () => {
+    expect(partnerChoiceLine(decision('D1', 'proposed', { approvals: [bo('a')] }) as never, 'ann', DIR)).toBe('Bo chose Option A. Agree?');
+    expect(partnerChoiceLine(decision('D1', 'open') as never, 'ann', DIR)).toBeNull();
+  });
+
+  it('cleans the "needed when" text and never shows a passed date as upcoming', () => {
+    expect(triggerLine('First review: November 11, 2026', '2026-11-22')).toBeNull();
+    expect(triggerLine('First review: November 11, 2026', '2026-11-01')).toBe('First review: November 11, 2026');
+    expect(triggerLine('Before commitments; initial inputs by November 11 review', '2026-11-22')).toBe('Before commitments');
+    expect(triggerLine('Before the lease (W04) is signed', '2026-11-22')).toBe('Before the lease is signed');
+    expect(triggerLine('', '2026-11-22')).toBeNull();
+  });
+
+  it('offers Reopen for 7 days after a decision is settled', () => {
+    const now = new Date('2026-11-22T12:00:00Z');
+    const decided = (at: string) => ({ ...decision('D1', 'approved', { decided_at: at }), updated_at: at });
+    expect(canReopen(decided('2026-11-20T12:00:00Z') as never, now)).toBe(true);
+    expect(canReopen(decided('2026-11-14T12:00:00Z') as never, now)).toBe(false);
+    expect(canReopen({ ...decision('D1', 'deferred'), updated_at: '2026-11-21T00:00:00Z' } as never, now)).toBe(true);
+    expect(canReopen({ ...decision('D1', 'open'), updated_at: '2026-11-21T00:00:00Z' } as never, now)).toBe(false);
+  });
+
+  it('orders the Decide list: disagreements, then partner-answered, then untouched, then waiting for my partner', () => {
+    const list = [
+      decision('D1', 'proposed', { approvals: [ann('a')] }), // waiting for Bo
+      decision('D2', 'open'), // untouched
+      decision('D3', 'proposed', { approvals: [bo('a')] }), // Bo answered
+      decision('D4', 'proposed', { approvals: [ann('a'), bo('b')] }), // disagreement
+    ];
+    const g = groupDecisions(list as never, 'ann', DIR);
+    expect(g.mine.map((d) => d.key)).toEqual(['D4', 'D3', 'D2']);
+    expect(g.waiting.map((d) => d.key)).toEqual(['D1']);
   });
 });
 

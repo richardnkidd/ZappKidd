@@ -1,0 +1,387 @@
+/*
+ * Decision card package: the one-screen decision card, its choices as radios, the slim Decide lists, the in-place
+ * "Decided … Undo" notice and the compact DecisionRow other screens use. Weights 400 and 600 only; nothing under 14px.
+ */
+
+/* ---------- Lists ---------- */
+.dlists {
+  max-width: 48rem; /* readable on wide screens; one column, never two panes */
+}
+.dlist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dcard-item {
+  list-style: none;
+}
+
+/* ---------- The card ---------- */
+.dcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-width: 48rem;
+}
+.dcard__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-3);
+  min-height: 28px;
+}
+.dcard__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+  font-weight: 600;
+}
+.dcard__status--decided {
+  color: var(--matcha);
+}
+.dcard__by {
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+  margin-left: auto;
+  min-width: 0;
+}
+.dcard__q {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-3);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  max-width: var(--measure);
+}
+.dcard__q:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.dcard__q--sub {
+  font-size: var(--fs-2);
+}
+.dcard__when {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: var(--measure);
+}
+p.dcard__when:has(.info-note),
+.dcard__inner .dcard__when {
+  white-space: normal;
+}
+.dcard__delay {
+  margin: 0;
+  color: var(--ink-2);
+  max-width: var(--measure);
+}
+.dcard__label {
+  font-weight: 600;
+  color: var(--ink);
+}
+.dcard__toggle {
+  padding-top: var(--s-1);
+}
+.dcard__body[hidden] {
+  display: none;
+}
+.dcard__body,
+.dcard__inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+.dcard__body {
+  padding-top: var(--s-1);
+}
+
+/* ---------- The choices: real radios, borderless rows, 44px each ---------- */
+.dopts {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  min-width: 0;
+}
+.dopt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  min-height: 44px;
+  padding: 10px var(--s-2);
+  margin-inline: calc(var(--s-2) * -1);
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  max-width: none;
+}
+.dopt--single {
+  cursor: default;
+  margin-inline: 0;
+  padding-inline: 0;
+}
+label.dopt:hover {
+  background: var(--stone-soft);
+}
+label.dopt:has(input:checked) {
+  background: var(--ai-soft);
+}
+label.dopt:has(input:checked) .dopt__label {
+  font-weight: 600;
+}
+label.dopt:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 0;
+}
+.dopt input[type='radio'] {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--ai);
+}
+.dopt__text {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  padding-top: 1px;
+}
+.dopt__tags {
+  display: block;
+  color: var(--ai);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* ---------- Actions ---------- */
+.dcard__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-1);
+}
+.dcard__actions .btn--primary {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.3;
+  padding-block: 10px;
+}
+@media (max-width: 599.98px) {
+  .dcard__actions .btn--primary {
+    flex: 1 1 100%;
+    justify-content: center;
+    text-align: center;
+  }
+}
+.dcard__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ai);
+  font: inherit;
+  font-size: var(--fs-0);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.dcard__link:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.dcard__chosen,
+.dcard__chosen p,
+.dcard__outcome,
+.dcard__none {
+  margin: 0;
+  max-width: var(--measure);
+}
+.dcard__chosen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.dcard__ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-width: var(--measure);
+}
+.dcard__ask-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.field__req {
+  font-weight: 400;
+  color: var(--ink-2);
+}
+
+/* ---------- Why and history ---------- */
+.dcard__more {
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-1);
+}
+.dcard__sub {
+  margin: 0 0 var(--s-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-1);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.dcard__more .plain-list {
+  max-width: var(--measure);
+}
+
+/* ---------- In place after settling ---------- */
+.dsettled {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-card);
+  background: var(--matcha-soft);
+  color: var(--ink);
+  animation: dsettled-in 200ms ease-out;
+}
+.dsettled > .icon {
+  color: var(--matcha);
+  flex: none;
+}
+.dsettled p {
+  margin: 0;
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dsettled a {
+  font-weight: 600;
+}
+.dsettled:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+@keyframes dsettled-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dsettled {
+    animation: none;
+  }
+}
+
+/* ---------- Decide tab count ---------- */
+.dtab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--ai);
+  color: var(--on-ai);
+  font-size: var(--fs-0);
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* ---------- DecisionRow: one line for Home and record pages ---------- */
+.drow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-3);
+  flex-wrap: wrap;
+  min-height: 44px;
+  list-style: none;
+}
+.drow__open {
+  flex: 1 1 14rem;
+  min-width: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+a.drow__open {
+  text-decoration: none;
+}
+.drow__open:hover {
+  text-decoration: underline;
+}
+.drow__open:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.drow__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+}
+.drow__status--my-turn {
+  color: var(--ai);
+  font-weight: 600;
+}
+
+/* Hide the choices again: a 44px icon button at the end of the status row. */
+.dcard__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -8px -10px -8px 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: none;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.dcard__status + .dcard__close,
+.chip + .dcard__close {
+  margin-left: auto;
+}
+.dcard__close:hover {
+  background: var(--stone-soft);
+}
+.dcard__close:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 0;
+}

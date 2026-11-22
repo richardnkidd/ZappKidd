@@ -157,6 +157,47 @@ test.describe('Edit conflicts', () => {
     }
   });
 
+  test('agreeing on a decision the other person just changed shows both versions, and agrees with nothing silently', async ({ openAs, api }, testInfo) => {
+    const avery = await api('avery');
+    const jun = await api('jun');
+    const title = unique('Which moving company do we hire', testInfo);
+    const created = (await avery.post('/api/records', {
+      type: 'decision',
+      title,
+      data: { options: [{ label: 'The local firm' }, { label: 'The big firm' }], recommended_option_id: 'opt-1' },
+    })).record as { id: string; version: number };
+    const question = `${title}?`;
+    await avery.patch(`/api/records/${enc(created.id)}`, { baseVersion: created.version, changes: { data: { plain_question: question } } });
+
+    const a = await openAs('avery', '/decide');
+    await loaded(a.page);
+    const c = a.page.getByRole('article', { name: question });
+    await c.getByRole('button', { name: 'Decide' }).click();
+    await expect(c.getByRole('radio', { name: /The local firm/ })).toBeChecked();
+
+    // Meanwhile Jun picks the other firm on another phone.
+    const v = (await jun.record(created.id)).version;
+    await jun.post(`/api/decisions/${enc(created.id)}/approve`, { baseVersion: v, option_id: 'opt-2' });
+
+    // Avery's tap is refused because the card is out of date: the conflict is explained, nothing is saved.
+    await c.getByRole('button', { name: 'Agree: The local firm' }).click();
+    const banner = a.page.getByRole('alert').filter({ hasText: 'changed this while you were editing' });
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText('Jun changed this while you were editing.');
+    let rec = await avery.record(created.id);
+    expect(rec.data.approvals.map((x: any) => x.person_id)).toEqual(['jun']);
+
+    // Keep Jun's version: the card now says Jun chose, and preselects nothing (Jun's pick is not the suggestion).
+    await banner.getByRole('button', { name: /^Keep Jun.s version$/ }).click();
+    await expect(banner).toHaveCount(0);
+    await expect(c).toContainText('Jun chose. Your turn');
+    await expect(c.getByRole('radio', { name: /Jun picked this.*The big firm/ })).toBeVisible();
+    await expect(c.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(c.getByRole('button', { name: /^Agree/ })).toBeDisabled();
+    rec = await avery.record(created.id);
+    expect(rec.status).toBe('proposed');
+  });
+
   test('a conflicting status change also shows both versions', async ({ openAs, api }, testInfo) => {
     // Same safety net on a different form: the status dialog.
     const id = { phone: 'milestone:W26', 'small-phone': 'milestone:W25', desktop: 'milestone:W12' }[testInfo.project.name]!;

@@ -251,7 +251,11 @@ export const api = {
       }),
     ),
 
-  audit: async (params: { record_id?: string; since?: string | null } = {}, signal?: AbortSignal): Promise<AuditEntry[]> => {
+  /** Return a decided, rejected or put-off decision to open (allowed for 7 days after it was settled). */
+  reopenDecision: async (id: string, body: { baseVersion: number }) =>
+    unwrapRecord(await send<unknown>('POST', `/api/decisions/${q(id)}/reopen`, body)),
+
+  audit: async (params:{ record_id?: string; since?: string | null } = {}, signal?: AbortSignal): Promise<AuditEntry[]> => {
     const qs = new URLSearchParams();
     if (params.record_id) qs.set('record_id', params.record_id);
     if (params.since) qs.set('since', params.since);

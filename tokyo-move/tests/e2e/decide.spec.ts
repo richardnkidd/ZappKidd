@@ -1,182 +1,293 @@
 import type { Page } from '@playwright/test';
 import { expect, loaded, test, unique, type Api } from './support/fixtures';
 
-/** A household decision needs every required approver (both adults) to choose the SAME option. */
+/**
+ * A household decision needs every required person (both adults) to pick the SAME choice. The card asks one plain
+ * question, shows the choices as radios, and agrees in one tap. Disagreement is said out loud, never hidden.
+ */
 
-async function newDecision(api: Api, title: string) {
+const enc = encodeURIComponent;
+
+/** A two-choice decision with "By sea" suggested, and a plain question. Returns the question the card shows. */
+async function newDecision(api: Api, label: string, testInfo: Parameters<typeof unique>[1], opts: { question?: boolean } = {}) {
+  const title = unique(label, testInfo);
   const res = await api.post('/api/records', {
     type: 'decision',
     title,
     data: {
-      question: `${title}?`,
       options: [
         { label: 'By sea', consequences: 'Cheaper, about two months.' },
         { label: 'By air', consequences: 'Faster, costs more.' },
       ],
+      recommended_option_id: 'opt-1',
     },
   });
-  return res.record as { id: string; version: number };
+  const rec = res.record as { id: string; version: number };
+  const question = `${title}?`;
+  if (opts.question !== false) {
+    await api.patch(`/api/records/${enc(rec.id)}`, { baseVersion: rec.version, changes: { data: { plain_question: question } } });
+  }
+  return { id: rec.id, title, question };
 }
 
-const card = (page: Page, title: string) => page.getByRole('article', { name: title });
+const card = (page: Page, name: string) => page.getByRole('article', { name });
 
-/**
- * Find a decision on the Decisions tab and open it for deciding. The first three open decisions sit under "Up next" and
- * the rest under "Later"; each card shows its options and actions only after "Review options and decide".
- */
-async function findCard(page: Page, title: string) {
-  const c = card(page, title);
-  if (!(await c.isVisible())) await page.getByRole('heading', { name: /^Later/ }).click();
+/** Open a collapsed card for deciding: the one "Decide" (or "See choices") button expands it in place. */
+async function openCard(page: Page, name: string) {
+  const c = card(page, name);
   await expect(c).toBeVisible();
+  const toggle = c.getByRole('button', { name: /^(Decide|See choices)$/ });
+  if (await toggle.isVisible()) {
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await toggle.click();
+  }
+  await expect(c.getByRole('button', { name: 'Hide choices' })).toHaveAttribute('aria-expanded', 'true');
   return c;
-}
-
-async function openCard(page: Page, title: string) {
-  const c = await findCard(page, title);
-  const review = c.getByRole('button', { name: 'Review options and decide' });
-  if (await review.isVisible()) await review.click();
-  await expect(c.getByRole('button', { name: 'Hide options' })).toBeVisible();
-  return c;
-}
-
-async function approve(page: Page, title: string, who: string, option: RegExp, change = false) {
-  const c = await openCard(page, title);
-  await c.getByRole('button', { name: change ? 'Change my approval' : `Approve as ${who}` }).click();
-  const dialog = page.getByRole('dialog', { name: `Approve as ${who}` });
-  await dialog.getByRole('radio', { name: option }).check();
-  await dialog.getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(dialog).toHaveCount(0);
 }
 
 test.describe('Decide', () => {
-  test('a joint decision stays "awaiting" until both adults approve the same option', async ({ openAs, api }, testInfo) => {
-    const title = unique('How do we ship the boxes', testInfo);
+  test('both adults must pick the same choice; a different pick is called out, never hidden', async ({ openAs, api }, testInfo) => {
     const avery = await api('avery');
-    const d = await newDecision(avery, title);
+    const d = await newDecision(avery, 'How do we ship the boxes', testInfo);
 
     const a = await openAs('avery', '/decide');
     const j = await openAs('jun', '/decide');
     await loaded(a.page);
     await loaded(j.page);
 
-    // Nobody has approved yet: both people are awaited, and it is Avery's turn.
-    const first = await openCard(a.page, title);
-    await expect(first).toContainText('Awaiting Avery and Jun');
-    await expect(first).toContainText('Open question');
-    await expect(first).toContainText('Your approval is needed');
-    // Nothing can be approved until the options are on screen: the buttons only appear after "Review options and decide".
-    await first.getByRole('button', { name: 'Hide options' }).click();
+    // Collapsed: whose turn, the question, one "Decide" button. No old chips or helper text.
+    const yourTurn = a.page.getByRole('region', { name: /^Your turn/ });
+    const first = card(a.page, d.question);
+    await expect(yourTurn.getByRole('article', { name: d.question })).toBeVisible();
+    await expect(first).toContainText('Your turn');
+    await expect(first).not.toContainText('Open question');
+    await expect(first).not.toContainText('Your approval is needed');
+    await expect(first.getByRole('radio')).toHaveCount(0);
+
+    // Expanded: the choices are real radios in a group named by the question, the suggestion first and preselected.
+    await openCard(a.page, d.question);
+    const group = first.getByRole('group', { name: d.question });
+    await expect(group.getByRole('radio')).toHaveCount(2);
+    await expect(group.getByRole('radio').first()).toHaveAccessibleName(/Suggested.*By sea/);
+    await expect(group.getByRole('radio', { name: /By sea/ })).toBeChecked();
+    await expect(first.getByRole('button', { name: 'Agree: By sea' })).toBeVisible();
     await expect(first.getByRole('button', { name: /^Approve as/ })).toHaveCount(0);
 
-    // Avery approves "By sea". The decision is still NOT a household decision.
-    await approve(a.page, title, 'Avery', /^By sea/);
-    await expect(card(a.page, title)).toContainText('Approved by Avery · awaiting Jun');
-    await expect(card(a.page, title)).toContainText('Suggested'); // one approval is a suggestion, not a decision
-    await expect(card(a.page, title)).not.toContainText('Household-approved');
-    await expect(card(a.page, title)).not.toContainText('Your approval is needed');
-    await expect(card(a.page, title)).toContainText(/You approved “By sea\.?”/);
+    // Avery picks the other choice; the button names it; one tap agrees. One choice is not a decision.
+    await group.getByRole('radio', { name: /By air/ }).check();
+    await first.getByRole('button', { name: 'Agree: By air' }).click();
+    await expect(first).toContainText('You chose: By air. Waiting for Jun.');
+    await expect(first).toContainText('Waiting for Jun');
+    await expect(a.page.getByRole('status').filter({ hasText: 'You chose: By air. Waiting for Jun.' })).toHaveCount(1);
+    await expect(first.getByRole('button', { name: 'Change my choice' })).toBeFocused();
     let rec = await avery.record(d.id);
-    expect(rec.status, 'one approval is a proposal, not a decision').toBe('proposed');
+    expect(rec.status, 'one person agreeing is not a decision').toBe('proposed');
     expect(rec.data.decided_option_id ?? null).toBeNull();
 
-    // Jun's screen (reloaded, as it would after the next refresh) says what Avery chose and that Jun's turn is next.
+    // Jun sees that Avery chose, and that it is Jun's turn. Avery's pick differs from the suggestion, so NOTHING is
+    // preselected: agreeing cannot silently disagree with Avery.
     await j.page.reload();
     await loaded(j.page);
-    const juns = await findCard(j.page, title);
-    await expect(juns).toContainText('Approved by Avery · awaiting Jun');
-    await expect(juns).toContainText('Your approval is needed');
+    const juns = card(j.page, d.question);
+    await expect(juns).toContainText('Avery chose. Your turn');
+    await openCard(j.page, d.question);
+    const jGroup = juns.getByRole('group', { name: d.question });
+    await expect(jGroup.getByRole('radio', { name: /Avery picked this.*By air/ })).toBeVisible();
+    await expect(jGroup.getByRole('radio', { checked: true })).toHaveCount(0);
+    await expect(juns.getByRole('button', { name: /^Agree/ })).toBeDisabled();
 
-    // Jun chooses the OTHER option: disagreement is called out, never shown as approved.
-    await approve(j.page, title, 'Jun', /^By air/);
-    await expect(card(j.page, title)).toContainText(/Avery chose “By sea”.*Jun chose “By air”.*chose differently/);
-    await expect(card(j.page, title)).not.toContainText('Household-approved');
+    // Jun picks the OTHER choice: it reads as a disagreement and nothing is decided.
+    await jGroup.getByRole('radio', { name: /By sea/ }).check();
+    await juns.getByRole('button', { name: 'Agree: By sea' }).click();
+    await expect(juns).toContainText('You chose differently');
     rec = await avery.record(d.id);
     expect(rec.status).not.toBe('approved');
     expect(rec.data.decided_option_id ?? null).toBeNull();
 
-    // Jun changes to the same option: now it is household-approved, with both names.
-    await approve(j.page, title, 'Jun', /^By sea/, true);
+    // Avery sees the disagreement, with both picks named on the choices. Avery's own pick stays selected.
+    await a.page.reload();
+    await loaded(a.page);
+    const again = card(a.page, d.question);
+    await expect(again).toContainText('You chose differently');
+    await openCard(a.page, d.question);
+    const aGroup = again.getByRole('group', { name: d.question });
+    await expect(aGroup.getByRole('radio', { name: /You picked this.*By air/ })).toBeChecked();
+    await expect(aGroup.getByRole('radio', { name: /Jun picked this.*By sea/ })).toBeVisible();
+    await expect(again.getByRole('button', { name: 'Agree: By air' })).toBeDisabled();
+
+    // Avery moves to Jun's choice: now it is decided, and the card says so in place before it moves.
+    await aGroup.getByRole('radio', { name: /By sea/ }).check();
+    await again.getByRole('button', { name: 'Agree: By sea' }).click();
+    const done = a.page.getByRole('group', { name: 'Decided' });
+    await expect(done).toContainText('Decided: By sea.');
+    await expect(done).toBeFocused();
+    await expect(done.getByRole('button', { name: 'Undo' })).toBeVisible();
     rec = await avery.record(d.id);
     expect(rec.status).toBe('approved');
-    expect(rec.data.decided_option_id).toBeTruthy();
-    expect(rec.data.approvals.map((x: any) => x.person_id).sort()).toEqual(['avery', 'jun']);
-    // The page says so, and the decision moves to the Decided tab.
-    const done = j.page.getByRole('status').filter({ hasText: /Decided together/ });
-    await expect(done).toContainText(`“${title}” moved to Decided`);
+    expect(rec.data.decided_option_id).toBe('opt-1');
+
+    // On the Decided tab: what was decided, and the history behind "Why and history".
     await done.getByRole('link', { name: 'See it' }).click();
-    await expect(j.page).toHaveURL(/\/decide\/decided/);
-    const settled = card(j.page, title);
-    await expect(settled).toContainText('Household-approved');
-    await expect(settled).toContainText('Approved by Avery and Jun · “By sea”');
-    await expect(card(j.page, title)).toHaveCount(1);
+    await expect(a.page).toHaveURL(/\/decide\/decided/);
+    const settled = card(a.page, d.question);
+    await expect(settled).toContainText('Decided');
+    await expect(settled).toContainText('Decided: By sea');
+    const why = settled.getByRole('button', { name: 'Why and history' });
+    await expect(why).toHaveAttribute('aria-expanded', 'false');
+    await why.click();
+    await expect(why).toHaveAttribute('aria-expanded', 'true');
+    await expect(settled.getByText(/Jun chose “By sea”/)).toBeVisible();
+    await expect(settled.getByText(/Avery chose “By sea”/)).toBeVisible();
 
-    // The history on the card records who approved what.
-    // (The card opens by itself when you arrive through "See it"; otherwise "Show details" opens it.)
-    const show = settled.getByRole('button', { name: 'Show details' });
-    if (await show.isVisible()) await show.click();
-    await expect(settled.getByText(/Avery approved “By sea”/)).toBeVisible();
-    await expect(settled.getByText(/Jun approved “By sea”/)).toBeVisible();
-
-    // It is no longer waiting on the Decisions tab.
-    await j.page.goto('/decide');
-    await loaded(j.page);
-    await expect(card(j.page, title)).toHaveCount(0);
+    // Reopen (within 7 days): back to open, both picks cleared, and the page says where it went.
+    await settled.getByRole('button', { name: 'Reopen' }).click();
+    const reopened = a.page.getByRole('group', { name: 'Reopened' });
+    await expect(reopened).toBeFocused();
+    rec = await avery.record(d.id);
+    expect(rec.status).toBe('open');
+    expect(rec.data.approvals).toEqual([]);
+    await reopened.getByRole('link', { name: 'Decide it now' }).click();
+    await expect(card(a.page, d.question)).toContainText('Your turn');
   });
 
-  test('putting a decision off, or rejecting it, needs a reason', async ({ page, signIn, api }, testInfo) => {
-    const titleDefer = unique('Which pharmacy do we use', testInfo);
-    const titleReject = unique('Do we ship the piano', testInfo);
+  test('"Undo" right after deciding puts the decision back', async ({ page, signIn, api }, testInfo) => {
     const avery = await api('avery');
-    await newDecision(avery, titleDefer);
-    const rejectable = await newDecision(avery, titleReject);
+    const jun = await api('jun');
+    const d = await newDecision(avery, 'Which carrier do we use', testInfo);
+    const v = (await jun.record(d.id)).version;
+    await jun.post(`/api/decisions/${enc(d.id)}/approve`, { baseVersion: v, option_id: 'opt-1' });
+
+    await signIn(page, 'avery', '/decide');
+    await loaded(page);
+    const c = await openCard(page, d.question);
+    await expect(c).toContainText('Jun chose. Your turn');
+    // Jun chose the suggestion, so it is preselected: agreeing agrees with Jun.
+    await expect(c.getByRole('radio', { name: /Jun picked this.*By sea/ })).toBeChecked();
+    await c.getByRole('button', { name: 'Agree: By sea' }).click();
+    const done = page.getByRole('group', { name: 'Decided' });
+    await expect(done).toContainText('Decided: By sea.');
+    expect((await avery.record(d.id)).status).toBe('approved');
+    await done.getByRole('button', { name: 'Undo' }).click();
+    await expect(card(page, d.question)).toBeVisible();
+    await expect(card(page, d.question)).toContainText('Your turn');
+    expect((await avery.record(d.id)).status).toBe('open');
+  });
+
+  test('"Not now" and "None of these work" need a reason, and can be reopened', async ({ page, signIn, api }, testInfo) => {
+    const avery = await api('avery');
+    const later = await newDecision(avery, 'Which pharmacy do we use', testInfo);
+    const no = await newDecision(avery, 'Do we ship the piano', testInfo);
 
     await signIn(page, 'avery', '/decide');
     await loaded(page);
 
-    const deferrable = await openCard(page, titleDefer);
-    await deferrable.getByRole('button', { name: 'Put off…' }).click();
-    const dialog = page.getByRole('dialog', { name: 'Put this off for now' });
+    const c1 = await openCard(page, later.question);
+    await c1.getByRole('button', { name: 'Not now' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Not now' });
+    const reason = dialog.getByRole('textbox', { name: /Why not now\? \(required\)/ });
+    await expect(reason).toHaveAttribute('aria-required', 'true');
     await dialog.getByRole('button', { name: 'Put off', exact: true }).click();
     await expect(dialog.getByRole('alert')).toContainText('Please add a reason');
-    await dialog.getByRole('textbox', { name: /^Why are we putting it off/ }).fill('We need the clinic list first.');
+    await expect(reason).toBeFocused();
+    await reason.fill('We need the clinic list first.');
     await dialog.getByRole('button', { name: 'Put off', exact: true }).click();
     await expect(dialog).toHaveCount(0);
+    // The card does not vanish silently: it says what happened, in place, and focus is not lost.
+    const putOff = page.getByRole('group', { name: 'Put off' });
+    await expect(putOff).toContainText('Put off.');
+    await expect(putOff).toBeFocused();
+    expect((await avery.record(later.id)).status).toBe('deferred');
 
-    const rejectableCard = await openCard(page, titleReject);
-    await rejectableCard.getByRole('button', { name: 'Reject…' }).click();
-    const reject = page.getByRole('dialog', { name: 'Reject this decision' });
-    await reject.getByRole('button', { name: 'Reject', exact: true }).click();
+    const c2 = await openCard(page, no.question);
+    await c2.getByRole('button', { name: 'None of these work' }).click();
+    const reject = page.getByRole('dialog', { name: 'None of these work' });
+    await reject.getByRole('button', { name: 'Close this decision' }).click();
     await expect(reject.getByRole('alert')).toContainText('Please add a reason');
-    await reject.getByRole('textbox', { name: /^Why are we rejecting it/ }).fill('Too costly for the benefit.');
-    await reject.getByRole('button', { name: 'Reject', exact: true }).click();
+    await reject.getByRole('textbox', { name: /Why do none of these work\? \(required\)/ }).fill('Too costly for the benefit.');
+    await reject.getByRole('button', { name: 'Close this decision' }).click();
     await expect(reject).toHaveCount(0);
-    expect((await avery.record(rejectable.id)).status).toBe('rejected');
+    await expect(page.getByRole('group', { name: 'Not doing this' })).toBeVisible();
+    expect((await avery.record(no.id)).status).toBe('rejected');
 
-    // Both now sit on the Decided tab, with what happened, and are no longer waiting on the Decisions tab.
+    // Both sit on the Decided tab with plain status words, and no longer wait on the Decisions tab.
     await page.goto('/decide/decided');
     await loaded(page);
-    await expect(card(page, titleDefer)).toContainText('Deferred');
-    await expect(card(page, titleDefer)).toContainText('Put off for now');
-    await expect(card(page, titleReject)).toContainText('Rejected');
+    await expect(card(page, later.question)).toContainText('Put off');
+    await expect(card(page, later.question)).toContainText('We need the clinic list first.');
+    await expect(card(page, no.question)).toContainText('Not doing this');
     await page.goto('/decide');
     await loaded(page);
-    await expect(card(page, titleDefer)).toHaveCount(0);
-    await expect(card(page, titleReject)).toHaveCount(0);
+    await expect(card(page, later.question)).toHaveCount(0);
+    await expect(card(page, no.question)).toHaveCount(0);
+
+    // A put-off decision can be reopened for 7 days.
+    await page.goto('/decide/decided');
+    await loaded(page);
+    await card(page, later.question).getByRole('button', { name: 'Reopen' }).click();
+    await expect(page.getByRole('group', { name: 'Reopened' })).toBeVisible();
+    expect((await avery.record(later.id)).status).toBe('open');
+  });
+
+  test('a decision settled more than 7 days ago offers no Reopen, and the server refuses it', async ({ page, signIn, api }) => {
+    const avery = await api('avery');
+    const d01 = await avery.record('decision:D01'); // demo data: decided in October
+    const res = await avery.raw('POST', `/api/decisions/${enc(d01.id)}/reopen`, { baseVersion: d01.version });
+    expect(res.status()).toBe(422);
+    expect(await res.text()).toContain('more than 7 days ago');
+
+    await signIn(page, 'avery', '/decide/decided');
+    await loaded(page);
+    const c = card(page, 'Is the move month and three-year plan settled?');
+    await expect(c).toContainText('Decided');
+    await expect(c.getByRole('button', { name: 'Reopen' })).toHaveCount(0);
+  });
+
+  test('a decision without a plain question shows its title and lets a person write the question', async ({ page, signIn, api }, testInfo) => {
+    const avery = await api('avery');
+    const d = await newDecision(avery, 'Storage unit plan', testInfo, { question: false });
+    await signIn(page, 'avery', '/decide');
+    await loaded(page);
+    const c = await openCard(page, d.title);
+    // Never the rationale by default; one quiet action instead.
+    await c.getByRole('button', { name: 'Write the question' }).click();
+    const box = c.getByRole('textbox', { name: 'The question' });
+    await expect(box).toBeFocused();
+    const q = `Do we keep the storage unit ${testInfo.project.name} ${d.id.slice(-6)}?`;
+    await box.fill(q.slice(0, -1)); // the "?" is added when it is missing
+    await c.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByRole('heading', { name: q })).toBeVisible();
+    await expect(page.getByRole('heading', { name: q })).toBeFocused();
+    expect((await avery.record(d.id)).data.plain_question).toBe(q);
+  });
+
+  test('the Decide list puts my turn first and shows every open decision', async ({ page, signIn, api }, testInfo) => {
+    const avery = await api('avery');
+    const mine = await newDecision(avery, 'Extra choice mine', testInfo);
+    const waiting = await newDecision(avery, 'Extra choice waiting', testInfo);
+    const v = (await avery.record(waiting.id)).version;
+    await avery.post(`/api/decisions/${enc(waiting.id)}/approve`, { baseVersion: v, option_id: 'opt-1' });
+
+    await signIn(page, 'avery', '/decide');
+    await loaded(page);
+    // The Decisions tab counts the ones that need me.
+    await expect(page.getByRole('link', { name: /^Decisions\b.*\b\d+ your turn$/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Your turn/ }).getByRole('article', { name: mine.question })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Waiting for Jun/ }).getByRole('article', { name: waiting.question })).toContainText('Waiting for Jun');
+    // No helper sentences that explain the app.
+    await expect(page.getByText('Proposals have a dashed outline')).toHaveCount(0);
   });
 
   test('Home never shows more than three decisions, however many are open', async ({ page, signIn, api }, testInfo) => {
     const avery = await api('avery');
-    for (let i = 1; i <= 4; i += 1) await newDecision(avery, unique(`Extra choice ${i}`, testInfo));
+    for (let i = 1; i <= 4; i += 1) await newDecision(avery, `Extra choice ${i}`, testInfo);
     await signIn(page, 'avery', '/');
     await loaded(page);
     const section = page.getByRole('region', { name: /^Needs a decision/ });
     await expect(section.getByRole('listitem')).toHaveCount(3);
     await expect(section.getByRole('link', { name: /\d+ more decisions? waiting in Decide/ })).toBeVisible();
-    // The Decide screen itself lists all of them: three "Up next", the rest under "Later".
+    // The Decide screen itself lists all of them.
     await section.getByRole('link', { name: /more decisions? waiting in Decide/ }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Decide' })).toBeVisible();
-    await expect(page.getByRole('region', { name: /^Up next/ }).getByRole('article')).toHaveCount(3);
-    await page.getByRole('heading', { name: /^Later/ }).click();
-    expect(await page.getByRole('article').count()).toBeGreaterThan(3);
+    expect(await page.getByRole('region', { name: /^Your turn/ }).getByRole('article').count()).toBeGreaterThan(3);
   });
 });

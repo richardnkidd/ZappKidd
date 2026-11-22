@@ -360,12 +360,12 @@ function LinkedTasks({ record, idx, dir, level }: { record: Milestone; idx: Inde
 /* ------------------------------------------------------------------ main */
 
 /** One date, in words and in the one shared format. */
-function WhenText({ c, today }: { c: WhenCandidate; today: string }) {
+function WhenText({ c, today, labelled = false }: { c: WhenCandidate; today: string; labelled?: boolean }) {
   // A check-in is a reminder to look again, never a deadline: it never reads as late.
   if (c.kind === 'review_date') {
     return (
       <span className="rec-when">
-        <DeadlineBadge kind="review_date" />
+        {!labelled && <DeadlineBadge kind="review_date" />}
         <LineTime date={c.date} line={dateLine(c.date, today, { open: false })} />
       </span>
     );
@@ -373,7 +373,7 @@ function WhenText({ c, today }: { c: WhenCandidate; today: string }) {
   return (
     <span className="rec-when">
       {c.deadline ? <DeadlineWhen d={c.deadline} today={today} /> : <DateText date={c.date} today={today} state={c.state ?? undefined} />}
-      {c.kind === 'task' ? <span className="faint"> Task list</span> : <DeadlineBadge kind={c.kind} />}
+      {c.kind === 'task' ? labelled ? null : <span className="faint"> Task list</span> : <DeadlineBadge kind={c.kind} />}
     </span>
   );
 }
@@ -493,7 +493,7 @@ export function MilestoneDetail({ record, idx, dir, level }: { record: Milestone
           <ul className="rec-dates">
             {when.others.map((c, i) => (
               <li key={`${c.source}-${c.date}-${i}`}>
-                <span className="rec-dates__label">{c.label}</span> <WhenText c={c} today={today} />
+                <span className="rec-dates__label">{c.label}</span> <WhenText c={c} today={today} labelled={Boolean(c.label)} />
               </li>
             ))}
             {d.review_date && !when.others.some((o) => o.kind === 'review_date') && when.primary?.kind !== 'review_date' && (

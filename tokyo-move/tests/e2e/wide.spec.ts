@@ -101,6 +101,28 @@ test.describe('Large desktops', () => {
     }
   });
 
+  test('a record page and its side panel keep prose to a readable line, with no stretched column', async ({ page, signIn }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await signIn(page, 'avery', '/r/milestone:W06');
+    await open(page, '/r/milestone:W06');
+    const page_ = await page.locator('.rec').first().boundingBox();
+    expect(page_!.width).toBeLessThanOrEqual(760);
+    // The next step and its Edit control are side by side, near the left edge of the text.
+    const text = await page.locator('.rec-next__text').boundingBox();
+    const edit = await page.getByRole('button', { name: 'Edit next action' }).boundingBox();
+    expect(edit!.x - (text!.x + text!.width)).toBeLessThan(80);
+    expect(Math.abs(edit!.y + edit!.height / 2 - (text!.y + text!.height / 2))).toBeLessThan(40);
+
+    await open(page, '/plan?view=list');
+    await page.getByRole('main').getByRole('link', { name: 'Verify both passports and renewal outcomes', exact: true }).first().click();
+    const panel = page.getByRole('complementary', { name: 'Item details' });
+    await expect(panel.getByRole('heading', { name: 'Verify both passports and renewal outcomes' })).toBeVisible();
+    const rec = await panel.locator('.rec').boundingBox();
+    const bar = await panel.boundingBox();
+    expect(rec!.width).toBeLessThanOrEqual(bar!.width);
+    expect(rec!.width).toBeLessThanOrEqual(760);
+  });
+
   for (const [width, height] of [
     [1280, 800],
     [1440, 900],

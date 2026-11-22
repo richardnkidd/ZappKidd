@@ -11,6 +11,7 @@ import './styles/gantt.css';
 import './styles/pkg-foundations.css';
 import './styles/pkg-questions.css';
 import './styles/pkg-decide.css';
+import './styles/pkg-plan.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

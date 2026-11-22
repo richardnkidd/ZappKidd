@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { addCalendarDays } from '@shared/dates';
 import { PHASE_LABEL } from '@shared/labels';
+import { keyLookup } from '@shared/plain';
 import type { PlanningTarget } from '@shared/types';
 import { DateText, DeadlineBadge, StatusBadge } from '../../components/Badges';
 import { SegmentedControl } from '../../components/Controls';
@@ -545,7 +546,7 @@ type PopoverBase = Omit<ShellProps, 'subject' | 'title' | 'children'>;
 function ItemPopover({ g, idx, today, target, ...shell }: PopoverBase & { g: GanttItem; idx: Indexes; today: string; target: PlanningTarget | null }) {
   const m = g.item.m;
   return (
-    <PopoverShell subject={g.id} title={m.title} {...shell}>
+    <PopoverShell subject={g.id} title={g.title} {...shell}>
       <div className="gpop__meta">
         <OwnerChip owner={m.owner} proposed={m.owner_proposed} compact />
         <StatusBadge status={m.status} small />
@@ -554,7 +555,7 @@ function ItemPopover({ g, idx, today, target, ...shell }: PopoverBase & { g: Gan
         {g.basis === 'firm' && g.deadline ? (
           <p className="gpop__when">
             <DateText date={g.deadline.date} today={today} state={g.item.dateState ?? undefined} />
-            <DeadlineBadge kind={g.deadline.kind} />
+            <DeadlineBadge kind={g.deadline.kind} variant="chip" />
           </p>
         ) : g.basis === 'target' ? (
           <p className="small">
@@ -590,7 +591,7 @@ function CheckInPopover({ c, ...shell }: PopoverBase & { c: SharedCheckIn }) {
     <PopoverShell subject={`checkin:${c.date}`} title={`Check-in · ${civil(c.date, 'short')}`} {...shell}>
       <div className="gpop__meta">
         <DeadlineBadge kind="review_date" />
-        <span className="small faint">Proposed, not scheduled. Not a deadline.</span>
+        <span className="small faint">Not scheduled. Not a deadline.</span>
       </div>
       <p className="small muted">A moment to look at these {c.items.length} items together.</p>
       <ul className="gpop__list">
@@ -636,8 +637,9 @@ export function GanttChart({ items, idx, dir, today, baselineOn, target }: Gantt
   const bars = useRef(new Map<string, HTMLButtonElement>());
   const arrowId = useId().replace(/[^a-zA-Z0-9_-]/g, '');
 
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   const departures = useMemo(() => departureAnchors(idx.anchors.map((a) => dataOf(a)), dir.people), [idx, dir]);
-  const placed = useMemo(() => placeItems({ items, today, baselineOn, target, departures }), [items, today, baselineOn, target, departures]);
+  const placed = useMemo(() => placeItems({ items, today, baselineOn, target, departures, lookup }), [items, today, baselineOn, target, departures, lookup]);
   const markers = useMemo(() => departureMarkers(departures, dir.people, target), [departures, dir, target]);
   const range = useMemo(() => chartRange(mode, { today, baselineOn, markerDates: markers.map((m) => m.date) }), [mode, today, baselineOn, markers]);
   // On a large monitor the months stretch to use the width of the chart box (never narrower than the usual column).

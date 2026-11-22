@@ -4,6 +4,8 @@ import { PHASE_ORDER, PRIORITY_ORDER, WORK_STATUS_ORDER } from '@shared/labels';
 import type { DeadlineKind, PhaseKey, WorkStatus } from '@shared/types';
 import { compareDates } from './format';
 import { matchesOwnerFilter, milestoneDate, type FilterContext, type OwnerFilter } from './home';
+import { diffDays } from '@shared/dates';
+import { displayTitle, keyLookup, stripCodes } from '@shared/plain';
 import { whenFor, type WhenInfo } from './when';
 import { isOpenWork, unmetDependencyKeys, type Indexes, type Milestone } from './records';
 import type { DeadlineState } from '@shared/engine-contracts';
@@ -138,12 +140,13 @@ export function groupByWorkstream(items: PlanItemData[], idx: Indexes): { key: s
     list.push(it);
     groups.set(k, list);
   }
+  const lookup = keyLookup(idx.byKey);
   const out = [...groups.entries()].map(([key, list]) => {
     const ws = key ? idx.byKey.get(key) : undefined;
     const related = (ws?.data as { related?: unknown } | undefined)?.related;
     return {
       key,
-      title: ws?.title ?? (key ? key : 'Other work'),
+      title: ws ? displayTitle(ws, lookup) : key ? stripCodes(key, lookup) : 'Other work',
       related: Array.isArray(related) ? related.filter((r): r is string => typeof r === 'string') : [],
       items: list,
     };
@@ -193,6 +196,74 @@ export function groupByStatus(items: PlanItemData[]): Map<WorkStatus, PlanItemDa
   for (const s of WORK_STATUS_ORDER) map.set(s, []);
   for (const it of items) (map.get(it.m.status as WorkStatus) ?? map.set(it.m.status as WorkStatus, []).get(it.m.status as WorkStatus)!).push(it);
   return map;
+}
+
+/* ------------------------------------------------------------------ the simple filter: Mine, Blocked, All */
+
+export type QuickFilter = 'mine' | 'blocked' | 'all';
+
+/** Which of the three simple choices the filters match exactly, or null when the full set was changed in "More filters". */
+export function quickFilterOf(f: PlanFilters): QuickFilter | null {
+  if (!(f.traveler === 'all' && f.phase === 'all' && f.hideOptional)) return null;
+  if (f.owner === 'all' && f.status === 'all') return 'all';
+  if (f.owner === 'mine' && f.status === 'all') return 'mine';
+  if (f.owner === 'all' && f.status === 'blocked') return 'blocked';
+  return null;
+}
+
+/** The filters for one of the three simple choices. Anything set in "More filters" is cleared, so the choice is what you see. */
+export function applyQuickFilter(q: QuickFilter): PlanFilters {
+  return { ...DEFAULT_FILTERS, owner: q === 'mine' ? 'mine' : 'all', status: q === 'blocked' ? 'blocked' : 'all' };
+}
+
+/* ------------------------------------------------------------------ order inside a group */
+
+/** Days until the item's one shown date (negative when past), or null when it has none. A check-in never counts as a date. */
+export function daysToDate(it: PlanItemData, today: string): number | null {
+  const p = it.when.primary;
+  if (!p || p.kind === 'review_date') return null;
+  return diffDays(today, p.date);
+}
+
+/** An open item whose own date has passed. A check-in date never makes an item late. */
+export function isPastDue(it: PlanItemData, today: string): boolean {
+  if (!isOpenWork(it.m.status)) return false;
+  const d = daysToDate(it, today);
+  return d !== null && d < 0;
+}
+
+const orderKey = (it: PlanItemData, today: string): [number, string] => {
+  if (isPastDue(it, today)) return [0, it.when.primary!.date];
+  const p = it.when.primary;
+  return p ? [1, p.date] : [2, ''];
+};
+
+/** Past-due items first (oldest first), then by date, then the undated. Stable on the item's own key. */
+export function sortForGroup(items: PlanItemData[], today: string): PlanItemData[] {
+  return [...items].sort((a, b) => {
+    const [ra, da] = orderKey(a, today);
+    const [rb, db] = orderKey(b, today);
+    if (ra !== rb) return ra - rb;
+    if (da !== db) return da < db ? -1 : 1;
+    return keyNum(a.m, b.m);
+  });
+}
+
+/** The next thing to do: the first open item that is not stuck, in the order above. */
+export function nextToDo(items: PlanItemData[], today: string): PlanItemData | null {
+  const open = sortForGroup(items.filter((i) => isOpenWork(i.m.status) && !i.m.data?.optional_future_work), today);
+  return open.find((i) => i.m.status !== 'blocked') ?? open[0] ?? null;
+}
+
+/** The By date view: open items split into past their date, coming up and no date yet; finished work last. */
+export function splitByDate(items: PlanItemData[], today: string): { past: PlanItemData[]; coming: PlanItemData[]; undated: PlanItemData[]; closed: PlanItemData[] } {
+  const sorted = sortForGroup(items.filter((i) => isOpenWork(i.m.status)), today);
+  return {
+    past: sorted.filter((i) => isPastDue(i, today)),
+    coming: sorted.filter((i) => !isPastDue(i, today) && i.when.primary),
+    undated: sorted.filter((i) => !i.when.primary),
+    closed: items.filter((i) => !isOpenWork(i.m.status)),
+  };
 }
 
 export function groupByPhase(items: PlanItemData[]): Map<PhaseKey | 'none', PlanItemData[]> {

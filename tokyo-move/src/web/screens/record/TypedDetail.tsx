@@ -36,7 +36,7 @@ function AnchorDetail({ record, dir }: { record: AnyRecord; dir: Directory }) {
         <DateText date={d.date ?? null} />
         {d.confidence && d.confidence !== 'awaiting' && <span className="chip chip--neutral chip--sm"> {ANCHOR_CONFIDENCE_LABEL[d.confidence] ?? d.confidence}</span>}
       </p>
-      <p className="small muted">{d.traveler && d.traveler !== 'household' ? `${dir.nameOf(d.traveler)}’s own date.` : 'A household helper date: used only to coordinate.'}</p>
+      <p className="small muted">{d.traveler && d.traveler !== 'household' ? `${dir.nameOf(d.traveler)}’s own date.` : 'Household helper date.'}</p>
       {d.evidence && <p className="small muted preline">{d.evidence}</p>}
       <div className="row-actions">
         <Button variant="secondary" small icon="pencil" onClick={() => setEdit(true)}>
@@ -271,7 +271,7 @@ export function TypedDetail({ record, idx, dir, level }: { record: AnyRecord; id
       {needsHeading && <h2 className="visually-hidden">{record.type === 'note' ? 'Note' : 'Details'}</h2>}
       {body}
       {record.type !== 'note' && <Notes record={record} idx={idx} dir={dir} level={level} />}
-      <SourceHistory record={record} idx={idx} dir={dir} />
+      <SourceHistory record={record} idx={idx} dir={dir} level={level} />
     </div>
   );
 }

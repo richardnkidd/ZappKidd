@@ -1,0 +1,177 @@
+/* Plan and record pages package. Everything here is new; older Plan and record rules in screens.css are left as they were. */
+
+/* ---------- Plan: one simple filter and one line ---------- */
+.planbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.planbar__quick {
+  align-self: flex-start;
+}
+.planbar__quick .segmented__btn {
+  min-width: 5.5rem;
+}
+.planbar__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+}
+.planbar__count {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+}
+.planbar__more {
+  margin-left: 0;
+  margin-right: calc(var(--s-2) * -1);
+}
+.planbar__panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: var(--s-3) 0 var(--s-2);
+}
+.planbar__panel[hidden] {
+  display: none;
+}
+.planbar__optional {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+}
+.planbar__check.choice {
+  border: 0;
+  background: transparent;
+  padding-left: 0;
+}
+.planbar__check.choice:has(input:checked) {
+  background: transparent;
+}
+.planbar__panel .workload {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+.planbar__panel .workload p {
+  max-width: var(--measure);
+}
+@media (min-width: 640px) {
+  .planbar__panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .planbar__optional,
+  .planbar__panel .workload {
+    grid-column: 1 / -1;
+  }
+}
+@media (min-width: 1024px) {
+  .planbar__panel {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* The By date view puts its sections one under the other without box chrome. */
+.bydate .section__head {
+  margin-bottom: var(--s-1);
+}
+
+/* ---------- Record pages ---------- */
+.rec {
+  max-width: var(--measure);
+}
+.rec p,
+.rec li,
+.rec dd {
+  max-width: var(--measure);
+}
+.rec-head__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-4);
+  font-size: var(--fs-1);
+}
+.rec-when {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.rec-head .reason {
+  max-width: none;
+}
+/* The next step is the biggest thing after the title; its Edit control sits right beside it. */
+.rec .section__title {
+  font-size: var(--fs-1);
+  color: var(--ink-2);
+}
+.rec-next__text {
+  font-size: var(--fs-3);
+  line-height: 1.35;
+  margin: 0;
+}
+.rec .inline-edit {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+}
+.rec .inline-edit__value {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.rec .inline-edit--editing {
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.rec-dates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.rec-dates__label {
+  color: var(--ink-2);
+  margin-right: var(--s-2);
+}
+/* Everything else sits behind quiet "More" controls: spacing, and one line above the group. */
+.rec-mores {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+  padding-top: var(--s-2);
+}
+.rec-mores > .more > .more__btn {
+  width: 100%;
+  justify-content: space-between;
+  margin-left: 0;
+  padding: 0 var(--s-1);
+}
+.rec-mores .more__body {
+  padding-bottom: var(--s-4);
+}
+.section--bare > .section__head {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.rec .deadline-block {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+.status-text {
+  font-weight: 600;
+}

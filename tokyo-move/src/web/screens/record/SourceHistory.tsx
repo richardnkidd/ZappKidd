@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
+import { displayTitle, hasPlainWording, keyLookup, stripCodes } from '@shared/plain';
 import type { AuditEntry, ImportChange } from '@shared/types';
 import { api, describeError, type RecordDetail } from '../../net/client';
 import { Button } from '../../components/Controls';
-import { Disclosure } from '../../components/Disclosure';
+import { More } from '../../components/More';
 import { ErrorBanner } from '../../components/Feedback';
 import { Skeleton } from '../../components/Layout';
 import { describeAudit } from '../../lib/audit';
@@ -28,7 +29,11 @@ function show(v: unknown): string {
 
 type LoadState = { kind: 'idle' } | { kind: 'loading' } | { kind: 'ready'; detail: RecordDetail } | { kind: 'error'; message: string };
 
-export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: Indexes; dir: Directory }) {
+export function SourceHistory({ record, idx, dir, level = 2 }: { record: AnyRecord; idx: Indexes; dir: Directory; level?: 2 | 3 }) {
+  const H = level === 2 ? 'h3' : 'h4';
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
+  // When the record has plain wording, the imported title lives only here, as its original wording.
+  const original = hasPlainWording(record) && stripCodes(record.title, lookup) !== displayTitle(record, lookup) ? stripCodes(record.title, lookup) : null;
   const { actions } = useSnapshot();
   const { zone } = usePrefs();
   const [opened, setOpened] = useState(false);
@@ -79,17 +84,23 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
   const undoable = (e: AuditEntry) => !e.undone_by && ['update', 'status_change', 'approve', 'reject', 'defer', 'anchor_change'].includes(e.action);
 
   return (
-    <Disclosure title="Source & history" meta="Where this came from" onToggle={(o) => o && setOpened(true)}>
+    <More label="History and source" onToggle={(o) => o && setOpened(true)} className="rec-more">
       <div className="stack">
+        {original && (
+          <section>
+            <H>Original wording</H>
+            <p className="preline">{original}</p>
+          </section>
+        )}
         {reviewNote && (
           <section>
-            <h4>Review note</h4>
+            <H>Review note</H>
             <p className="preline">{reviewNote}</p>
           </section>
         )}
 
         <section>
-          <h4>Where this came from</h4>
+          <H>Where this came from</H>
           {source ? (
             <dl className="facts facts--tight">
               <div className="fact">
@@ -118,13 +129,6 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
           )}
         </section>
 
-        <section>
-          <h4>Internal reference</h4>
-          <p className="muted small">
-            Reference <code>{record.key}</code> · record <code>{record.id}</code> · version {record.version}
-          </p>
-        </section>
-
         {state.kind === 'loading' && <Skeleton lines={4} />}
         {state.kind === 'error' && (
           <ErrorBanner title="We couldn't load the history." onRetry={() => setTick((t) => t + 1)}>
@@ -134,8 +138,7 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
 
         {raw && Object.keys(raw).length > 0 && (
           <section>
-            <h4>Original text from the plan</h4>
-            <p className="muted small">Exactly as it was read. Never edited.</p>
+            <H>Original text from the plan</H>
             <dl className="raw-list">
               {Object.entries(raw).map(([k, v]) => (
                 <div key={k} className="raw-list__row">
@@ -149,7 +152,7 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
 
         {detail && (detail.import_changes?.length ?? 0) > 0 && (
           <section>
-            <h4>Import receipts</h4>
+            <H>Import receipts</H>
             <ul className="receipts">
               {(detail.import_changes ?? []).map((c) => (
                 <li key={c.id}>
@@ -171,7 +174,7 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
 
         {detail && (
           <section>
-            <h4>History</h4>
+            <H>History</H>
             {undoError && (
               <p className="field__error" role="alert">
                 {undoError}
@@ -208,6 +211,6 @@ export function SourceHistory({ record, idx, dir }: { record: AnyRecord; idx: In
           </section>
         )}
       </div>
-    </Disclosure>
+    </More>
   );
 }

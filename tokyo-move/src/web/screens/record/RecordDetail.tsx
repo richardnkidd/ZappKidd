@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { displayTitle, keyLookup } from '@shared/plain';
 import { useNavigate, useParams, type Location } from 'react-router';
 import { Button, ButtonLink } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
@@ -22,7 +23,7 @@ function RecordBody({ id, variant }: { id: string; variant: 'page' | 'panel' }) 
         if (!record) {
           return (
             <EmptyState icon="file" title="We couldn’t find that item." action={<ButtonLink to="/plan" variant="primary">Back to the plan</ButtonLink>}>
-              It may have been removed, or it may be a private note that belongs to someone else.
+              It may have been removed.
             </EmptyState>
           );
         }
@@ -36,7 +37,9 @@ function RecordBody({ id, variant }: { id: string; variant: 'page' | 'panel' }) 
 
 function useTitle(id: string): string {
   const { idx } = useSnapshot();
-  return idx?.byId.get(id)?.title ?? 'Details';
+  const lookup = useMemo(() => keyLookup(idx?.byKey), [idx]);
+  const rec = idx?.byId.get(id);
+  return rec ? displayTitle(rec, lookup) : 'Details';
 }
 
 /** Full-page record detail (phones, direct links). */

@@ -347,7 +347,7 @@ test.describe('Timeline chart', () => {
     await expect(table).toBeVisible();
     await expect(table.getByRole('columnheader')).toHaveText(['Date', 'What', 'Who', 'Kind of date']);
     await expect(table.getByRole('link', { name: 'Verify both passports and renewal outcomes' })).toBeVisible();
-    await expect(page.getByText(/no date yet; the chart shows where their phase puts them/)).toBeVisible();
+    await expect(page.getByText(/item has no date yet|items have no date yet/)).toBeVisible();
     await expectNoPageScroll(page, 'table');
 
     await layout.getByRole('button', { name: 'Chart' }).click();

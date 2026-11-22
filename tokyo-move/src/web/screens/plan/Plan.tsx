@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { useSearchParams } from 'react-router';
 import { DataGate } from '../../components/DataGate';
 import { SegmentedControl } from '../../components/Controls';
+import { Button } from '../../components/Controls';
 import { EmptyState, PageTitle, Card } from '../../components/Layout';
 import { Skeleton } from '../../components/Layout';
 import {
@@ -11,6 +12,7 @@ import {
   filterPlanItems,
   parseFilters,
   PLAN_VIEWS,
+  quickFilterOf,
   serializeFilters,
   type PlanFilters,
   type PlanView,
@@ -23,8 +25,8 @@ import { WorkloadLine } from './WorkloadLine';
 import { BoardView, ListView, TimelineView, WorkstreamView } from './views';
 
 const VIEW_OPTIONS = [
-  { value: 'workstream' as const, label: 'By area', icon: 'rows' as const },
-  { value: 'list' as const, label: 'List', icon: 'list' as const },
+  { value: 'workstream' as const, label: 'List', icon: 'rows' as const },
+  { value: 'list' as const, label: 'By date', icon: 'list' as const },
   { value: 'board' as const, label: 'Board', icon: 'board' as const },
   { value: 'timeline' as const, label: 'Timeline', icon: 'timeline' as const },
 ];
@@ -60,7 +62,7 @@ export function Plan() {
 
   return (
     <div className="page plan">
-      <PageTitle kicker="Everything that has to happen">Plan</PageTitle>
+      <PageTitle>Plan</PageTitle>
       <SegmentedControl label="Plan view" value={view} options={VIEW_OPTIONS} onChange={setView} className="plan-views" />
       <DataGate skeleton={<Card><Skeleton lines={5} /></Card>}>
         {({ snapshot, idx, dir }) => {
@@ -78,27 +80,21 @@ export function Plan() {
                 activeCount={activeFilterCount(filters)}
                 shown={shown.length}
                 total={all.length}
-              />
-              <WorkloadLine idx={idx} dir={dir} />
-              {filters.hideOptional && hiddenOptional > 0 && (
-                <p className="faint small plan-note">
-                  {hiddenOptional} optional future {hiddenOptional === 1 ? 'item is' : 'items are'} hidden because they are not part of the move.{' '}
-                  <Link to="/future">See Future work</Link>
-                </p>
-              )}
+                hiddenOptional={hiddenOptional}
+              >
+                <WorkloadLine idx={idx} dir={dir} />
+              </PlanFilterBar>
               <h2 className="visually-hidden">{VIEW_OPTIONS.find((o) => o.value === view)?.label}</h2>
               {shown.length === 0 ? (
                 <Card>
-                  <EmptyState icon="plan" title="Nothing matches these filters.">
-                    Try clearing a filter to see more of the plan.
-                  </EmptyState>
+                  <EmptyState icon="plan" title="Nothing matches." action={<Button variant="secondary" onClick={() => update({ ...DEFAULT_FILTERS }, view)}>Show everything</Button>} />
                 </Card>
               ) : view === 'workstream' ? (
-                <WorkstreamView items={shown} idx={idx} today={today} />
+                <WorkstreamView items={shown} idx={idx} today={today} filtered={quickFilterOf(filters) !== 'all'} />
               ) : view === 'list' ? (
-                <ListView items={shown} dir={dir} today={today} />
+                <ListView items={shown} idx={idx} today={today} />
               ) : view === 'board' ? (
-                <BoardView items={shown} today={today} expanded={expandedBoard} setExpanded={setExpandedBoard} />
+                <BoardView items={shown} idx={idx} today={today} expanded={expandedBoard} setExpanded={setExpandedBoard} />
               ) : (
                 <TimelineView items={shown} idx={idx} dir={dir} today={today} settings={snapshot.settings} />
               )}

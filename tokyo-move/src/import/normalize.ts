@@ -12,6 +12,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { addCalendarDays, compareCivil, diffDays, isCivilDate } from '../shared/dates';
 import type { TravelerGateConfig } from '../shared/engine-contracts';
+import { questionStatusFor } from '../shared/questions';
 import type {
   AnchorData,
   ArrivalData,
@@ -619,7 +620,7 @@ export function parseSourcePackage(dir: string, opts: ParseOptions = {}): Import
       local_note: cov?.local_note ? cov.local_note : null,
       relevance: [...new Set(relevance)],
     };
-    const status = disposition === 'already_answered' ? 'answered' : disposition === 'not_applicable' ? 'not_applicable' : disposition === 'explicitly_excluded' ? 'excluded' : 'open';
+    const status = questionStatusFor(disposition);
     if (data.workstream_key && !wsKeys.has(data.workstream_key)) danglingRefs.push({ record: `question:${key}`, field: 'data.workstream_key', ref: data.workstream_key });
     return mk('question', key, data.topic || key, status, data, r, { owner: owner.owner, owner_proposed: owner.owner_proposed });
   });

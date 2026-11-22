@@ -5,6 +5,7 @@ import { HttpError, conflictError, forbidden, notFound, validationError } from '
 import { parseWith, type ValidationIssue } from '../http/validate';
 import { listPeople } from '../auth/users';
 import { listAudit } from './audit';
+import { questionStatusFor } from '../../shared/questions';
 import { awaitingText, evaluateDecision, requiredApprovers } from './decisions';
 import { taskLinkFromRow } from './task-links-repo';
 import { importChangesForRecord } from './import-service';
@@ -349,6 +350,14 @@ export function patchRecord(deps: Deps, ctx: AuthContext, id: string, rawBody: u
       }
       if (row.type === 'decision' && (row.status === 'approved' || row.status === 'proposed')) {
         applyDecisionEvaluation(next, people, deps.now());
+      }
+      if (row.type === 'question' && Object.prototype.hasOwnProperty.call(incoming, 'disposition')) {
+        // The status follows the disposition, exactly as the importer derives it, so every count agrees.
+        const status = questionStatusFor(merged.disposition as string);
+        if (status !== cur.status) {
+          next.status = status;
+          edited.add('status');
+        }
       }
     }
 

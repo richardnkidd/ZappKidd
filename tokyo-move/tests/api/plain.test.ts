@@ -324,4 +324,38 @@ describe('answering a question from anywhere', () => {
     expect(stale.status).toBe(409);
     expect((await avery.patch(`/api/records/${q.id}`, { baseVersion: res.body.record.version, changes: { data: { answer: 'x'.repeat(5001) } } })).status).toBe(422);
   });
+
+  it('derives the status from the disposition, the same way the importer does', async () => {
+    const h = await harness();
+    const avery = await loginAs(h, 'avery');
+    const openCount = async () => ((await avery.get('/api/snapshot')).body.records as any[]).filter((r) => r.type === 'question' && r.status === 'open').length;
+    const before = await openCount();
+    let q = (await avery.get('/api/records/question:Q007')).body.record;
+    expect(q.status).toBe('open');
+
+    const steps: [string, string][] = [
+      ['already_answered', 'answered'],
+      ['not_applicable', 'not_applicable'],
+      ['explicitly_excluded', 'excluded'],
+      ['waiting_blocked', 'open'],
+      ['carry_forward', 'open'],
+      ['question', 'open'],
+    ];
+    for (const [disposition, status] of steps) {
+      const res = await avery.patch(`/api/records/${q.id}`, { baseVersion: q.version, changes: { data: { disposition } } });
+      expect(res.status, disposition).toBe(200);
+      q = res.body.record;
+      expect(q.status, disposition).toBe(status);
+    }
+
+    // Answering takes it out of the open count everywhere (the snapshot is what every screen counts from).
+    const answered = await avery.patch(`/api/records/${q.id}`, { baseVersion: q.version, changes: { data: { disposition: 'already_answered', answer: 'Yes.' } } });
+    expect(answered.body.record.status).toBe('answered');
+    expect(answered.body.record.locally_edited).toContain('status');
+    expect(await openCount()).toBe(before - 1);
+
+    // Editing only the answer text leaves the status alone.
+    const edit = await avery.patch(`/api/records/${q.id}`, { baseVersion: answered.body.record.version, changes: { data: { answer: 'Yes, both.' } } });
+    expect(edit.body.record.status).toBe('answered');
+  });
 });

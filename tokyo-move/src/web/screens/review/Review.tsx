@@ -30,7 +30,7 @@ import { useWrite } from '../../state/useWrite';
 import { approvalSummary } from '../decide/decisionText';
 import { ApproveDialog, ReasonDialog } from '../decide/decisionDialogs';
 import { relevanceScore } from '../decide/QuestionsTab';
-import { isPlanQuestion } from '../../lib/questions';
+import { isPlanQuestion, questionState } from '../../lib/questions';
 import { currentPhase } from '../../lib/home';
 
 const STEPS = REVIEW_STEP_TITLES;
@@ -368,7 +368,8 @@ function StepQuestions({ idx, dir, session, setSession }: { idx: Indexes; dir: D
     const keys = new Set<string>();
     if (phase) for (const m of idx.milestones) if (m.data?.phase === phase && isOpenWork(m.status)) keys.add(m.key);
     return idx.questions
-      .filter((q) => (q.data?.disposition ?? 'question') === 'question' && isPlanQuestion(q))
+      // Open by the same rule the Questions tab counts with; carried-forward and waiting ones cannot be answered in a review.
+      .filter((q) => questionState(q) === 'open' && (q.data?.disposition ?? 'question') === 'question' && isPlanQuestion(q))
       .map((q) => ({ q, score: relevanceScore(q, idx, dir, keys) }))
       .sort((a, b) => b.score - a.score || a.q.key.localeCompare(b.q.key, undefined, { numeric: true }))
       .slice(0, 5)

@@ -226,7 +226,7 @@ test.describe('Plan: views and filters', () => {
     await heads.nth(index).click();
     await expect(heads.nth(index)).toHaveAttribute('aria-expanded', 'true');
     // Leave the screen and come back: the choice is remembered for this visit only.
-    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Home' }).click();
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Home', exact: true }).click();
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await page.goto('/plan?view=workstream');
     await loaded(page);

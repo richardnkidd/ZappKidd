@@ -282,11 +282,19 @@ test.describe('Decide', () => {
     for (let i = 1; i <= 4; i += 1) await newDecision(avery, `Extra choice ${i}`, testInfo);
     await signIn(page, 'avery', '/');
     await loaded(page);
-    const section = page.getByRole('region', { name: /^Needs a decision/ });
-    await expect(section.getByRole('listitem')).toHaveCount(3);
-    await expect(section.getByRole('link', { name: /\d+ more decisions? waiting in Decide/ })).toBeVisible();
-    // The Decide screen itself lists all of them.
-    await section.getByRole('link', { name: /more decisions? waiting in Decide/ }).click();
+    // Home's "Your turn" holds three rows at most, decisions and items together.
+    const section = page.getByRole('region', { name: /^Your turn/ });
+    const decisionRows = section.getByRole('listitem').filter({ has: page.locator('a[href^="/decide"]') });
+    await expect(decisionRows.first()).toBeVisible();
+    const shown = await decisionRows.count();
+    expect(shown).toBeGreaterThanOrEqual(1);
+    expect(shown).toBeLessThanOrEqual(3);
+    expect(await section.getByRole('listitem').count()).toBeLessThanOrEqual(3);
+    // The Decide tab says how many need Avery (at least the four just added), and the Decide screen lists all of them.
+    const tab = page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: /^Decide, \d+ need you$/ });
+    const waiting = Number(/(\d+) need you/.exec((await tab.getAttribute('aria-label')) ?? '')![1]);
+    expect(waiting).toBeGreaterThanOrEqual(4);
+    await tab.click();
     await expect(page.getByRole('heading', { level: 1, name: 'Decide' })).toBeVisible();
     expect(await page.getByRole('region', { name: /^Your turn/ }).getByRole('article').count()).toBeGreaterThan(3);
   });

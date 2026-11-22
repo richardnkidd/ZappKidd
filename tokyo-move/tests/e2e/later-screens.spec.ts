@@ -1,6 +1,6 @@
 import type { Page, TestInfo } from '@playwright/test';
 import { baseUrlFor } from './support/env';
-import { addDays, expect, loaded, test, todayInZone } from './support/fixtures';
+import { addDays, expect, loaded, test, todayInZone, weekdayLabel } from './support/fixtures';
 
 /**
  * The "later" screens: Money, Documents, Contacts & evidence, Arrival, Future work, Data, Settings, the couple review,
@@ -239,7 +239,7 @@ test.describe('Documents', () => {
     await expect(dialog).toHaveCount(0);
     try {
       await card.getByRole('button', { name: /^Details/ }).click();
-      await expect(card.getByRole('list', { name: 'Where this document is' })).toContainText('Oct 27, 2026');
+      await expect(card.getByRole('list', { name: 'Where this document is' })).toContainText(/Tue, Oct 27(, 2026)?/);
       const after = await avery.record(before.id);
       expect(JSON.stringify(after.data)).toContain(marker);
     } finally {
@@ -412,7 +412,7 @@ test.describe('Arrival and living in Tokyo', () => {
       await item.getByRole('button', { name: /^Update status/ }).click();
       const dialog = page.getByRole('dialog', { name: new RegExp(`Update ${who}.s progress`) });
       await expect(dialog).toBeVisible();
-      await dialog.getByRole('radio', { name: /^In progress/ }).check();
+      await dialog.getByRole('radio', { name: /^Doing/ }).check();
       await dialog.getByRole('button', { name: 'Save status' }).click();
       await expect(dialog).toHaveCount(0);
 
@@ -470,7 +470,7 @@ test.describe('Future work', () => {
     // Future work stays off Home's plan sections (the change log may mention an edit, so it is not counted).
     await page.goto('/');
     await loaded(page);
-    for (const section of [/^This week/, /^Needs a decision/, /^Blocked/, /^Coming up/, /^Who.s ready/]) {
+    for (const section of [/^Your turn/, /^Stuck/, /^Travellers/]) {
       const region = page.getByRole('region', { name: section }).or(page.getByRole('navigation', { name: section }));
       if ((await region.count()) > 0) await expect(region).not.toContainText(title);
     }
@@ -642,8 +642,10 @@ test.describe('Couple review', () => {
     // The review changed nothing about the plan itself.
     const planAfter = JSON.stringify((await avery.snapshot()).records.filter((r: any) => r.type === 'milestone').map((r: any) => [r.id, r.status, r.owner]));
     expect(planAfter).toBe(plan);
+    // Home stays one screen ("Your turn", "Stuck", "Travellers"); the review's own page is where it is reported.
     await page.goto('/');
-    await expect(page.getByRole('region', { name: /^Since your last review/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Your turn/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Since your last review/ })).toHaveCount(0);
 
     // The review page now shows it as the last review, and its summary is titled by the day.
     await page.goto('/review');
@@ -654,6 +656,9 @@ test.describe('Couple review', () => {
     await last.getByRole('link', { name: 'Read the whole summary' }).click();
     // (a side panel on wide screens, a page on phones: either way the heading names the day)
     await expect(page.getByRole('heading', { name: /^Couple review · [A-Z][a-z]{2}, [A-Z][a-z]{2} \d{1,2}$/ })).toBeVisible();
+    // ...and that day is today, in the household's zone (the review just saved).
+    const day = todayInZone(zone);
+    await expect(page.getByRole('heading', { name: new RegExp(`^Couple review · (${weekdayLabel(day)}|${weekdayLabel(addDays(day, 1))})$`) })).toBeVisible();
   });
 });
 

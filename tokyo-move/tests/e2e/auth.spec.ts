@@ -1,4 +1,4 @@
-import { expect, loaded, openAccount, openRecord, test, unique } from './support/fixtures';
+import { expect, loaded, openAccount, openMore, openRecord, test, unique } from './support/fixtures';
 
 const DEMO_BANNER = /Demo\s*[—–-]\s*fictional data/i;
 
@@ -45,6 +45,8 @@ test.describe('sign-in with a development identity', () => {
     await page.getByRole('button', { name: 'Avery', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
     await openRecord(page, 'milestone:W06', /Verify both passports/);
+    // Notes sit behind a "Notes" More button; its name carries the count once there are some.
+    await openMore(page, /^Notes( \(\d+\))?$/);
 
     const notes = page.getByRole('region', { name: /^Notes/ });
     await notes.getByRole('textbox', { name: 'Add a note' }).fill(sharedText);
@@ -69,6 +71,12 @@ test.describe('sign-in with a development identity', () => {
 
     // Jun sees the same plan (shared record) and the household note, but never the private one.
     await openRecord(page, 'milestone:W06', /Verify both passports/);
+    // Jun's count leaves out Avery's private notes, so the button itself does not leak that they exist.
+    const notesOn = async (who: 'avery' | 'jun') =>
+      ((await (await api(who)).snapshot()).records as any[]).filter((r) => r.type === 'note' && r.data?.linked_record_id === 'milestone:W06').length;
+    const [junCount, averyCount] = [await notesOn('jun'), await notesOn('avery')];
+    expect(junCount).toBeLessThan(averyCount);
+    await openMore(page, new RegExp(`^Notes \\(${junCount}\\)$`));
     const junNotes = page.getByRole('region', { name: /^Notes/ });
     await expect(junNotes.getByText(sharedText)).toBeVisible();
     await expect(page.getByText(privateText)).toHaveCount(0);

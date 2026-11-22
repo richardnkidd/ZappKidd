@@ -174,3 +174,11 @@ export async function openAccount(page: Page, name: string) {
   await expect(dialog).toBeVisible();
   return dialog;
 }
+
+/** Open a "More" style disclosure (a button with aria-expanded) if it is closed. Matches the button by name. */
+export async function openMore(page: Page, name: RegExp | string) {
+  const btn = page.getByRole('button', { name }).first();
+  await expect(btn).toBeVisible();
+  if ((await btn.getAttribute('aria-expanded')) === 'false') await btn.click();
+  await expect(btn).toHaveAttribute('aria-expanded', 'true');
+}

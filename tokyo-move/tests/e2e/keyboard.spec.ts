@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, loaded, openAccount, openRecord, test } from './support/fixtures';
+import { expect, loaded, openAccount, openMore, openRecord, test } from './support/fixtures';
 
 /** Everything a keyboard user needs: skip link, reachable navigation and actions, visible focus, dialogs that trap and return focus. */
 
@@ -75,13 +75,21 @@ test.describe('Keyboard', () => {
   test('Tab reaches the main navigation and each destination shows a visible focus ring', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/');
     await loaded(page);
-    const names = ['Home', 'Plan', 'Decide', 'Money', 'More'];
+    // The Decide tab carries a count badge in its name while something needs this person ("Decide, 2 need you").
+    const names: [string, RegExp][] = [
+      ['Home', /^Home$/],
+      ['Plan', /^Plan$/],
+      ['Decide', /^Decide(, \d+ needs? you)?$/],
+      ['Money', /^Money$/],
+      ['More', /^More$/],
+    ];
     const nav = page.getByRole('navigation', { name: 'Main' });
-    for (const name of names) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
+    for (const [, name] of names) await expect(nav.getByRole('link', { name })).toBeVisible();
 
     const visited: Focused[] = [];
-    for (const name of names) {
-      const seen = await tabUntil(page, (f) => f.tag === 'A' && f.name === name, 40);
+    for (const [label, pattern] of names) {
+      const name = label;
+      const seen = await tabUntil(page, (f) => f.tag === 'A' && pattern.test(f.name), 40);
       const last = seen[seen.length - 1]!;
       visited.push(last);
       expect(hasVisibleFocusRing(last), `${name}: focus is visible (outline ${last.outlineStyle} ${last.outlineWidth}px)`).toBe(true);
@@ -143,6 +151,8 @@ test.describe('Keyboard', () => {
       name: 'the propose-an-action dialog',
       open: async (page) => {
         await openRecord(page, 'milestone:W06', /Verify both passports/);
+        // Proposing an action sits behind the "Task list" More button on a record page.
+        await openMore(page, /^Task list/);
         const opener = page.getByRole('button', { name: 'Propose an action' });
         await keyboardFocus(page, opener);
         await page.keyboard.press('Space');

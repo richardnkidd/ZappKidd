@@ -153,7 +153,8 @@ test.describe('When things go wrong', () => {
     await openRecord(page, id);
     await page.getByRole('button', { name: 'Edit next action' }).click();
     await page.getByRole('button', { name: 'Discard' }).click();
-    await nav.getByRole('link', { name: 'Decide', exact: true }).click();
+    // The Decide tab's name carries its count badge while something needs this person.
+    await nav.getByRole('link', { name: /^Decide(, \d+ needs? you)?$/ }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'Decide' })).toBeVisible();
     await expect(guard).toHaveCount(0);
   });

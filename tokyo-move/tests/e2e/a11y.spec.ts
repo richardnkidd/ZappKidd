@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, loaded, openAccount, openRecord, test } from './support/fixtures';
+import { expect, loaded, openAccount, openMore, openRecord, test } from './support/fixtures';
 import { FIXED_ROUTES, recordRoutes } from './support/routes';
 
 /**
@@ -247,6 +247,8 @@ test.describe('Accessibility smoke', () => {
       ['Change status', 'Change status'],
       ['Propose an action', 'Propose an action for your task list'],
     ] as const) {
+      // Proposing an action sits behind the "Task list" More button on a record page.
+      if (opener === 'Propose an action') await openMore(page, /^Task list/);
       await page.getByRole('button', { name: opener }).click();
       const dialog = page.getByRole('dialog', { name: dialogName });
       await expect(dialog).toBeVisible();
@@ -262,14 +264,21 @@ test.describe('Accessibility smoke', () => {
 
     await page.goto('/decide');
     await settle(page);
-    const first = page.getByRole('article').first();
-    await first.getByRole('button', { name: 'Review options and decide' }).click(); // the approve buttons appear once the options do
-    await first.getByRole('button', { name: /^Approve as|Change my approval/ }).click();
-    const approve = page.getByRole('dialog', { name: /^Approve as/ });
-    await expect(approve).toBeVisible();
-    await check(page, 'approve dialog', { scope: '[role="dialog"]' });
+    // Choosing an option has no dialog any more (it is tapped on the card); "Not now" asks why, in a dialog.
+    const opener = page.getByRole('article').filter({ has: page.getByRole('button', { name: 'Decide', exact: true }) }).first();
+    // Hold on to the card itself: once it opens, its "Decide" button is gone.
+    const first = page.locator(`article[id="${await opener.getAttribute('id')}"]`);
+    await first.getByRole('button', { name: 'Decide', exact: true }).click();
+    await first.getByRole('button', { name: 'Not now', exact: true }).click();
+    const notNow = page.getByRole('dialog', { name: 'Not now' });
+    await expect(notNow).toBeVisible();
+    await check(page, 'not now dialog', { scope: '[role="dialog"]' });
+    const box = await notNow.boundingBox();
+    const vw = page.viewportSize()!.width;
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(vw + 1);
     await page.keyboard.press('Escape');
-    await expect(approve).toHaveCount(0);
+    await expect(notNow).toHaveCount(0);
   });
 
   test('text can be enlarged to 200% without losing content or scrolling sideways', async ({ page, signIn }) => {
@@ -368,9 +377,14 @@ test.describe('Accessibility smoke', () => {
           if (!el || el === document.body || el.closest('.app-nav')) return null;
           const r = el.getBoundingClientRect();
           if (r.height === 0 || r.bottom < 0 || r.top > innerHeight) return null;
-          // What is on top at the centre of the focused control (clamped into the window)?
+          // What is on top at the centre of the focused control (clamped into the window)? A control that is taller
+          // than the window (the phone timeline is one tall region that scrolls sideways) can never have its centre on
+          // screen, so for that one case the centre of the part that is on screen is used instead.
           const x = Math.min(Math.max(r.x + r.width / 2, 1), innerWidth - 1);
-          const y = Math.min(Math.max(r.y + r.height / 2, 1), innerHeight - 1);
+          const tall = r.height > innerHeight;
+          const y = tall
+            ? (Math.max(r.top, 0) + Math.min(r.bottom, innerHeight)) / 2
+            : Math.min(Math.max(r.y + r.height / 2, 1), innerHeight - 1);
           const top = document.elementFromPoint(x, y);
           let bar: Element | null = null;
           for (let e: Element | null = top; e && e !== document.documentElement; e = e.parentElement) {

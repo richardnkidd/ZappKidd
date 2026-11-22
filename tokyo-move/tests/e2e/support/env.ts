@@ -14,7 +14,12 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-export const E2E_PORTS = { main: 8920, snapshot: 8921, safety: 8922, failcreate: 8923 } as const;
+/**
+ * Set E2E_PORT_BASE to run a second copy of the suite at the same time (for example from another checkout):
+ * the four servers then use base, base+1, base+2 and base+3, and each keeps its own throw-away data folder.
+ */
+const PORT_BASE = Number(process.env.E2E_PORT_BASE ?? 8920);
+export const E2E_PORTS = { main: PORT_BASE, snapshot: PORT_BASE + 1, safety: PORT_BASE + 2, failcreate: PORT_BASE + 3 } as const;
 
 export type E2EServer = keyof typeof E2E_PORTS;
 

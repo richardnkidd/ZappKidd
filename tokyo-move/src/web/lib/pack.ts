@@ -9,6 +9,7 @@ import type { ComputedDeadline } from '@shared/engine-contracts';
 import { ARRIVAL_WINDOW_LABEL, DEADLINE_KIND_LABEL, VERIFICATION_LABEL } from '@shared/labels';
 import type { ArrivalData, ContactData, DeadlineRuleData, DocumentData, Sensitivity as DataSensitivity } from '@shared/types';
 import { civil, safeHref } from './format';
+import { displayTitle, keyLookup, stripCodes } from '@shared/plain';
 import { splitTitleAction } from './prose';
 import { dataOf, type AnyRecord, type Directory, type Indexes } from './records';
 
@@ -37,10 +38,14 @@ export interface PackSection {
   title: string;
   empty: string;
   items: PackItem[];
+  /** What every row of the section has in common, said once ("Held by: Each document holder"). */
+  note?: string | null;
 }
 
 export interface Pack {
   personId: string;
+  /** The starting point every arrival step counts from, when they all share it ("Actual landing"). */
+  from: string | null;
   sections: PackSection[];
   sensitive: Record<Sensitivity, PackItem[]>;
 }
@@ -81,6 +86,7 @@ export function buildPack(idx: Indexes, dir: Directory, deadlines: ComputedDeadl
   };
   const keep = <T,>(x: T | null): x is T => x !== null;
   const person = dir.personById(personId);
+  const lookup = keyLookup(idx.byKey);
 
   // Arrival checks, grouped by window. The action text is printed once; the practical checks follow it.
   const arrivals = idx.all
@@ -89,14 +95,21 @@ export function buildPack(idx: Indexes, dir: Directory, deadlines: ComputedDeadl
       const scope = dataOf<ArrivalData>(r).traveler_scope ?? [];
       return scope.length === 0 || scope.includes(personId);
     });
+  const triggerOf = (r: AnyRecord): string | null => {
+    const d = dataOf<ArrivalData>(r);
+    const split = splitTitleAction(displayTitle(r, lookup), d.action);
+    return d.trigger && !same(d.trigger, split.title) && !same(d.trigger, d.action) ? stripCodes(d.trigger, lookup) : null;
+  };
+  const triggers = new Set(arrivals.map(triggerOf));
+  const from = arrivals.length > 1 && triggers.size === 1 ? ([...triggers][0] ?? null) : null;
   const forWindow = (key: string): PackItem[] =>
     arrivals
       .filter((r) => (dataOf<ArrivalData>(r).window_key ?? 'ongoing') === key)
       .map((r) => {
         const d = dataOf<ArrivalData>(r);
-        const split = splitTitleAction(r.title, d.action);
-        const trigger = d.trigger && !same(d.trigger, split.title) && !same(d.trigger, d.action) ? [`When: ${d.trigger}`] : [];
-        return route({ id: r.id, title: split.title, detail: split.detail, check: checkText(d.review_note), meta: trigger }, r);
+        const split = splitTitleAction(displayTitle(r, lookup), d.action);
+        const trigger = triggerOf(r);
+        return route({ id: r.id, title: split.title, detail: split.detail ? stripCodes(split.detail, lookup) : null, check: checkText(d.review_note), meta: trigger && !from ? [`When: ${trigger}`] : [] }, r);
       })
       .filter(keep);
 
@@ -146,12 +159,21 @@ export function buildPack(idx: Indexes, dir: Directory, deadlines: ComputedDeadl
     const scope = d.traveler_scope ?? [];
     return scope.length === 0 || scope.includes(personId);
   });
+  // Who holds a document and its status are said once above the rows when every row is the same.
+  const holderOf = (d: Partial<DocumentData>) => stripCodes((d.custodian ?? '').replace(/\s*\((?:proposed|tbc|draft)\)/gi, ''), lookup).trim();
+  const statusOf = (r: AnyRecord) => r.status.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  const holders = new Set(carried.map((r) => holderOf(dataOf<DocumentData>(r))));
+  const statuses = new Set(carried.map(statusOf));
+  const commonHolder = carried.length > 1 && holders.size === 1 ? ([...holders][0] ?? '') : '';
+  const commonStatus = carried.length > 1 && statuses.size === 1 ? [...statuses][0]! : '';
+  const carryNote = [commonHolder ? `Held by: ${commonHolder}` : '', commonStatus ? `All: ${commonStatus}` : ''].filter(Boolean).join(' · ') || null;
   const carry = carried
     .map((r) => {
       const d = dataOf<DocumentData>(r);
       const href = safeHref(d.link);
+      const holder = holderOf(d);
       return route(
-        { id: r.id, title: r.title, detail: d.custodian ? `Held by: ${d.custodian}` : null, check: null, meta: [r.status.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())], link: href },
+        { id: r.id, title: displayTitle(r, lookup), detail: holder && !commonHolder ? `Held by: ${holder}` : null, check: null, meta: commonStatus ? [] : [statusOf(r)], link: href },
         r,
       );
     })
@@ -167,14 +189,15 @@ export function buildPack(idx: Indexes, dir: Directory, deadlines: ComputedDeadl
     .map(({ r, d }) => route({ id: r.id, title: `${d.name} — ${d.role}`.replace(/ — $/, ''), detail: reachableVia(d) }, r))
     .filter(keep);
 
-  const section = (key: string, title: string, items: PackItem[], empty: string): PackSection => ({ key, title, items, empty });
+  const section = (key: string, title: string, items: PackItem[], empty: string, note: string | null = null): PackSection => ({ key, title, items, empty, note });
   return {
     personId,
+    from,
     sections: [
       section('arrival_day', ARRIVAL_WINDOW_LABEL.arrival_day ?? 'Arrival day', forWindow('arrival_day'), 'Nothing listed for arrival day.'),
       section('first_week', 'First week', forWindow('first_week'), 'Nothing listed for the first week.'),
       section('first_30', 'First 30 days', [...forWindow('day_30'), ...dated], 'Nothing listed for the first 30 days yet.'),
-      section('documents', 'Documents to carry', carry, 'No documents are marked to carry on arrival.'),
+      section('documents', 'Documents to carry', carry, 'No documents are marked to carry on arrival.', carry.length > 0 ? carryNote : null),
       section('contacts', 'Who to call in Tokyo', contacts, 'No contacts with a phone number or email are saved yet.'),
     ],
     sensitive,

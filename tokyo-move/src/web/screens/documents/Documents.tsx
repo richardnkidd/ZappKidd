@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { isCivilDate } from '@shared/dates';
 import type { DocumentData, Sensitivity } from '@shared/types';
-import { Chip } from '../../components/Badges';
-import { Disclosure } from '../../components/Disclosure';
+import { StatusBadge } from '../../components/Badges';
+import { InfoNote } from '../../components/InfoNote';
+import { More } from '../../components/More';
 import { RecordLink } from '../../components/RecordLink';
 import { diffDays } from '@shared/dates';
 import { isOpenWork } from '../../lib/records';
 import { whenFor } from '../../lib/when';
 import { useData } from '../../state/data';
-import { Button, Field, FilterChips, Select, TextArea, TextInput } from '../../components/Controls';
+import { Button, Field, Select, TextArea, TextInput } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { Dialog } from '../../components/Dialog';
 import { ConflictBanner } from '../../components/Feedback';
@@ -17,6 +18,8 @@ import { LinkedKeys } from '../../components/LinkedKeys';
 import { useDir } from '../../components/People';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
 import { civil, dayIn, humanizeKey, safeHref } from '../../lib/format';
+import { displayTitle, keyLookup, stripCodes } from '@shared/plain';
+import { WORK_STATUS_LABEL } from '@shared/labels';
 import { usePrefs } from '../../state/prefs';
 import { dataOf, type AnyRecord, type Directory, type Indexes } from '../../lib/records';
 import { useSnapshot } from '../../state/snapshot';
@@ -50,24 +53,64 @@ function Lifecycle({ d }: { d: Partial<DocumentData> }) {
   );
 }
 
-export function DocumentCard({ record, idx, dir, headingLevel = 3, compact = false }: { record: AnyRecord; idx: Indexes; dir: Directory; headingLevel?: 2 | 3; compact?: boolean }) {
+/** A document's status as a small icon with its words (never colour alone). */
+function DocStatus({ status }: { status: string }) {
+  if (status in WORK_STATUS_LABEL) return <StatusBadge status={status} />;
+  return (
+    <span className="status-icon status-icon--neutral">
+      <Icon name="circle" size={18} />
+      <span className="status-icon__label">{humanizeKey(status)}</span>
+    </span>
+  );
+}
+
+/** Who holds a document. Imported wording can carry a plan label like "(proposed)"; it never reaches the screen. */
+export function holderOf(d: Partial<DocumentData>): string {
+  return stripCodes((d.custodian ?? '').replace(/\s*\((?:proposed|tbc|draft)\)/gi, '')).trim();
+}
+
+export function DocumentCard({
+  record,
+  idx,
+  dir,
+  headingLevel = 3,
+  compact = false,
+  commonHolder = null,
+}: {
+  record: AnyRecord;
+  idx: Indexes;
+  dir: Directory;
+  headingLevel?: 2 | 3;
+  compact?: boolean;
+  /** The holder every other row shares. It is stated once above the list, so it is left off this row. */
+  commonHolder?: string | null;
+}) {
   const d = dataOf<DocumentData>(record);
   const [edit, setEdit] = useState(false);
   const href = safeHref(d.link);
   const scope = d.traveler_scope ?? [];
   const H = headingLevel === 2 ? 'h2' : 'h3';
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
+  const title = displayTitle(record, lookup);
+  const holder = holderOf(d);
+  const neededBy = stripCodes(d.needed_by ?? '', lookup).trim();
+  const forWhom = scope.length ? scope.map((p) => dir.nameOf(p)).join(' and ') : d.for_whom || 'Household';
 
   const details = (
     <>
       <Lifecycle d={d} />
       <dl className="facts facts--tight">
         <div className="fact">
+          <dt>For</dt>
+          <dd>{forWhom}</dd>
+        </div>
+        <div className="fact">
           <dt>Who holds it</dt>
-          <dd>{d.custodian || 'Not decided yet'}</dd>
+          <dd>{holder || 'Not decided yet'}</dd>
         </div>
         <div className="fact">
           <dt>Needed by</dt>
-          <dd>{d.needed_by || 'Not known yet'}</dd>
+          <dd>{neededBy || 'Not known yet'}</dd>
         </div>
         <div className="fact">
           <dt>Expires</dt>
@@ -75,7 +118,7 @@ export function DocumentCard({ record, idx, dir, headingLevel = 3, compact = fal
         </div>
         <div className="fact">
           <dt>Check again when</dt>
-          <dd>{d.refresh_trigger || 'Not set'}</dd>
+          <dd>{stripCodes(d.refresh_trigger ?? '', lookup) || 'Not set'}</dd>
         </div>
         <div className="fact fact--wide">
           <dt>Restricted link</dt>
@@ -92,13 +135,13 @@ export function DocumentCard({ record, idx, dir, headingLevel = 3, compact = fal
         {d.completion_criteria && (
           <div className="fact fact--wide">
             <dt>Done when</dt>
-            <dd className="preline">{d.completion_criteria}</dd>
+            <dd className="preline">{stripCodes(d.completion_criteria, lookup)}</dd>
           </div>
         )}
       </dl>
-      {d.privacy && (
+      {d.privacy && !compact && (
         <p className="small muted">
-          <Icon name="lock" size={13} /> {d.privacy}
+          <Icon name="lock" size={14} /> {stripCodes(d.privacy, lookup)}
         </p>
       )}
       <LinkedKeys keys={d.linked_records} idx={idx} label="Needed for" />
@@ -106,44 +149,36 @@ export function DocumentCard({ record, idx, dir, headingLevel = 3, compact = fal
   );
 
   if (compact) {
+    const showHolder = holder !== '' && holder !== commonHolder;
     return (
-      <Card as="article" className="doc doc--row" aria-labelledby={`doc-${record.key}`}>
-        <div className="doc__row">
-          <div className="doc__row-main">
-            <H id={`doc-${record.key}`} className="doc__title">
-              <RecordLink id={record.id}>{record.title}</RecordLink>
-            </H>
-            <div className="item__meta">
-              <Chip small tone="neutral">
-                {humanizeKey(record.status)}
-              </Chip>
-              <Chip small>{scope.length ? scope.map((p) => dir.nameOf(p)).join(' and ') : d.for_whom || 'Household'}</Chip>
-              <span className="small muted">Held by: {d.custodian || 'not decided yet'}</span>
-              {d.needed_by && <span className="small muted">Needed by: {d.needed_by}</span>}
-            </div>
+      <div className="doc-row" role="group" aria-labelledby={`doc-${record.key}`}>
+        <div className="row-1">
+          <div className="row-1__main">
+            <p id={`doc-${record.key}`} className="doc-row__title">
+              <RecordLink id={record.id}>{title}</RecordLink>
+            </p>
+            <p className="doc-row__meta">
+              <DocStatus status={record.status} />
+              {showHolder && <span className="muted"> Held by {holder}</span>}
+            </p>
           </div>
-          <Button variant="secondary" small icon="pencil" onClick={() => setEdit(true)} aria-label={`Update status: ${record.title}`}>
-            Update status
+          <Button variant="quiet" small className="row-1__side" onClick={() => setEdit(true)} aria-label={`Update status: ${title}`}>
+            Update
           </Button>
         </div>
-        <Disclosure title="Details" level={4} className="disclosure--flat">
+        <More label="Details" hint={title}>
           <div className="stack">{details}</div>
-        </Disclosure>
+        </More>
         {edit && <DocumentDialog record={record} onClose={() => setEdit(false)} />}
-      </Card>
+      </div>
     );
   }
 
   return (
     <Card as="article" className="doc" aria-labelledby={`doc-${record.key}`}>
-      <div className="item__meta">
-        <Chip small tone="neutral">
-          {humanizeKey(record.status)}
-        </Chip>
-        <Chip small>{scope.length ? scope.map((p) => dir.nameOf(p)).join(' and ') : d.for_whom || 'Household'}</Chip>
-      </div>
+      <DocStatus status={record.status} />
       <H id={`doc-${record.key}`} className="doc__title">
-        {record.title}
+        {title}
       </H>
       {details}
       <div className="row-actions">
@@ -240,7 +275,7 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
       open
       onClose={onClose}
       title="Update this document"
-      description={`${record.title}. Only status, dates, who carries it and a link are kept here — never the document itself.`}
+      description={`${record.title}. Status, dates and a link only. Never the document.`}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>
@@ -263,12 +298,12 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
       <Field label="Check again when">
         <TextArea value={f.refresh_trigger} onChange={set('refresh_trigger')} rows={2} />
       </Field>
-      <Field label="Restricted link" hint="A link to where the original is kept. It must start with https://." error={tried && linkBad ? 'The link must start with https://.' : null}>
+      <Field label="Restricted link" hint="Where the original is kept. Starts with https://." error={tried && linkBad ? 'The link must start with https://.' : null}>
         <TextInput value={f.link} onChange={set('link')} inputMode="url" placeholder="https://" />
       </Field>
       <fieldset className="stack stack--tight">
         <legend>Who carries it on arrival</legend>
-        <p className="small muted">The printable arrival pack lists this document for each person ticked here.</p>
+        <p className="small muted">Listed in their arrival pack.</p>
         {dir.people.map((p) => (
           <label key={p.id} className="choice">
             <input
@@ -280,7 +315,7 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
           </label>
         ))}
       </fieldset>
-      <Field label="How sensitive is it?" hint="Medical, financial and identity papers are left out of the printed arrival pack unless you tick them there.">
+      <Field label="How sensitive is it?" hint="Sensitive papers stay out of the pack unless ticked there.">
         <Select value={sensitivity} onChange={(e) => setSensitivity(e.target.value as typeof sensitivity)}>
           {SENSITIVITY_CHOICES.map((c) => (
             <option key={c.value} value={c.value}>
@@ -300,17 +335,21 @@ function DocumentDialog({ record, onClose }: { record: AnyRecord; onClose: () =>
 export function Documents() {
   return (
     <div className="page docs">
-      <PageTitle kicker="Status and where things are kept">Documents</PageTitle>
+      <PageTitle kicker="Status, and who holds each one">Documents</PageTitle>
       <DataGate>{({ idx, dir }) => <DocumentList idx={idx} dir={dir} />}</DataGate>
     </div>
   );
 }
 
+const FIRST_ROWS = 5;
+
 function DocumentList({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const { today, deadlinesByRecord, deadlines } = useData();
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   const docs = useMemo(() => idx.all.filter((r) => r.type === 'document').sort((a, b) => a.key.localeCompare(b.key, undefined, { numeric: true })), [idx]);
-  const [who, setWho] = useState<string>('all');
-  const [state, setState] = useState<'all' | 'now' | 'not_started'>('all');
+  const [filter, setFilter] = useState<string>('all');
+  const [query, setQuery] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const scopeOf = (r: AnyRecord) => dataOf<DocumentData>(r).traveler_scope ?? [];
 
   /** Started but not finished, or needed by work that is under way or due within a month. */
@@ -326,61 +365,91 @@ function DocumentList({ idx, dir }: { idx: Indexes; dir: Directory }) {
     });
   };
   const notStarted = (r: AnyRecord) => r.status === 'not_started';
+  const matches = (f: string) => (r: AnyRecord) =>
+    f === 'all' ? true : f === 'now' ? needsActionNow(r) : f === 'not_started' ? notStarted(r) : f === 'household' ? scopeOf(r).length === 0 : scopeOf(r).includes(f);
 
-  const byPerson = docs.filter((r) => who === 'all' || (who === 'household' ? scopeOf(r).length === 0 : scopeOf(r).includes(who)));
-  const shown = byPerson.filter((r) => (state === 'now' ? needsActionNow(r) : state === 'not_started' ? notStarted(r) : true));
   useEffect(() => {
-    if (who !== 'all' && who !== 'household' && !dir.personById(who)) setWho('all');
-  }, [who, dir]);
+    if (filter !== 'all' && filter !== 'now' && filter !== 'not_started' && filter !== 'household' && !dir.personById(filter)) setFilter('all');
+  }, [filter, dir]);
+
+  const q = query.trim().toLowerCase();
+  const shown = docs.filter(matches(filter)).filter((r) => q === '' || displayTitle(r, lookup).toLowerCase().includes(q));
+  // The first few rows, then "Show all": only while nothing is being searched or filtered.
+  const narrowed = q !== '' || filter !== 'all';
+  const rows = narrowed || showAll ? shown : shown.slice(0, FIRST_ROWS);
+
+  // One holder shared by most rows is said once above the list, not on every row.
+  const commonHolder = useMemo(() => {
+    const count = new Map<string, number>();
+    for (const r of docs) {
+      const h = holderOf(dataOf<DocumentData>(r));
+      if (h) count.set(h, (count.get(h) ?? 0) + 1);
+    }
+    const top = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
+    return top && top[1] >= 3 && top[1] * 2 > docs.length ? top[0] : null;
+  }, [docs]);
+
   return (
     <div className="stack stack--loose">
-      <Card tone="inset" className="doc-note">
-        <p>
-          <Icon name="lock" size={16} /> <strong>Originals are not stored here.</strong> Kadode keeps each document’s status, who holds it and a link to where it is kept. Passports,
-          medical and financial papers stay with whoever holds them, and nothing can be uploaded.
-        </p>
-      </Card>
       {docs.length === 0 ? (
         <Card>
-          <EmptyState icon="doc" title="No documents have been listed yet." />
+          <EmptyState icon="doc" title="No documents yet." />
         </Card>
       ) : (
         <>
-          <FilterChips
-            label="Show documents for"
-            value={who}
-            onChange={setWho}
-            scroll
-            options={[
-              { value: 'all', label: 'Everyone', count: docs.length },
-              ...dir.people.map((p) => ({ value: p.id, label: p.display_name, count: docs.filter((d) => scopeOf(d).includes(p.id)).length })),
-              { value: 'household', label: 'Household', count: docs.filter((d) => scopeOf(d).length === 0).length },
-            ]}
-          />
-          <FilterChips
-            label="Which documents"
-            value={state}
-            onChange={setState}
-            scroll
-            options={[
-              { value: 'all', label: 'All', count: byPerson.length },
-              { value: 'now', label: 'Needs action now', count: byPerson.filter(needsActionNow).length },
-              { value: 'not_started', label: 'Not started', count: byPerson.filter(notStarted).length },
-            ]}
-          />
+          <div className="doc-tools">
+            <div className="search">
+              <Field label="Search documents" hideLabel>
+                <input type="search" className="input" placeholder="Search by name" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
+              </Field>
+              {query !== '' && (
+                <Button variant="quiet" small icon="x" className="search__clear" onClick={() => setQuery('')} aria-label="Clear search">
+                  Clear
+                </Button>
+              )}
+            </div>
+            <Field label="Show" hideLabel>
+              <Select value={filter} onChange={(e) => setFilter(e.target.value)}>
+                <option value="all">All documents ({docs.length})</option>
+                <option value="now">Needs action now ({docs.filter(needsActionNow).length})</option>
+                <option value="not_started">Not started ({docs.filter(notStarted).length})</option>
+                <optgroup label="For">
+                  {dir.people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.display_name} ({docs.filter(matches(p.id)).length})
+                    </option>
+                  ))}
+                  <option value="household">Household ({docs.filter(matches('household')).length})</option>
+                </optgroup>
+              </Select>
+            </Field>
+            <InfoNote label="About these documents">
+              <strong>Originals are not stored here.</strong> Kadode keeps each document’s status, who holds it and a link to where it is kept. Nothing can be uploaded.
+            </InfoNote>
+          </div>
           <h2 className="visually-hidden">Documents</h2>
+          {commonHolder && !narrowed && <p className="quiet-line">Held by: {commonHolder}</p>}
           {shown.length === 0 ? (
             <Card>
-              <EmptyState icon="doc" title={state === 'now' ? 'Nothing needs action right now.' : 'Nothing listed for this view.'} />
+              <EmptyState icon="doc" title={q ? 'No document has that name.' : filter === 'now' ? 'Nothing needs action right now.' : 'Nothing here.'} />
             </Card>
           ) : (
-            <ul className="stack stack--tight grid-wide">
-              {shown.map((r) => (
-                <li key={r.id}>
-                  <DocumentCard record={r} idx={idx} dir={dir} compact />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="doc-list">
+                {rows.map((r) => (
+                  <li key={r.id}>
+                    <DocumentCard record={r} idx={idx} dir={dir} compact commonHolder={commonHolder} />
+                  </li>
+                ))}
+              </ul>
+              {rows.length < shown.length && (
+                <div>
+                  <Button variant="quiet" className="show-all" onClick={() => setShowAll(true)}>
+                    Show all ({shown.length})
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

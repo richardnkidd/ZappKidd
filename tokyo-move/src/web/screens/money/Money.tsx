@@ -3,9 +3,9 @@ import { usdEffectOfFxFactor, computeBudget } from '@shared/budget';
 import { anchorsFrom } from '@shared/deadlines';
 import type { BudgetView, CostLineView } from '@shared/engine-contracts';
 import type { BaseRecord, CostData, CostSection, FundingData, ScenarioSettings } from '@shared/types';
-import { Chip } from '../../components/Badges';
-import { ClampText } from '../../components/ClampText';
 import { usePlain } from '../../components/People';
+import { InfoNote } from '../../components/InfoNote';
+import { More } from '../../components/More';
 import { Button, SegmentedControl } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
 import { Disclosure } from '../../components/Disclosure';
@@ -15,6 +15,7 @@ import { Card, EmptyState, PageTitle, Section } from '../../components/Layout';
 import { PersonName } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
 import { civil, plural } from '../../lib/format';
+import { displayTitle, keyLookup, stripCodes, type KeyLookup } from '@shared/plain';
 import {
   cashStatement,
   fmtMoney,
@@ -22,7 +23,6 @@ import {
   knownSoFar,
   scenarioExplanation,
   scenarioLabel,
-  SECTION_INTRO,
   SECTION_ORDER,
   SECTION_TITLE,
   STAGE_LABEL,
@@ -34,47 +34,41 @@ import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
 import { CostLineDialog, FxDialog } from './moneyDialogs';
 
-const STAGE_TONE: Record<string, 'neutral' | 'ai' | 'matcha' | 'kin'> = {
-  estimate: 'neutral',
-  quote: 'ai',
-  approved_commitment: 'ai',
-  paid: 'matcha',
-  partially_paid: 'matcha',
-  unknown: 'neutral',
-  excluded: 'neutral',
-};
-
-function CostLine({ line, record, onEdit }: { line: CostLineView; record: BaseRecord | undefined; onEdit: () => void }) {
+function CostLine({ line, record, onEdit, lookup }: { line: CostLineView; record: BaseRecord | undefined; onEdit: () => void; lookup: KeyLookup | undefined }) {
   const plain = usePlain();
   const monthly = line.section !== 'one_time';
   const note = (record?.data as { review_note?: string | null } | undefined)?.review_note;
+  const title = record ? displayTitle(record, lookup) : stripCodes(line.description, lookup);
   // A line with no amount reads as one short row with a single way forward, not an empty amount column.
   const unknown = line.stage === 'unknown' || (line.native === null && line.stage !== 'excluded');
+  const detail: string[] = [];
+  if (!unknown) detail.push(STAGE_LABEL[line.stage] ?? line.stage);
+  if (line.paid_usd !== null && line.paid_usd > 0) detail.push(`Paid ${fmtUsd(line.paid_usd)}`);
+  if (line.unpaid_usd !== null && line.stage !== 'excluded' && !monthly) detail.push(`${fmtUsd(line.unpaid_usd)} to pay`);
+  const missing = unknown ? line.missing.slice(0, 1) : line.missing;
   return (
     <li className={`cost-line${unknown ? ' cost-line--unknown' : ''}`}>
       <div className="cost-line__main">
-        <p className="cost-line__title">{record ? <RecordLink id={record.id}>{line.description}</RecordLink> : line.description}</p>
-        <div className="item__meta">
-          <Chip tone={STAGE_TONE[line.stage] ?? 'neutral'} small>
-            {STAGE_LABEL[line.stage] ?? line.stage}
-          </Chip>
-          {line.paid_usd !== null && line.paid_usd > 0 && <span className="small muted">Paid {fmtUsd(line.paid_usd)}</span>}
-          {line.unpaid_usd !== null && line.stage !== 'excluded' && !monthly && <span className="small muted">{fmtUsd(line.unpaid_usd)} still to pay</span>}
-        </div>
-        {line.missing.length > 0 && (
+        <p className="cost-line__title">{record ? <RecordLink id={record.id}>{title}</RecordLink> : title}</p>
+        {detail.length > 0 && <p className="small muted">{detail.join(' · ')}</p>}
+        {missing.length > 0 && (
           <ul className="cost-line__missing small">
-            {(unknown ? line.missing.slice(0, 1) : line.missing).map((m) => (
+            {missing.map((m) => (
               <li key={m}>
-                <Icon name="info" size={13} /> {m}
+                <Icon name="info" size={14} /> {stripCodes(m, lookup)}
               </li>
             ))}
           </ul>
         )}
-        {note && <ClampText lines={2} className="small muted preline">{plain(note)}</ClampText>}
+        {note && (
+          <More label="Note">
+            <p className="small preline">{plain(note)}</p>
+          </More>
+        )}
       </div>
       <div className="cost-line__amount">
         {unknown ? (
-          <Button variant="secondary" small icon="plus" onClick={onEdit} aria-label={`Add amount: ${line.description}`}>
+          <Button variant="secondary" small icon="plus" onClick={onEdit} aria-label={`Add amount: ${title}`}>
             Add amount
           </Button>
         ) : (
@@ -89,7 +83,7 @@ function CostLine({ line, record, onEdit }: { line: CostLineView; record: BaseRe
                 {fmtUsd(line.horizon_usd)} over {plural(line.months_in_horizon, 'month')}
               </p>
             )}
-            <Button variant="quiet" small icon="pencil" onClick={onEdit} aria-label={`Edit ${line.description}`}>
+            <Button variant="quiet" small icon="pencil" onClick={onEdit} aria-label={`Edit ${title}`}>
               Edit
             </Button>
           </>
@@ -99,7 +93,7 @@ function CostLine({ line, record, onEdit }: { line: CostLineView; record: BaseRe
   );
 }
 
-function SectionCard({ section, budget, idx, onEdit }: { section: CostSection; budget: BudgetView; idx: Indexes; onEdit: (r: BaseRecord) => void }) {
+function SectionCard({ section, budget, idx, onEdit, lookup }: { section: CostSection; budget: BudgetView; idx: Indexes; onEdit: (r: BaseRecord) => void; lookup: KeyLookup | undefined }) {
   const lines = budget.lines.filter((l) => l.section === section);
   const total = budget.by_section[section];
   const summary = knownSoFar(total, lines.length);
@@ -108,24 +102,18 @@ function SectionCard({ section, budget, idx, onEdit }: { section: CostSection; b
   return (
     <Disclosure
       title={SECTION_TITLE[section]}
-      meta={isReserve ? (reserve === null ? 'Not known yet' : fmtUsd(reserve)) : lines.length === 0 ? 'Nothing listed' : `${plural(lines.length, 'line')} · ${summary.primary}${summary.secondary ? ` · ${summary.secondary}` : ''}`}
+      meta={isReserve ? (reserve === null ? 'Not known yet' : fmtUsd(reserve)) : lines.length === 0 ? 'Nothing listed' : `${summary.primary}${summary.secondary ? ` · ${summary.secondary}` : ''}`}
       className="money-section"
     >
-      <p className="muted small">{SECTION_INTRO[section]}</p>
-      {isReserve && (
-        <p className="money-reserve">
-          Set aside for a possible return: <strong>{fmtUsd(reserve)}</strong>
-        </p>
-      )}
       {lines.length > 0 ? (
         <ul className="cost-lines">
           {lines.map((l) => {
             const rec = idx.byKey.get(l.key);
-            return <CostLine key={l.key} line={l} record={rec} onEdit={() => rec && onEdit(rec)} />;
+            return <CostLine key={l.key} line={l} record={rec} lookup={lookup} onEdit={() => rec && onEdit(rec)} />;
           })}
         </ul>
       ) : (
-        !isReserve && <p className="muted">No lines in this section yet.</p>
+        !isReserve && <p className="muted">Nothing here yet.</p>
       )}
       {total.excluded_count > 0 && <p className="small faint">{plural(total.excluded_count, 'line')} left out on purpose.</p>}
     </Disclosure>
@@ -136,6 +124,7 @@ function FxPanel({ budget, scenario, fxRecord, onEdit }: { budget: BudgetView; s
   const fx = budget.fx;
   const effect = scenario.fx_factor !== 1 ? attempt(() => usdEffectOfFxFactor(scenario.fx_factor)) : null;
   const rate = (n: number) => `¥${n.toLocaleString('en-US', { maximumFractionDigits: 2 })} per $1`;
+  const effectNote = effect && effect.ok ? <InfoNote label="What this does to costs">{fxEffectSentence(scenario.fx_factor, effect.value)}</InfoNote> : null;
   return (
     <Card as="section" aria-labelledby="fx-title" className="fx fx--compact">
       <div className="row row--between">
@@ -157,13 +146,12 @@ function FxPanel({ budget, scenario, fxRecord, onEdit }: { budget: BudgetView; s
             · {fx.source ?? 'source not recorded'}
             {fx.as_of ? `, ${civil(fx.as_of)}` : ''}
           </span>
+          {effectNote}
         </p>
       ) : (
-        <p className="muted">No exchange rate yet. Add one so yen costs can be counted.</p>
-      )}
-      {effect && effect.ok && (
-        <p className="fx__effect">
-          <Icon name="info" size={16} /> {fxEffectSentence(scenario.fx_factor, effect.value)}
+        <p className="muted">
+          No exchange rate yet.
+          {effectNote}
         </p>
       )}
     </Card>
@@ -173,27 +161,28 @@ function FxPanel({ budget, scenario, fxRecord, onEdit }: { budget: BudgetView; s
 function IncomeCards({ budget }: { budget: BudgetView }) {
   if (budget.income.length === 0) return null;
   return (
-    <Section title="Income" headingLevel={3} intro="Only income that has been checked is counted. Everything else is left out of the totals.">
-      <ul className="income-list">
+    <Section title="Income" headingLevel={3}>
+      <ul className="income-list money-income">
         {budget.income.map((i) => {
           const planningZero = i.status === 'planning_zero';
           return (
             <li key={i.person_id} className="income">
-              <p className="income__who">
-                <PersonName id={i.person_id} />
-              </p>
               <p>
+                <strong>
+                  <PersonName id={i.person_id} />
+                </strong>
+                {': '}
                 {planningZero
-                  ? 'Planning at $0 a month — a deliberate choice for planning, not a forecast.'
+                  ? 'Counted as $0 for now.'
                   : i.status === 'unverified'
-                    ? 'Not counted — it has not been verified yet.'
+                    ? 'Not counted until verified.'
                     : i.status === 'confirmed_none'
                       ? 'No income expected.'
                       : i.counted && i.monthly_usd !== null
                         ? `${fmtUsd(i.monthly_usd)} a month, counted.`
                         : 'Not counted.'}
+                {i.note && !planningZero && <InfoNote label="About this income">{stripCodes(i.note)}</InfoNote>}
               </p>
-              {i.note && <p className="small muted preline">{i.note}</p>}
             </li>
           );
         })}
@@ -205,8 +194,20 @@ function IncomeCards({ budget }: { budget: BudgetView }) {
 export function Money() {
   return (
     <div className="page money">
-      <PageTitle kicker="What it costs, and what we know">Money</PageTitle>
+      <PageTitle kicker="What we know, and what we don’t">Money</PageTitle>
       <DataGate>{({ snapshot, idx, dir }) => <MoneyBody scenarios={snapshot.scenarios} idx={idx} dir={dir} people={snapshot.people} />}</DataGate>
+    </div>
+  );
+}
+
+/** One headline figure: big, tabular, and honest. A missing amount is "Not known yet", never 0. */
+function Figure({ label, value, note }: { label: string; value: number | null | undefined; note?: string | null }) {
+  const known = value !== null && value !== undefined;
+  return (
+    <div className="money-fig">
+      <dt>{label}</dt>
+      <dd className={known ? 'money-fig__value' : 'money-fig__value money-fig__value--unknown'}>{fmtUsd(value)}</dd>
+      {note && <dd className="money-fig__note">{note}</dd>}
     </div>
   );
 }
@@ -223,6 +224,7 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
   const costs = useMemo(() => idx.all.filter((r) => r.type === 'cost'), [idx]);
   const funding = useMemo(() => idx.all.filter((r) => r.type === 'funding'), [idx]);
   const fxRecord = funding.find((f) => dataOf<FundingData>(f).kind === 'fx_rate') ?? null;
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
 
   const budget = useMemo(
     () =>
@@ -259,112 +261,80 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
   const model = view === 'first' ? b.cash_model : b.sustainability;
   const incomeNotCounted = b.income.filter((i) => !i.counted && i.status === 'unverified').length;
   const statement = cashStatement(model, incomeNotCounted);
+  const needKnown = model.need_complete || (model.need_usd_known !== null && model.need_usd_known > 0);
 
   return (
     <div className="stack stack--loose money-cols">
       <div className="money-col">
-      <Section title="Which situation?" headingLevel={2}>
-        <SegmentedControl
-          label="Scenario"
-          value={scenarioKey}
-          onChange={setScenarioKey}
-          options={scenarios.map((s) => ({ value: s.key, label: scenarioLabel(s) }))}
-        />
-        <p className="muted" role="status">
-          {scenarioExplanation(scenario)}
-        </p>
-      </Section>
-
-      <FxPanel budget={b} scenario={scenario} fxRecord={fxRecord} onEdit={() => setFxOpen(true)} />
-
-      <Section title="The cash picture" headingLevel={2}>
-        <SegmentedControl
-          label="Time span"
-          value={view}
-          onChange={setView}
-          options={[
-            { value: 'first', label: 'First 90 days' },
-            { value: 'three', label: 'Three-year view' },
-          ]}
-        />
-        <Card tone={statement.tone === 'kin' ? 'attention' : 'default'} className="cash">
-          <p className="cash__headline">
-            <Icon name={statement.tone === 'matcha' ? 'check' : 'info'} size={18} /> {statement.headline}
-          </p>
-          {statement.detail && <p className="muted">{statement.detail}</p>}
-          <dl className="facts facts--tight">
-            <div className="fact">
-              <dt>Known need so far</dt>
-              <dd>
-                {!model.need_complete && !(model.need_usd_known && model.need_usd_known > 0) ? 'No amounts yet' : fmtUsd(model.need_usd_known)}
-                {!model.need_complete && model.need_usd_known !== null && model.need_usd_known > 0 && <span className="faint small"> (not the full need)</span>}
-              </dd>
-            </div>
-            <div className="fact">
-              <dt>Cash on hand</dt>
-              <dd>
-                {fmtUsd(model.cash_usd)}
-                {model.cash_as_of && <span className="faint small"> as of {civil(model.cash_as_of)}</span>}
-              </dd>
-            </div>
-            <div className="fact">
-              <dt>Protected reserve</dt>
-              <dd>{fmtUsd(model.return_reserve_usd)}</dd>
-            </div>
-            <div className="fact">
-              <dt>Other commitments</dt>
-              <dd>{fmtUsd(model.other_commitments_usd)}</dd>
-            </div>
-            <div className="fact">
-              <dt>Headroom</dt>
-              <dd>{model.headroom_usd === null ? 'Not shown until everything is known' : fmtUsd(model.headroom_usd)}</dd>
-            </div>
-            {model.modeled_income_usd !== null && (
-              <div className="fact">
-                <dt>Income counted</dt>
-                <dd>{fmtUsd(model.modeled_income_usd)}</dd>
-              </div>
+        <Section title="The cash picture" headingLevel={2}>
+          <SegmentedControl
+            label="Time span"
+            value={view}
+            onChange={setView}
+            options={[
+              { value: 'first', label: 'First 90 days' },
+              { value: 'three', label: 'Three-year view' },
+            ]}
+          />
+          <Card tone={statement.tone === 'kin' ? 'attention' : 'default'} className="cash">
+            <p className="cash__headline">
+              <Icon name={statement.tone === 'matcha' ? 'check' : 'info'} size={18} /> {statement.headline}
+            </p>
+            {statement.detail && <p className="muted money-once">{statement.detail}</p>}
+            <dl className="money-figs">
+              <Figure label={model.need_complete ? 'Need' : 'Known need so far'} value={needKnown ? model.need_usd_known : null} />
+              <Figure label="Cash on hand" value={model.cash_usd} note={model.cash_as_of ? `as of ${civil(model.cash_as_of)}` : null} />
+              <Figure label="Protected reserve" value={model.return_reserve_usd} />
+              <Figure label="Other commitments" value={model.other_commitments_usd} />
+              <Figure label="Headroom" value={model.headroom_usd} />
+              {model.modeled_income_usd !== null && <Figure label="Income counted" value={model.modeled_income_usd} />}
+            </dl>
+            {model.missing.length > 0 && (
+              <More label={`What is missing (${model.missing.length})`}>
+                <ul className="plain-list">
+                  {model.missing.map((m) => (
+                    <li key={m}>{stripCodes(m, lookup)}</li>
+                  ))}
+                </ul>
+              </More>
             )}
-          </dl>
-          {model.missing.length > 0 && (
-            <Disclosure title="What is still missing" meta={String(model.missing.length)} level={3} className="disclosure--flat">
-              <ul className="plain-list">
-                {model.missing.map((m) => (
-                  <li key={m}>{m}</li>
-                ))}
-              </ul>
-            </Disclosure>
-          )}
-        </Card>
-        <IncomeCards budget={b} />
-      </Section>
+          </Card>
+          <IncomeCards budget={b} />
+        </Section>
 
+        <Section title="Which situation?" headingLevel={2}>
+          <SegmentedControl
+            label="Scenario"
+            value={scenarioKey}
+            onChange={setScenarioKey}
+            options={scenarios.map((s) => ({ value: s.key, label: scenarioLabel(s) }))}
+          />
+          <p className="muted" role="status">
+            {scenarioExplanation(scenario)}
+          </p>
+        </Section>
+
+        <FxPanel budget={b} scenario={scenario} fxRecord={fxRecord} onEdit={() => setFxOpen(true)} />
       </div>
       <div className="money-col">
-      <Section title="Where the money goes" headingLevel={2} intro="Each part shows what is known so far and how much is still unknown. A total is never shown on its own.">
-        <div className="stack stack--tight">
-          {SECTION_ORDER.map((s) => (
-            <SectionCard key={s} section={s} budget={b} idx={idx} onEdit={setEditing} />
-          ))}
-        </div>
-      </Section>
+        <Section title="Where the money goes" headingLevel={2}>
+          <div className="stack stack--tight">
+            {SECTION_ORDER.map((s) => (
+              <SectionCard key={s} section={s} budget={b} idx={idx} lookup={lookup} onEdit={setEditing} />
+            ))}
+          </div>
+        </Section>
 
-      <Card tone="inset" className="not-counted">
-        <h3 className="money-h3">Not counted on purpose</h3>
-        <ul className="plain-list">
-          <li>Speculative future work, because nothing in the plan depends on it.</li>
-          <li>Assets that have not been sold.</li>
-          <li>Insurance or other claims that are still pending.</li>
-        </ul>
-        {b.warnings.length > 0 && (
-          <ul className="plain-list small muted">
+        <More label="Not counted on purpose">
+          <ul className="plain-list">
+            <li>Speculative future work.</li>
+            <li>Assets that have not been sold.</li>
+            <li>Claims that are still pending.</li>
             {b.warnings.map((w) => (
-              <li key={w}>{w}</li>
+              <li key={w}>{stripCodes(w, lookup)}</li>
             ))}
           </ul>
-        )}
-      </Card>
-
+        </More>
       </div>
 
       {editing && <CostLineDialog open onClose={() => setEditing(null)} record={editing} />}

@@ -12,7 +12,7 @@ import { ErrorBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
 import { Card, EmptyState, PageTitle, Section, Skeleton } from '../../components/Layout';
 import { RecordLink } from '../../components/RecordLink';
-import { instant, plural } from '../../lib/format';
+import { civil, dayIn, instant, plural } from '../../lib/format';
 import type { Indexes } from '../../lib/records';
 import { useAuth } from '../../state/auth';
 import { usePrefs } from '../../state/prefs';
@@ -103,9 +103,7 @@ function Receipts({ run, idx }: { run: ImportRun; idx: Indexes }) {
 
   return (
     <div className="stack">
-      <p className="muted small">
-        {plural(state.total, 'receipt')} in total. Each one records what the import did to a record and why.
-      </p>
+      <p className="muted small">{plural(state.total, 'receipt')}.</p>
       <ul className="receipt-summary">
         {[...groups.other.entries()].map(([k, n]) => (
           <li key={k}>
@@ -154,7 +152,7 @@ function Receipts({ run, idx }: { run: ImportRun; idx: Indexes }) {
                     {g.rationale && <p className="preline">{g.rationale}</p>}
                     <p className="small muted">
                       Applied to {plural(g.applied.length, 'record')}
-                      {g.skipped.length > 0 ? `; checked and did not apply to ${g.skipped.length}` : ''}.
+                      {g.skipped.length > 0 ? `, not needed for ${g.skipped.length}` : ''}.
                     </p>
                     {g.applied.length > 0 && (
                       <ul className="plain-list small">
@@ -196,21 +194,16 @@ function RunCard({ run, idx, latest }: { run: ImportRun; idx: Indexes; latest: b
         <Chip small tone={st.tone}>
           {st.label}
         </Chip>
-        {latest && (
-          <Chip small tone="ai">
-            Latest
-          </Chip>
-        )}
+        {latest && <span className="muted small">Latest</span>}
       </div>
       <h3 className="doc__title">{run.source_label}</h3>
       <p>
         {run.status === 'failed'
-          ? `This import did not finish (${instant(run.finished_at ?? run.started_at, zone, 'long')}). The receipts below show what happened.`
+          ? `Did not finish ${civil(dayIn(run.finished_at ?? run.started_at, zone), 'weekday')}.`
           : run.status === 'no_changes'
-            ? `Checked on ${instant(run.finished_at ?? run.started_at, zone, 'long')}: nothing new in the files. Everything is in place.`
-            : `Your plan was imported on ${instant(run.finished_at ?? run.started_at, zone, 'long')} from “${run.source_label}”. Everything is in place.`}
+            ? `Checked ${civil(dayIn(run.finished_at ?? run.started_at, zone), 'weekday')}. Nothing new.`
+            : `Plan imported ${civil(dayIn(run.finished_at ?? run.started_at, zone), 'weekday')}.`}
       </p>
-      {run.summary && <p className="preline muted">{run.summary}</p>}
       {outcomes.length > 0 && (
         <ul className="coverage" aria-label="What the import did">
           {outcomes.map(([k, n]) => (
@@ -221,13 +214,9 @@ function RunCard({ run, idx, latest }: { run: ImportRun; idx: Indexes; latest: b
           ))}
         </ul>
       )}
-      {(run.counts?.not_applicable ?? 0) > 0 && (
-        <p className="small muted">
-          “Corrections not needed” usually means the record was already right, so nothing was lost. The receipts below list which ones.
-        </p>
-      )}
-      {run.files.length > 0 && (
+      {(run.files.length > 0 || run.summary) && (
         <Disclosure title="Technical details" level={4} className="disclosure--flat">
+          {run.summary && <p className="preline muted small">{run.summary}</p>}
           <ul className="files">
             {run.files.map((f) => (
               <li key={f.sha256 + f.name}>
@@ -327,7 +316,7 @@ function TaskListStatus({ idx }: { idx: Indexes }) {
     for (const t of idx.taskLinks) c.set(t.sync_state, (c.get(t.sync_state) ?? 0) + 1);
     return c;
   }, [idx]);
-  if (!adapter) return <p className="muted">The task-list connection is not known.</p>;
+  if (!adapter) return <p className="muted">Task list not connected.</p>;
   const asOf = adapter.as_of ? instant(adapter.as_of.length === 10 ? `${adapter.as_of}T12:00:00Z` : adapter.as_of, zone, 'short') : 'an unknown date';
   const sync = async () => {
     setBusy(true);
@@ -345,11 +334,9 @@ function TaskListStatus({ idx }: { idx: Indexes }) {
   return (
     <Card>
       {adapter.can_write ? (
-        <p>{adapter.note || 'Connected to a task store you can write to.'}</p>
+        <p>{adapter.note || 'Connected. You can write to it.'}</p>
       ) : (
-        <p>
-          Your real task list is shown as a dated copy (as of {asOf}). Nothing is written to it. New actions wait as “Waiting to be added”.
-        </p>
+        <p>Read-only copy as of {asOf}. New actions wait to be added.</p>
       )}
       {states.size > 0 && (
         <ul className="plain-list small muted">
@@ -376,13 +363,12 @@ function Export({ idx }: { idx: Indexes }) {
   const types = useMemo(() => RECORD_TYPES.filter((t) => idx.all.some((r) => r.type === t.type)), [idx]);
   return (
     <Card>
-      <p className="muted">Take a copy of everything. Nothing leaves your computer until you open the file.</p>
       <div className="row-actions">
         <a className="btn btn--secondary" href="/api/export?format=json" download>
           <Icon name="file" size={18} /> Everything (JSON)
         </a>
       </div>
-      <Disclosure title="One list at a time (CSV, opens in a spreadsheet)" level={3} className="disclosure--flat">
+      <Disclosure title="One list at a time (CSV)" level={3} className="disclosure--flat">
         <ul className="csv-list">
           {types.map((t) => (
             <li key={t.type}>
@@ -480,7 +466,7 @@ function Backups() {
   return (
     <div className="stack">
       <Card>
-        <p className="muted">A backup is a safe copy of the whole plan. Restoring replaces everything with the copy you pick, after saving the current state first. Everyone is signed out afterwards.</p>
+        <p className="muted">Restoring replaces everything with the copy you pick.</p>
         <div className="row-actions">
           <Button variant="primary" busy={busy} icon="database" onClick={backup}>
             Back up now
@@ -522,8 +508,8 @@ function Backups() {
           title={step === 'users' ? 'This backup has different logins' : 'Restore this backup?'}
           description={
             step === 'users'
-              ? 'The backup was made when different people could sign in than can now. Nothing has been changed yet.'
-              : `This replaces everything with the copy from ${instant(restoring.created_at, zone, 'long')}. Anything changed since then will be gone from the app, though the current state is saved first. Everyone will be signed out.`
+              ? 'This backup has different logins. Nothing has changed yet.'
+              : `This replaces everything with the copy from ${instant(restoring.created_at, zone, 'long')}. The current state is saved first. Everyone is signed out.`
           }
           footer={
             <>
@@ -538,7 +524,7 @@ function Backups() {
         >
           {step === 'users' && (
             <p className="preline">
-              To go ahead, the backup’s own list of logins would replace today’s, as well as the plan. That changes who can sign in, and everyone is signed out afterwards. If you don’t want that, cancel: nothing has been changed.
+              The backup’s logins would replace today’s. That changes who can sign in. Cancel to keep things as they are.
             </p>
           )}
           <Field label={`Type ${needed} to confirm`} error={restoreError}>
@@ -560,7 +546,7 @@ export function DataImports() {
       <DataGate>
         {({ idx }) => (
           <div className="stack stack--loose">
-            <Section title="Imports" headingLevel={2} intro="Each time a plan file was read. Reading the same files again changes nothing.">
+            <Section title="Imports" headingLevel={2}>
               <ImportRuns idx={idx} />
             </Section>
             <Section title="What is stored now" headingLevel={2}>

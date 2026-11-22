@@ -63,7 +63,7 @@ export function SignIn() {
           <span className="wordmark-jp wordmark-jp--lg" lang="ja">門出</span>
         </p>
         <h1 className="signin__title">Welcome back</h1>
-        <p className="muted">A private planning home for your move.</p>
+        <p className="muted">Your private planning home.</p>
 
         {notice && (
           <div className="banner banner--info" role="status">
@@ -80,7 +80,7 @@ export function SignIn() {
         {state.kind === 'dev' && (
           <section aria-labelledby="dev-id" className="stack">
             <h2 id="dev-id" className="signin__sub">
-              Choose who you are <span className="faint">(local preview identity)</span>
+              Who are you?
             </h2>
             <ul className="stack stack--tight">
               {state.identities.map((i) => (
@@ -96,8 +96,7 @@ export function SignIn() {
               ))}
             </ul>
             <p className="faint small signin__note">
-              <Icon name="info" size={14} /> This is a development identity for trying the app on this computer. It is not real
-              authentication and is never available on a shared copy.
+              <Icon name="info" size={14} /> A development identity for this computer. Not real authentication.
             </p>
           </section>
         )}

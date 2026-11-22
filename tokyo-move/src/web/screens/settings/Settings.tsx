@@ -45,7 +45,7 @@ function Display() {
 
   return (
     <Card className="stack">
-      <Field label="Show times in" hint="This device only. Calendar dates never move; only times of day change.">
+      <Field label="Show times in" hint="This device only.">
         <Select value={zone} onChange={(e) => setZone(e.target.value as IanaZone)}>
           {SUPPORTED_ZONES.map((z) => (
             <option key={z} value={z}>
@@ -56,11 +56,11 @@ function Display() {
       </Field>
       <div>
         <p className="muted small">
-          The household’s usual setting is {household ? zoneLabel(household) : zoneLabel(me.household.display_timezone)}.
+          Household setting: {household ? zoneLabel(household) : zoneLabel(me.household.display_timezone)}.
         </p>
         {household !== zone && (
           <Button variant="secondary" busy={state === 'busy'} onClick={makeDefault}>
-            Make {zoneLabel(zone)} the household’s usual setting
+            Use for the household
           </Button>
         )}
         {state === 'saved' && <p role="status" className="small">Saved.</p>}
@@ -161,7 +161,6 @@ function Scenarios({ scenarios }: { scenarios: ScenarioSettings[] }) {
 
   return (
     <div className="stack">
-      <p className="muted">The “what if” cases on the Money page. Change how many extra months of US costs they assume and how many fewer yen the dollar buys.</p>
       {scenarios.map((s) => {
         const d = draft[s.key] ?? { months: '', yen: '' };
         const p = parsed.find((x) => x.key === s.key);
@@ -173,7 +172,7 @@ function Scenarios({ scenarios }: { scenarios: ScenarioSettings[] }) {
               <Field label="Extra months of US costs" error={p?.bad ? 'Whole months, 0 to 60.' : null}>
                 <TextInput value={d.months} inputMode="numeric" onChange={(e) => setDraft((x) => ({ ...x, [s.key]: { ...d, months: e.target.value } }))} />
               </Field>
-              <Field label="Dollar buys fewer yen by (percent)" hint="0 means no change. When the dollar buys fewer yen, costs in yen are more in dollars. A negative number means the dollar buys more yen." error={p?.bad ? 'A number from -99 up to 99.' : null}>
+              <Field label="Dollar buys fewer yen by (percent)" error={p?.bad ? 'A number from -99 up to 99.' : null}>
                 <TextInput value={d.yen} inputMode="decimal" onChange={(e) => setDraft((x) => ({ ...x, [s.key]: { ...d, yen: e.target.value } }))} />
               </Field>
             </div>
@@ -198,7 +197,7 @@ export function Settings() {
   const me = useMe();
   return (
     <div className="page settings">
-      <PageTitle kicker="How Kadode looks and works for you">Settings</PageTitle>
+      <PageTitle>Settings</PageTitle>
       <DataGate>
         {({ snapshot }) => (
           <div className="stack stack--loose">

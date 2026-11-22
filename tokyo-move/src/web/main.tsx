@@ -12,6 +12,7 @@ import './styles/pkg-foundations.css';
 import './styles/pkg-questions.css';
 import './styles/pkg-decide.css';
 import './styles/pkg-plan.css';
+import './styles/pkg-screens.css';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

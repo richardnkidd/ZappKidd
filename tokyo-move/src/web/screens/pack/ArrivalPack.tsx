@@ -3,7 +3,8 @@ import { Link } from 'react-router';
 import { PersonBadge } from '../../components/People';
 import { Button } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
-import { Icon } from '../../components/Icon';
+import { InfoNote } from '../../components/InfoNote';
+import { More } from '../../components/More';
 import { Card, EmptyState, PageTitle } from '../../components/Layout';
 import { civil } from '../../lib/format';
 import { dataOf } from '../../lib/records';
@@ -12,10 +13,10 @@ import { buildPack, SENSITIVITY_ORDER, type Pack, type PackItem, type Sensitivit
 import { useData } from '../../state/data';
 import type { Directory, Indexes } from '../../lib/records';
 
-const SENSITIVE_LABEL: Record<Sensitivity, { title: string; hint: string }> = {
-  medical: { title: 'Health and medicine', hint: 'Marked as medical in the plan.' },
-  financial: { title: 'Money and accounts', hint: 'Marked as financial in the plan.' },
-  identity: { title: 'Identity documents', hint: 'Marked as identity papers in the plan.' },
+const SENSITIVE_LABEL: Record<Sensitivity, string> = {
+  medical: 'Health and medicine',
+  financial: 'Money and accounts',
+  identity: 'Identity documents',
 };
 
 function Items({ items, empty, checkbox = false }: { items: PackItem[]; empty: string; checkbox?: boolean }) {
@@ -45,8 +46,8 @@ function Items({ items, empty, checkbox = false }: { items: PackItem[]; empty: s
 function PackFor({ pack, name, person, today, include }: { pack: Pack; name: string; person: ReturnType<Directory['personById']>; today: string; include: Record<Sensitivity, boolean> }) {
   const extra = SENSITIVITY_ORDER.filter((k) => include[k] && pack.sensitive[k].length > 0);
   const sections = [
-    ...pack.sections.map((s) => ({ key: s.key, title: s.title, items: s.items, empty: s.empty, checkbox: s.key === 'arrival_day' || s.key === 'first_week' || s.key === 'first_30' })),
-    ...extra.map((k) => ({ key: k, title: SENSITIVE_LABEL[k].title, items: pack.sensitive[k], empty: 'Nothing listed here.', checkbox: true })),
+    ...pack.sections.map((s) => ({ key: s.key, title: s.title, items: s.items, empty: s.empty, note: s.note ?? null, checkbox: s.key === 'arrival_day' || s.key === 'first_week' || s.key === 'first_30' })),
+    ...extra.map((k) => ({ key: k, title: SENSITIVE_LABEL[k], items: pack.sensitive[k], empty: 'Nothing listed here.', note: null, checkbox: true })),
   ];
   return (
     <article className="pack" aria-label={`Arrival pack for ${name}`}>
@@ -54,7 +55,10 @@ function PackFor({ pack, name, person, today, include }: { pack: Pack; name: str
         <h2 className="pack__name">
           <PersonBadge person={person} size={28} /> Arrival pack — {name}
         </h2>
-        <p className="pack__date">Printed {civil(today, 'long')}</p>
+        <p className="pack__date">
+          Printed {civil(today, 'weekday')}
+          {pack.from ? ` · Steps count from: ${pack.from}` : ''}
+        </p>
       </header>
       {sections.map((s, i) => (
         <section key={s.key} className="pack__section" aria-labelledby={`pk-${pack.personId}-${s.key}`}>
@@ -66,6 +70,7 @@ function PackFor({ pack, name, person, today, include }: { pack: Pack; name: str
           <h3 id={`pk-${pack.personId}-${s.key}`} className="pack__h">
             {s.title}
           </h3>
+          {s.note && s.items.length > 0 && <p className="pack__note">{s.note}</p>}
           <Items items={s.items} empty={s.empty} checkbox={s.checkbox} />
         </section>
       ))}
@@ -93,21 +98,6 @@ function PackBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
     <div className="stack stack--loose">
       <div className="no-print stack">
         <Card className="stack">
-          <p className="muted">
-            A short pack per traveler, about two pages. It prints on A4 or Letter in black on white, with links written out as text. Documents show status and who holds them, never numbers or identifiers.
-          </p>
-          <p className="small muted" data-testid="pack-documents-rule">
-            {anyMarked ? (
-              <>Only documents marked to carry are listed. </>
-            ) : (
-              <>No document is marked to carry yet, so each pack lists the documents that are that person’s. </>
-            )}
-            Mark more in{' '}
-            <Link to="/documents" className="more-link">
-              Documents
-            </Link>
-            .
-          </p>
           <fieldset>
             <legend>Who to print for</legend>
             <div className="chip-radios">
@@ -119,40 +109,43 @@ function PackBody({ idx, dir }: { idx: Indexes; dir: Directory }) {
               ))}
             </div>
           </fieldset>
-          <fieldset>
-            <legend>Sensitive sections (left out unless you tick them)</legend>
-            {present.length === 0 ? (
-              <p className="faint small">Nothing the pack would list is marked sensitive.</p>
-            ) : (
+          {present.length > 0 && (
+            <fieldset>
+              <legend>Sensitive sections (left out unless you tick them)</legend>
               <div className="stack stack--tight">
                 {present.map((k) => (
                   <label key={k} className="choice">
                     <input type="checkbox" checked={include[k]} onChange={(e) => setInclude((c) => ({ ...c, [k]: e.target.checked }))} />
-                    <span className="choice__text">
-                      <span>Include {SENSITIVE_LABEL[k].title.toLowerCase()}</span>
-                      <span className="choice__hint">{SENSITIVE_LABEL[k].hint}</span>
-                    </span>
+                    <span className="choice__text">Include {SENSITIVE_LABEL[k].toLowerCase()}</span>
                   </label>
                 ))}
               </div>
-            )}
-          </fieldset>
-          <div className="row-actions">
+            </fieldset>
+          )}
+          <p className="quiet-line" data-testid="pack-documents-rule">
+            {anyMarked ? 'Only documents marked to carry are listed. ' : 'Each pack lists that person’s documents. '}
+            <Link to="/documents" className="more-link">
+              Change in Documents
+            </Link>
+          </p>
+          <div className="row-actions pack-print">
             <Button variant="primary" icon="file" disabled={packs.length === 0} onClick={() => window.print()}>
               Print
             </Button>
+            <InfoNote label="About the printout">
+              About two pages for each traveler, in black on white, with links written out. Documents show status and who holds them, never numbers. Nothing here is a booking, a filing or advice.
+            </InfoNote>
           </div>
         </Card>
-        <p className="faint small">
-          <Icon name="info" size={14} /> This is a preview of what will print. Nothing here is a booking, a filing or advice.
-        </p>
       </div>
       {packs.length === 0 ? (
         <EmptyState icon="plane" title="Choose at least one traveler." />
       ) : (
         <div className="packs">
           {packs.map(({ person, pack }) => (
-            <PackFor key={person.id} pack={pack} name={person.display_name} person={person} today={today} include={include} />
+            <More key={person.id} label={`Preview ${person.display_name}’s pack`} className="pack-more">
+              <PackFor pack={pack} name={person.display_name} person={person} today={today} include={include} />
+            </More>
           ))}
         </div>
       )}
@@ -164,7 +157,7 @@ export function ArrivalPack() {
   return (
     <div className="page arrival-pack">
       <div className="no-print">
-        <PageTitle kicker="To take with you">Printable arrival pack</PageTitle>
+        <PageTitle>Printable arrival pack</PageTitle>
       </div>
       <DataGate>{({ idx, dir }) => <PackBody idx={idx} dir={dir} />}</DataGate>
     </div>

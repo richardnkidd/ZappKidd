@@ -162,5 +162,5 @@ export function waitingNote(args: { petName: string; adultName: string; adultArr
   if (!adultArrival || !petArrival || !isCivilDate(adultArrival) || !isCivilDate(petArrival) || petArrival <= adultArrival) return null;
   const months = monthsBetween(adultArrival, petArrival);
   const gap = months >= 1 ? `about ${months} ${months === 1 ? 'month' : 'months'}` : `${diffDays(adultArrival, petArrival)} ${diffDays(adultArrival, petArrival) === 1 ? 'day' : 'days'}`;
-  return `${petName} would arrive ${gap} after ${adultName}. In the meantime, who looks after ${petName} in Hawaii, and who flies with ${petName}? That is for you to settle; ${petName}’s dates never move an adult’s legal deadlines.`;
+  return `${petName} would arrive ${gap} after ${adultName}. Who looks after ${petName} in Hawaii, and who flies with ${petName}? ${petName}’s dates never move an adult’s legal deadlines.`;
 }

@@ -1,24 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { audienceLabel, QUESTION_DISPOSITION_LABEL } from '@shared/labels';
+import { displayQuestion, displayTitle, displaySummary, keyLookup, stripCodes, type KeyLookup } from '@shared/plain';
 import type { QuestionDisposition } from '@shared/types';
-import { Button, FilterChips } from '../../components/Controls';
+import { Button, Field, SegmentedControl, TextArea } from '../../components/Controls';
 import { DataGate } from '../../components/DataGate';
-import { Disclosure } from '../../components/Disclosure';
+import { ConflictBanner } from '../../components/Feedback';
 import { Icon } from '../../components/Icon';
-import { Card, EmptyState, Section } from '../../components/Layout';
-import { usePlain } from '../../components/People';
+import { EmptyState } from '../../components/Layout';
+import { More } from '../../components/More';
 import { Prose } from '../../components/Prose';
 import { RecordLink } from '../../components/RecordLink';
-import { civil } from '../../lib/format';
 import { currentPhase } from '../../lib/home';
-import { isAdviserQuestion, isPlanQuestion } from '../../lib/questions';
+import { copyText, countsLine, forAudience, numberedList, questionCounts, questionState, type QuestionState } from '../../lib/questions';
 import { isOpenWork, type Directory, type Indexes, type Question } from '../../lib/records';
-import { useData } from '../../state/data';
+import { useSnapshot } from '../../state/snapshot';
+import { useWrite } from '../../state/useWrite';
 
-const DISPOSITIONS: QuestionDisposition[] = ['question', 'carry_forward', 'waiting_blocked', 'already_answered', 'not_applicable', 'explicitly_excluded'];
-/** On screen the list starts short; paper and the copied text always carry every question. */
-const SHOWN_ON_SCREEN = 6;
+/** Per group, the list starts short. */
+export const SHOWN_FIRST = 10;
 const byKey = (a: Question, b: Question) => a.key.localeCompare(b.key, undefined, { numeric: true });
 
 /** Higher = more relevant to this person right now. Uses the question's own relevance links; never hides anything. */
@@ -45,285 +45,292 @@ function aboutRecords(q: Question, idx: Indexes) {
   return out.slice(0, 4);
 }
 
-export function QuestionCard({ q, idx, defaultOpen = false, showLink = true }: { q: Question; idx?: Indexes; defaultOpen?: boolean; showLink?: boolean }) {
-  const d = q.data;
-  const adviser = isAdviserQuestion(q);
-  const about = idx ? aboutRecords(q, idx) : [];
+/** The question as one plain sentence: the plain question, else the source question, else the title. */
+export function questionText(q: Question, lookup?: KeyLookup): string {
+  return displayQuestion(q, lookup) ?? (stripCodes(q.data?.question, lookup) || displayTitle(q, lookup));
+}
+
+function Detail({ label, text }: { label: string; text: string | null | undefined }) {
+  if (!text || !text.trim()) return null;
   return (
-    <li>
-      <Disclosure
-        title={d?.question || q.title}
-        meta={adviser ? `For the ${audienceLabel(d?.audience ?? '')}` : (QUESTION_DISPOSITION_LABEL[d?.disposition as QuestionDisposition] ?? undefined)}
-        level={3}
-        defaultOpen={defaultOpen}
-      >
-        <div className="stack">
-          {d?.topic && <p className="kicker">{d.topic}</p>}
-          {d?.facts_needed && (
-            <div>
-              <h4>Facts to bring</h4>
-              <p className="preline">
-                <Prose text={d.facts_needed} />
-              </p>
-            </div>
-          )}
-          {d?.known && (
-            <div>
-              <h4>What we already know</h4>
-              <p className="preline">
-                <Prose text={d.known} />
-              </p>
-            </div>
-          )}
-          {d?.when_trigger && (
-            <div>
-              <h4>When it matters</h4>
-              <p className="preline">
-                <Prose text={d.when_trigger} />
-              </p>
-            </div>
-          )}
-          {d?.answer && (
-            <div>
-              <h4>Answer so far</h4>
-              <p className="preline">
-                <Prose text={d.answer} />
-              </p>
-            </div>
-          )}
-          {d?.local_note && (
-            <div>
-              <h4>Note</h4>
-              <p className="preline">
-                <Prose text={d.local_note} />
-              </p>
-            </div>
-          )}
+    <div className="qrow__detail">
+      <p className="qrow__label">{label}</p>
+      <p className="preline">
+        <Prose text={text} />
+      </p>
+    </div>
+  );
+}
+
+interface RowProps {
+  q: Question;
+  idx: Indexes;
+  lookup?: KeyLookup;
+  /** Set aside questions are listed, not answered here. */
+  readOnly?: boolean;
+  defaultOpen?: boolean;
+  showLink?: boolean;
+  onSaved?: (id: string) => void;
+}
+
+/** One question: the question, "Our answer: …" or an Answer control, and the context behind Details. */
+function QuestionRow({ q, idx, lookup, readOnly = false, defaultOpen = false, showLink = true, onSaved }: RowProps) {
+  const { actions } = useSnapshot();
+  const w = useWrite();
+  const editorId = useId();
+  const fieldWrap = useRef<HTMLDivElement>(null);
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const d = q.data;
+  const answered = questionState(q) === 'answered';
+  const answer = d?.answer?.trim() ? d.answer : null;
+  const summary = displaySummary(q);
+  const about = aboutRecords(q, idx);
+  const hasDetails = Boolean(d?.known || d?.when_trigger || d?.facts_needed || d?.evidence_basis || d?.local_note || about.length || showLink);
+
+  useEffect(() => {
+    if (!saved) return;
+    const t = window.setTimeout(() => setSaved(false), 5000);
+    return () => window.clearTimeout(t);
+  }, [saved]);
+
+  const open = () => {
+    setText(answer ?? '');
+    setTried(false);
+    w.clear();
+    setEditing(true);
+    window.setTimeout(() => fieldWrap.current?.querySelector('textarea')?.focus(), 0);
+  };
+  const cancel = () => {
+    setEditing(false);
+    w.clear();
+    window.setTimeout(() => document.getElementById(`${editorId}-open`)?.focus(), 0);
+  };
+  const save = async () => {
+    const value = text.trim();
+    if (value === '') {
+      setTried(true);
+      fieldWrap.current?.querySelector('textarea')?.focus();
+      return;
+    }
+    const ok = await w.run((v) => actions.patchRecord(q.id, v, { data: { disposition: 'already_answered', answer: value } }), q.version);
+    if (!ok) return;
+    setEditing(false);
+    setSaved(true);
+    onSaved?.(q.id);
+  };
+
+  return (
+    <li id={`q-${q.key}`} className="qrow" tabIndex={-1}>
+      <p className="qrow__q">{questionText(q, lookup)}</p>
+      {summary && <p className="qrow__summary muted">{summary}</p>}
+      {readOnly && <p className="qrow__answer muted">{QUESTION_DISPOSITION_LABEL[(d?.disposition ?? 'explicitly_excluded') as QuestionDisposition]}</p>}
+      {!readOnly && answered && answer && (
+        <p className="qrow__answer preline">
+          <span className="qrow__label">Our answer: </span>
+          <Prose text={answer} />
+        </p>
+      )}
+      <div className="qrow__foot">
+        {!readOnly && (
+        <>
+          <div className="qrow__actions" hidden={editing}>
+            <Button id={`${editorId}-open`} variant={answered ? 'quiet' : 'secondary'} small aria-expanded={editing} aria-controls={editorId} onClick={open}>
+              {answered ? 'Change answer' : 'Answer'}
+              <span className="visually-hidden">: {questionText(q, lookup)}</span>
+            </Button>
+          </div>
+          <span className="qrow__saved" role="status">
+            {saved ? (
+              <>
+                <Icon name="check" size={14} /> Saved
+              </>
+            ) : null}
+          </span>
+          <div id={editorId} className="qrow__editor" ref={fieldWrap} hidden={!editing}>
+            {editing && (
+              <>
+                <Field label="Our answer" error={tried && text.trim() === '' ? 'Write the answer first.' : null}>
+                  <TextArea value={text} rows={3} onChange={(e) => setText(e.target.value)} />
+                </Field>
+                {w.error && (
+                  <p className="field__error" role="alert">
+                    {w.error}
+                  </p>
+                )}
+                {w.conflict && (
+                  <ConflictBanner
+                    conflict={w.conflict}
+                    busy={w.busy}
+                    onKeepTheirs={() => {
+                      w.keepTheirs();
+                      setEditing(false);
+                    }}
+                    onUseMine={async () => {
+                      if (await w.useMine()) {
+                        setEditing(false);
+                        setSaved(true);
+                        onSaved?.(q.id);
+                      }
+                    }}
+                  />
+                )}
+                <div className="qrow__actions">
+                  <Button variant="primary" busy={w.busy} onClick={() => void save()}>
+                    Save
+                  </Button>
+                  <Button variant="quiet" onClick={cancel}>
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </>
+        )}
+      {hasDetails && (
+        <More label="Details" defaultOpen={defaultOpen} className="qrow__more">
+          <Detail label="What we know" text={d?.known} />
+          <Detail label="When it matters" text={d?.when_trigger} />
+          <Detail label="Facts to bring" text={d?.facts_needed} />
+          <Detail label="Source" text={d?.evidence_basis} />
+          <Detail label="Note" text={d?.local_note} />
           {about.length > 0 && (
-            <p className="small">
-              <span className="faint">About: </span>
+            <p>
+              <span className="qrow__label">About: </span>
               {about.map((r, i) => (
                 <span key={r.id}>
                   {i > 0 && ', '}
-                  <RecordLink id={r.id}>{r.title}</RecordLink>
+                  <RecordLink id={r.id}>{displayTitle(r, lookup)}</RecordLink>
                 </span>
               ))}
             </p>
           )}
-          {d?.evidence_basis && (
-            <div>
-              <h4>Where this comes from</h4>
-              <p className="preline muted">
-                <Prose text={d.evidence_basis} />
-              </p>
-            </div>
-          )}
           {showLink && (
-            <p className="small">
-              <RecordLink id={q.id}>Open details and history</RecordLink>
+            <p>
+              <RecordLink id={q.id}>Open full page</RecordLink>
             </p>
           )}
-        </div>
-      </Disclosure>
+        </More>
+      )}
+      </div>
     </li>
   );
+}
+
+/** Used on a question's own page. */
+export function QuestionCard({ q, idx, defaultOpen = false, showLink = true }: { q: Question; idx?: Indexes; defaultOpen?: boolean; showLink?: boolean }) {
+  const lookup = useMemo(() => (idx ? keyLookup(idx.byKey) : undefined), [idx]);
+  if (!idx) return null;
+  return <QuestionRow q={q} idx={idx} lookup={lookup} defaultOpen={defaultOpen} showLink={showLink} />;
 }
 
 export function QuestionsTab() {
   return <DataGate>{({ idx, dir }) => <Questions idx={idx} dir={dir} />}</DataGate>;
 }
 
-/** A list the household can take to an appointment: printed, or copied as plain text. */
-function AdviserQuestions({ idx, questions }: { idx: Indexes; questions: Question[] }) {
-  const [params, setParams] = useSearchParams();
-  const { today } = useData();
-  const plain = usePlain();
+type Show = 'open' | 'answered' | 'all';
+const SHOW_OPTIONS: { value: Show; label: string }[] = [
+  { value: 'open', label: 'Open' },
+  { value: 'answered', label: 'Answered' },
+  { value: 'all', label: 'All' },
+];
+
+interface GroupDef {
+  key: string;
+  title: string;
+  /** Questions meant for a professional are asked in a batch, so they can be copied. */
+  professional: boolean;
+  questions: Question[];
+}
+
+function Group({
+  group,
+  show,
+  idx,
+  lookup,
+  rank,
+  kept,
+  onSaved,
+}: {
+  group: GroupDef;
+  show: Show;
+  idx: Indexes;
+  lookup?: KeyLookup;
+  rank: (q: Question) => number;
+  kept: ReadonlySet<string>;
+  onSaved: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState<'ok' | 'fail' | null>(null);
-  const [showAll, setShowAll] = useState(false);
-  // Open questions are the list to take along; answered or no-longer-needed ones fold away under it.
-  const audiences = useMemo(() => {
-    const seen = new Map<string, { open: Question[]; closed: Question[] }>();
-    for (const q of [...questions].sort(byKey)) {
-      const a = q.data?.audience ?? 'adviser';
-      const entry = seen.get(a) ?? { open: [], closed: [] };
-      (q.status === 'open' ? entry.open : entry.closed).push(q);
-      seen.set(a, entry);
-    }
-    return [...seen.entries()].sort((a, b) => b[1].open.length - a[1].open.length || audienceLabel(a[0]).localeCompare(audienceLabel(b[0])));
-  }, [questions]);
-  const openCount = questions.filter((q) => q.status === 'open').length;
+  const listId = useId();
+  const headId = useId();
+
   useEffect(() => {
     if (!copied) return;
-    const t = window.setTimeout(() => setCopied(null), 3000);
+    const t = window.setTimeout(() => setCopied(null), 4000);
     return () => window.clearTimeout(t);
   }, [copied]);
 
-  const wanted = params.get('for');
-  const current = audiences.find(([a]) => a === wanted) ?? audiences[0];
-  if (!current) return null;
-  const [audience, { open: list, closed }] = current;
-  const label = audienceLabel(audience);
-  const heading = `Questions for the ${label}`;
+  const { shownQs, openQs } = useMemo(() => {
+    const open = group.questions.filter((q) => questionState(q) === 'open').sort((a, b) => rank(b) - rank(a) || byKey(a, b));
+    const answered = group.questions.filter((q) => questionState(q) === 'answered').sort(byKey);
+    // A question answered a moment ago stays where it was while this view is open, so focus is not lost.
+    const wanted = (q: Question) => show === 'all' || questionState(q) === show || kept.has(q.id);
+    const merged = show === 'answered' ? [...answered] : [...open, ...answered];
+    return { shownQs: merged.filter(wanted), openQs: open };
+  }, [group.questions, show, rank, kept]);
 
-  const choose = (v: string) => {
-    setShowAll(false);
-    const p = new URLSearchParams(params);
-    p.set('for', v);
-    setParams(p, { replace: true });
-  };
-  const print = () => {
-    const root = document.documentElement;
-    root.dataset.print = 'advisers';
-    const clear = () => {
-      delete root.dataset.print;
-      window.removeEventListener('afterprint', clear);
-    };
-    window.addEventListener('afterprint', clear);
-    window.print();
-    // Some browsers do not fire afterprint; never leave the page in print mode.
-    window.setTimeout(clear, 1500);
-  };
+  if (shownQs.length === 0) return null;
+  // A row answered a moment ago stays in view even when it has moved down the list.
+  const visible = expanded ? shownQs : shownQs.filter((q, i) => i < SHOWN_FIRST || kept.has(q.id));
   const copy = async () => {
-    const lines = [heading, ''];
-    list.forEach((q, i) => {
-      lines.push(`${i + 1}. ${plain(q.data?.question || q.title)}`);
-      if (q.data?.facts_needed) lines.push(`   Bring: ${plain(q.data.facts_needed)}`);
-      lines.push('');
-    });
-    try {
-      await navigator.clipboard.writeText(lines.join('\n').trim());
-      setCopied('ok');
-    } catch {
-      setCopied('fail');
-    }
+    const ok = await copyText(numberedList(openQs.map((q) => questionText(q, lookup))));
+    setCopied(ok ? 'ok' : 'fail');
   };
 
   return (
-    <Section
-      title="Questions for your advisers"
-      count={openCount || undefined}
-      intro="Take these to the appointment. Each one says which facts to bring. Answered or no-longer-needed questions are folded away under each list."
-      className="advisers-print"
-    >
-      <div className="no-print">
-        {audiences.length > 1 && (
-          <FilterChips
-            label="Whose questions"
-            value={audience}
-            onChange={choose}
-            options={audiences.map(([a, qs]) => ({ value: a, label: `${audienceLabel(a)[0]?.toUpperCase()}${audienceLabel(a).slice(1)}`, count: qs.open.length }))}
-          />
+    <section className="qgroup" aria-labelledby={headId}>
+      <div className="qgroup__head">
+        <h3 id={headId} className="qgroup__title">
+          {group.title}
+        </h3>
+        {group.professional && openQs.length > 0 && (
+          <Button variant="quiet" small icon="file" onClick={() => void copy()}>
+            Copy these questions<span className="visually-hidden"> for {group.title.replace(/^For /, '')}</span>
+          </Button>
         )}
       </div>
-      <Card>
-        <div className="advisers__head">
-          <h3>{heading}</h3>
-          <div className="row-actions no-print" style={{ marginTop: 0 }}>
-            <Button variant="secondary" small icon="file" onClick={print}>
-              Print this list
-            </Button>
-            <Button variant="quiet" small onClick={() => void copy()}>
-              Copy as text
-            </Button>
-          </div>
-        </div>
-        <p className="print-only small">Prepared {civil(today, 'weekday')}</p>
-        <p className="small muted no-print" role="status">
-          {copied === 'ok' ? 'Copied. Paste it into an email or a note.' : copied === 'fail' ? 'Could not copy. Use Print instead, or select the text.' : ' '}
+      {group.professional && (
+        <p className="qgroup__copied muted" role="status">
+          {copied === 'ok' ? 'Copied' : copied === 'fail' ? 'Could not copy. Select the text instead.' : ''}
         </p>
-        <ol className="advisers__list">
-          {list.map((q, i) => (
-            <li key={q.id} className={`advisers__q${!showAll && i >= SHOWN_ON_SCREEN ? ' advisers__q--more' : ''}`}>
-              <p className="advisers__question">
-                <Prose text={q.data?.question || q.title} />
-              </p>
-              {q.data?.facts_needed && (
-                <p className="small">
-                  <strong>Bring:</strong> <Prose text={q.data.facts_needed} />
-                </p>
-              )}
-              {q.data?.when_trigger && (
-                <p className="small muted">
-                  <strong>Matters when:</strong> <Prose text={q.data.when_trigger} />
-                </p>
-              )}
-              {q.data?.answer && (
-                <p className="small">
-                  <strong>Answer so far:</strong> <Prose text={q.data.answer} />
-                </p>
-              )}
-              <p className="small no-print">
-                <RecordLink id={q.id}>Open details</RecordLink>
-                {aboutRecords(q, idx).length > 0 && (
-                  <>
-                    <span className="faint"> · About: </span>
-                    {aboutRecords(q, idx).map((r, i) => (
-                      <span key={r.id}>
-                        {i > 0 && ', '}
-                        <RecordLink id={r.id}>{r.title}</RecordLink>
-                      </span>
-                    ))}
-                  </>
-                )}
-              </p>
-            </li>
-          ))}
-        </ol>
-        {list.length === 0 && <p className="muted">Nothing is open for the {label} right now.</p>}
-        {list.length > SHOWN_ON_SCREEN && (
-          <div className="no-print">
-            <Button variant="quiet" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
-              {showAll ? 'Show fewer' : `Show all ${list.length}`}
-            </Button>
-            <p className="faint small">Printing and copying always include the whole list.</p>
-          </div>
-        )}
-        {closed.length > 0 && (
-          <Disclosure title="Answered or no longer needed" meta={`${closed.length}`} className="disclosure--flat no-print">
-            <ul className="plain-list plain-list--spaced">
-              {closed.map((q) => (
-                <li key={q.id}>
-                  <RecordLink id={q.id}>{q.title}</RecordLink>
-                  {q.data?.answer && (
-                    <span className="small muted">
-                      {' '}
-                      · <Prose text={q.data.answer} />
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </Disclosure>
-        )}
-      </Card>
-    </Section>
+      )}
+      <ul id={listId} className="qlist">
+        {visible.map((q) => (
+          <QuestionRow key={q.id} q={q} idx={idx} lookup={lookup} onSaved={onSaved} />
+        ))}
+      </ul>
+      {shownQs.length > SHOWN_FIRST && (
+        <Button variant="quiet" aria-expanded={expanded} aria-controls={listId} onClick={() => setExpanded((v) => !v)}>
+          {expanded ? 'Show fewer' : `Show all (${shownQs.length})`}
+        </Button>
+      )}
+    </section>
   );
 }
 
 function Questions({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const [params, setParams] = useSearchParams();
-  const [extra, setExtra] = useState(0);
-  const filter = (params.get('disposition') ?? '') as QuestionDisposition | 'advisers' | 'review' | '';
-  const viewAll = params.get('all') === '1' || filter !== '';
+  const raw = params.get('show');
+  const show: Show = raw === 'answered' || raw === 'all' ? raw : 'open';
+  const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
+  const [kept, setKept] = useState<ReadonlySet<string>>(new Set());
+  const [focusId, setFocusId] = useState<string | null>(null);
 
-  const { plan, advisers, added } = useMemo(() => {
-    const plan: Question[] = [];
-    const advisers: Question[] = [];
-    const added: Question[] = [];
-    for (const q of idx.questions) {
-      if (isAdviserQuestion(q)) advisers.push(q);
-      else if (q.data?.origin === 'review') added.push(q);
-      else plan.push(q);
-    }
-    return { plan, advisers, added };
-  }, [idx]);
-
-  const counts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const q of plan) c[q.data?.disposition ?? 'question'] = (c[q.data?.disposition ?? 'question'] ?? 0) + 1;
-    return c;
-  }, [plan]);
-
+  const counts = useMemo(() => questionCounts(idx.questions), [idx.questions]);
   const phaseKeys = useMemo(() => {
     const phase = currentPhase(idx);
     const keys = new Set<string>();
@@ -331,128 +338,91 @@ function Questions({ idx, dir }: { idx: Indexes; dir: Directory }) {
     for (const m of idx.milestones) if (m.data?.phase === phase && isOpenWork(m.status)) keys.add(m.key);
     return keys;
   }, [idx]);
+  const rank = useMemo(() => {
+    const cache = new Map<string, number>();
+    return (q: Question) => {
+      let s = cache.get(q.id);
+      if (s === undefined) {
+        s = relevanceScore(q, idx, dir, phaseKeys);
+        cache.set(q.id, s);
+      }
+      return s;
+    };
+  }, [idx, dir, phaseKeys]);
 
-  const ranked = useMemo(() => {
-    return plan
-      .filter((q) => (q.data?.disposition ?? 'question') === 'question' && isPlanQuestion(q))
-      .map((q) => ({ q, score: relevanceScore(q, idx, dir, phaseKeys) }))
-      .sort((a, b) => b.score - a.score || byKey(a.q, b.q))
-      .map((x) => x.q);
-  }, [plan, idx, dir, phaseKeys]);
+  const { groups, excluded } = useMemo(() => {
+    const own: Question[] = [];
+    const byAudience = new Map<string, Question[]>();
+    const excluded: Question[] = [];
+    for (const q of idx.questions) {
+      if (questionState(q) === 'excluded') {
+        excluded.push(q);
+        continue;
+      }
+      const a = q.data?.audience;
+      if (!a || a === 'household') own.push(q);
+      else byAudience.set(a, [...(byAudience.get(a) ?? []), q]);
+    }
+    const groups: GroupDef[] = [];
+    const professional = [...byAudience.entries()]
+      .map(([a, qs]) => ({ key: a, title: forAudience(a, audienceLabel(a)), professional: true, questions: qs }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+    // With no professional groups there is only one list, and it needs no heading about who it is for.
+    if (own.length > 0) groups.push({ key: 'household', title: professional.length > 0 ? 'For us' : 'Our questions', professional: false, questions: own });
+    groups.push(...professional);
+    return { groups, excluded: excluded.sort(byKey) };
+  }, [idx.questions]);
 
-  const shown = ranked.slice(0, 5 + extra);
-  const all = useMemo(() => {
-    const list = filter === 'advisers' ? advisers : filter === 'review' ? added : filter ? plan.filter((q) => q.data?.disposition === filter) : idx.questions;
-    return [...list].sort(byKey);
-  }, [idx, plan, advisers, added, filter]);
-
-  const setFilter = (v: string) => {
+  const setShow = (v: Show) => {
     const p = new URLSearchParams(params);
-    if (v === '') p.delete('disposition');
-    else p.set('disposition', v);
-    if (v === '') p.delete('all');
+    if (v === 'open') p.delete('show');
+    else p.set('show', v);
     setParams(p, { replace: true });
   };
-  const showAll = () => {
-    const p = new URLSearchParams(params);
-    p.set('all', '1');
-    setParams(p, { replace: true });
+  const onSaved = (id: string) => {
+    setKept((k) => new Set(k).add(id));
+    setFocusId(id);
   };
+  useEffect(() => {
+    if (!focusId) return;
+    const q = idx.questions.find((x) => x.id === focusId);
+    if (q) document.getElementById(`q-${q.key}`)?.focus();
+    setFocusId(null);
+  }, [focusId, idx.questions]);
 
-  const coverageIntro =
-    advisers.length > 0
-      ? `${plan.length} from your plan · ${advisers.length} for your advisers${added.length ? ` · ${added.length} added at a review` : ''}. Every question is accounted for; only a few are shown at a time, but none are dropped.`
-      : 'Every question is accounted for. Only a few are shown below at a time, but none are dropped.';
+  const anyShown = groups.some((g) => g.questions.some((q) => show === 'all' || questionState(q) === show || kept.has(q.id)));
 
   return (
-    <div className="stack stack--loose">
-      {advisers.length > 0 && !viewAll && <AdviserQuestions idx={idx} questions={advisers} />}
-
-      <Section title="Where all the questions stand" count={idx.questions.length} intro={coverageIntro} className="print-hide">
-        <Card>
-          <ul className="coverage">
-            {DISPOSITIONS.map((d) => (
-              <li key={d} className="coverage__row">
-                <span>{QUESTION_DISPOSITION_LABEL[d]}</span>
-                <strong>{counts[d] ?? 0}</strong>
-              </li>
-            ))}
-            <li className="coverage__row coverage__row--total">
-              <span>From your plan</span>
-              <strong>{plan.length}</strong>
-            </li>
-            {advisers.length > 0 && (
-              <li className="coverage__row">
-                <span>For your advisers</span>
-                <strong>{advisers.length}</strong>
-              </li>
-            )}
-            {added.length > 0 && (
-              <li className="coverage__row">
-                <span>Added at a review</span>
-                <strong>{added.length}</strong>
-              </li>
-            )}
-          </ul>
-          {!viewAll && (
-            <div className="row-actions">
-              <Button variant="secondary" onClick={showAll}>
-                View all {idx.questions.length}
+    <div className="qtab">
+      <h2 className="visually-hidden">Questions</h2>
+      <div className="qtab__bar">
+        <p className="qtab__counts">{countsLine(counts)}</p>
+        <SegmentedControl<Show> label="Show" value={show} onChange={setShow} options={SHOW_OPTIONS} />
+      </div>
+      {!anyShown && (
+        <EmptyState
+          icon="check"
+          title={show === 'answered' ? 'Nothing answered yet.' : 'Nothing left to answer.'}
+          action={
+            counts.answered > 0 && show === 'open' ? (
+              <Button variant="quiet" onClick={() => setShow('answered')}>
+                Show answered
               </Button>
-            </div>
-          )}
-        </Card>
-      </Section>
-
-      {!viewAll && (
-        <Section title="A few to think about now" intro="Picked for the stage you’re in and for you." className="print-hide">
-          {shown.length === 0 ? (
-            <Card>
-              <EmptyState icon="check" title="No open questions right now." />
-            </Card>
-          ) : (
-            <ul className="stack stack--tight">
-              {shown.map((q) => (
-                <QuestionCard key={q.id} q={q} idx={idx} />
-              ))}
-            </ul>
-          )}
-          {ranked.length > shown.length && (
-            <div>
-              <Button variant="quiet" onClick={() => setExtra((e) => e + 5)}>
-                Show 5 more ({ranked.length - shown.length} open questions left)
-              </Button>
-            </div>
-          )}
-        </Section>
+            ) : undefined
+          }
+        />
       )}
-
-      {viewAll && (
-        <Section title="All questions" count={all.length}>
-          <FilterChips
-            label="Filter questions"
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { value: '' as const, label: 'All', count: idx.questions.length },
-              ...DISPOSITIONS.map((d) => ({ value: d as string, label: QUESTION_DISPOSITION_LABEL[d], count: counts[d] ?? 0 })),
-              ...(advisers.length ? [{ value: 'advisers', label: 'For your advisers', count: advisers.length }] : []),
-              ...(added.length ? [{ value: 'review', label: 'Added at a review', count: added.length }] : []),
-            ]}
-          />
-          <ul className="stack stack--tight">
-            {all.map((q) => (
-              <QuestionCard key={q.id} q={q} idx={idx} />
+      {groups.map((g) => (
+        <Group key={g.key} group={g} show={show} idx={idx} lookup={lookup} rank={rank} kept={kept} onSaved={onSaved} />
+      ))}
+      {show === 'all' && excluded.length > 0 && (
+        <More label={`Not needed (${excluded.length})`} className="qtab__excluded">
+          <ul className="qlist">
+            {excluded.map((q) => (
+              <QuestionRow key={q.id} q={q} idx={idx} lookup={lookup} readOnly />
             ))}
           </ul>
-          {!filter && (
-            <p className="small">
-              <Button variant="quiet" onClick={() => setFilter('')}>
-                Back to the short list
-              </Button>
-            </p>
-          )}
-        </Section>
+        </More>
       )}
     </div>
   );

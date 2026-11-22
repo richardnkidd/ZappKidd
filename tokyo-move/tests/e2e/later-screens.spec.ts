@@ -798,3 +798,75 @@ test.describe('Printable arrival pack', () => {
     await page.emulateMedia({ media: 'screen' });
   });
 });
+
+/* ------------------------------------------------------------------ Decide: Questions and Risks */
+
+test.describe('Decide: Questions and Risks', () => {
+  test('questions are one row each, can be answered in place, and the answer can be changed', async ({ page, signIn }, testInfo) => {
+    await signIn(page, 'avery', '/decide/questions');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await loaded(page);
+    await expect(page.locator('.qtab__counts')).toHaveText(/^\d+ open( · \d+ answered)?$/);
+    await expect(page.getByText(/Every question is accounted for/)).toHaveCount(0);
+
+    const rows = page.locator('li.qrow');
+    const picked = rows.nth(Math.max(0, PROJECTS.indexOf(testInfo.project.name)));
+    const questionText = (await picked.locator('.qrow__q').innerText()).trim();
+    // The row moves down once answered, so find it again by its text.
+    const row = rows.filter({ has: page.locator('.qrow__q', { hasText: questionText }) });
+    const opener = row.getByRole('button', { name: /^Answer/ });
+    await expect(opener).toHaveAttribute('aria-expanded', 'false');
+    await opener.click();
+    const field = row.getByLabel('Our answer');
+    await expect(field).toBeFocused();
+
+    const first = `Agreed on ${testInfo.project.name} one`;
+    await field.fill(first);
+    await row.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(row.getByRole('status').filter({ hasText: 'Saved' })).toBeVisible();
+    await expect(row).toBeFocused();
+    await expect(row).toContainText(`Our answer: ${first}`);
+    await expect(row).toContainText(questionText);
+
+    await row.getByRole('button', { name: /^Change answer/ }).click();
+    await expect(row.getByLabel('Our answer')).toHaveValue(first);
+    const second = `Agreed on ${testInfo.project.name} two`;
+    await row.getByLabel('Our answer').fill(second);
+    await row.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(row).toContainText(`Our answer: ${second}`);
+
+    // It now counts as answered and shows under Answered, also after a reload.
+    await page.reload();
+    await loaded(page);
+    await page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Answered' }).click();
+    await expect(page.locator('li.qrow').filter({ hasText: second })).toBeVisible();
+  });
+
+  test('context sits behind Details on a question', async ({ page, signIn }) => {
+    await signIn(page, 'avery', '/decide/questions');
+    await loaded(page);
+    const details = page.locator('li.qrow').first().getByRole('button', { name: 'Details' });
+    await expect(details).toHaveAttribute('aria-expanded', 'false');
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  test('risks are one row each, most serious first, with short labels behind Details', async ({ page, signIn }) => {
+    await signIn(page, 'avery', '/decide/risks');
+    await loaded(page);
+    const rows = page.locator('li.risk');
+    await expect(rows.first()).toBeVisible();
+    expect(await rows.count()).toBeLessThanOrEqual(8);
+    await expect(page.locator('.chip')).toHaveCount(0);
+    await expect(page.getByText(/not agreed yet|RAISE IT/i)).toHaveCount(0);
+    await expect(rows.first().locator('[role="img"]')).toHaveAttribute('aria-label', /risk$|not set$/);
+    const labels = await page.locator('li.risk [role="img"]').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
+    const order = ['Critical risk', 'High risk', 'Medium risk', 'Low risk', 'Seriousness not set'];
+    const ranks = labels.map((l) => order.indexOf(l ?? ''));
+    expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
+    const details = rows.first().getByRole('button', { name: 'Details' });
+    await details.click();
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await expect(rows.first()).toContainText(/Warning sign|Our plan|Backup|Escalate if/);
+  });
+});

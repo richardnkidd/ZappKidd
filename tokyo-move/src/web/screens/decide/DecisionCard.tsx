@@ -1,53 +1,212 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ButtonHTMLAttributes, type FormEvent, type Ref } from 'react';
 import { Link } from 'react-router';
-import { DECISION_STATE_LABEL } from '@shared/labels';
-import { DateText, DeadlineBadge } from '../../components/Badges';
-import { Button } from '../../components/Controls';
+import { displayDelay, displayQuestion, displaySummary, displayTitle, keyLookup, optionLabel, stripCodes, type KeyLookup } from '@shared/plain';
+import type { BaseRecord } from '@shared/types';
+import { DateText, YourTurnChip } from '../../components/Badges';
+import { ClampText } from '../../components/ClampText';
+import { Button, Field, TextInput } from '../../components/Controls';
 import { ConflictBanner } from '../../components/Feedback';
-import { Icon } from '../../components/Icon';
+import { Icon, type IconName } from '../../components/Icon';
 import { Card } from '../../components/Layout';
-import { OwnerChip, usePlain } from '../../components/People';
+import { More } from '../../components/More';
+import { usePlain } from '../../components/People';
 import { Prose } from '../../components/Prose';
 import { RecordLink } from '../../components/RecordLink';
+import { dateLine } from '../../lib/dateLine';
 import { decisionEffect } from '../../lib/decisionEffects';
 import { civil, dayIn } from '../../lib/format';
 import { recordedDecision, settledPart } from '../../lib/home';
 import type { Decision, Directory, Indexes } from '../../lib/records';
+import { api } from '../../net/client';
 import { usePrefs } from '../../state/prefs';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
-import { AddAlternativeDialog, AddNoteDialog, ApproveDialog, ReasonDialog } from './decisionDialogs';
-import { approvalSummary, requiredApproverIds, YourTurnTag } from './decisionText';
+import { AddAlternativeDialog, AddNoteDialog, ReasonDialog } from './decisionDialogs';
+import {
+  agreeLabel,
+  canReopen,
+  decisionStatus,
+  decisionTurn,
+  initialChoice,
+  isOpenDecision,
+  orderedOptions,
+  requiredApproverIds,
+  triggerLine,
+  type DecisionStatus,
+} from './decisionText';
 
 const trimEnd = (t: string) => t.replace(/[.\s]+$/, '');
 
+/** The shared Button's look, for the few buttons that must take focus back after an action (they need a ref). */
+function FocusButton({
+  variant = 'secondary',
+  small = false,
+  icon,
+  className = '',
+  children,
+  ref,
+  type = 'button',
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'quiet'; small?: boolean; icon?: IconName; ref?: Ref<HTMLButtonElement> }) {
+  return (
+    <button ref={ref} type={type} className={`btn btn--${variant}${small ? ' btn--sm' : ''} ${className}`.trim()} {...rest}>
+      {icon && <Icon name={icon} size={18} />}
+      {children}
+    </button>
+  );
+}
+const cardSelector = (key: string) => `[id="decision-${key.replace(/["\\]/g, '\\$&')}"]`;
+
+/** How a decision just ended, for the in-place "Decided: … Undo" notice. */
+export interface SettledOutcome {
+  kind: 'decided' | 'put-off' | 'not-doing';
+  /** The chosen option's label, when it was decided. */
+  label: string | null;
+  record: BaseRecord;
+}
+
 /** After a decision settles whether a step applies to the pet, offer to carry that answer to the step. */
 function ApplyEffect({ d, idx, dir }: { d: Decision; idx: Indexes; dir: Directory }) {
-  const { actions } = useSnapshot();
+  const { actions, snapshot } = useSnapshot();
   const w = useWrite();
-  const { snapshot } = useSnapshot();
   const eff = decisionEffect(d, idx, dir, snapshot?.settings);
   if (!eff) return null;
+  const title = displayTitle(eff.record);
   const apply = () => w.run((v) => actions.patchRecord(eff.record.id, v, { data: { applies_to: { [eff.personId]: eff.answer } } }), eff.record.version);
   return (
     <div className="applies">
       {eff.applied ? (
         <p>
-          <Icon name="check" size={14} /> Applied: <RecordLink id={eff.record.id}>{eff.record.title}</RecordLink> {eff.answer === 'yes' ? `now counts for ${eff.personName}` : `is not needed for ${eff.personName}`}.
+          <Icon name="check" size={14} /> Applied: <RecordLink id={eff.record.id}>{title}</RecordLink> {eff.answer === 'yes' ? `now counts for ${eff.personName}` : `is not needed for ${eff.personName}`}.
         </p>
       ) : (
-        <>
-          <p>
-            This answers whether <RecordLink id={eff.record.id}>{eff.record.title}</RecordLink> applies to {eff.personName}: <strong>{eff.answer === 'yes' ? 'yes' : 'no'}</strong>.
-          </p>
-          <div>
-            <Button variant="secondary" small busy={w.busy} onClick={() => void apply()}>
-              Apply to {eff.personName}’s steps
-            </Button>
-          </div>
-        </>
+        <div>
+          <Button variant="secondary" small busy={w.busy} onClick={() => void apply()}>
+            Apply to {eff.personName}’s steps
+          </Button>
+        </div>
       )}
       {w.error && <p className="field__error" role="alert">{w.error}</p>}
+      {w.conflict && <ConflictBanner conflict={w.conflict} busy={w.busy} onKeepTheirs={w.keepTheirs} onUseMine={() => void w.useMine()} />}
+    </div>
+  );
+}
+
+/** Whose turn it is: the one chip when it is mine, plain words with an icon otherwise. */
+function StatusLine({ status }: { status: DecisionStatus }) {
+  if (status.kind === 'my-turn') return <YourTurnChip small>{status.text}</YourTurnChip>;
+  return (
+    <span className={`dcard__status dcard__status--${status.kind}`}>
+      <Icon name={status.icon} size={16} />
+      <span>{status.text}</span>
+    </span>
+  );
+}
+
+/** "By Mon, Nov 30 (8 days)", or "11 days late". */
+function DecideBy({ date, today }: { date: string; today: string }) {
+  const late = dateLine(date, today).when === 'late';
+  return (
+    <span className="dcard__by">
+      {late ? '' : 'By '}
+      <DateText date={date} today={today} />
+    </span>
+  );
+}
+
+/** For a decision with no plain question yet: one quiet action that lets a person write it. */
+function WriteQuestion({ d, onSaved }: { d: Decision; onSaved: () => void }) {
+  const { actions } = useSnapshot();
+  const w = useWrite();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+  const cancel = () => {
+    setEditing(false);
+    setText('');
+    setTried(false);
+    w.clear();
+    window.setTimeout(() => openerRef.current?.focus(), 0);
+  };
+  const save = async (e: FormEvent) => {
+    e.preventDefault();
+    setTried(true);
+    let q = text.replace(/\s+/g, ' ').trim();
+    if (!q) {
+      inputRef.current?.focus();
+      return;
+    }
+    if (!q.endsWith('?')) q = `${q.replace(/[.!]+$/, '')}?`;
+    const ok = await w.run((v) => actions.patchRecord(d.id, v, { data: { plain_question: q } }), d.version);
+    if (ok) {
+      setEditing(false);
+      setText('');
+      onSaved();
+    }
+  };
+  if (!editing) {
+    return (
+      <div>
+        <FocusButton ref={openerRef} variant="quiet" small icon="pencil" onClick={() => setEditing(true)}>
+          Write the question
+        </FocusButton>
+      </div>
+    );
+  }
+  return (
+    <form className="dcard__ask" onSubmit={(e) => void save(e)}>
+      <Field label="The question" error={tried && !text.trim() ? 'Please write the question.' : null}>
+        <TextInput ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} autoComplete="off" maxLength={200} enterKeyHint="done" />
+      </Field>
+      <div className="dcard__ask-actions">
+        <Button type="submit" variant="secondary" busy={w.busy}>
+          Save
+        </Button>
+        <Button variant="quiet" onClick={cancel}>
+          Cancel
+        </Button>
+      </div>
+      {w.error && <p className="field__error" role="alert">{w.error}</p>}
+      {w.conflict && <ConflictBanner conflict={w.conflict} busy={w.busy} onKeepTheirs={() => { w.keepTheirs(); cancel(); }} onUseMine={() => void w.useMine().then((ok) => ok && (setEditing(false), onSaved()))} />}
+    </form>
+  );
+}
+
+/** "Reopen" on a decided, put-off or rejected decision, for 7 days. */
+function Reopen({ d, label = 'Reopen', onReopened }: { d: Decision; label?: string; onReopened?: (rec: BaseRecord) => void }) {
+  const { actions, refresh } = useSnapshot();
+  const w = useWrite();
+  const [expired, setExpired] = useState(false);
+  if (!canReopen(d) && !w.error) return null;
+  const run = () =>
+    w.run(async (v) => {
+      try {
+        const rec = await api.reopenDecision(d.id, { baseVersion: v });
+        actions.adoptRecord(rec);
+        void refresh();
+        onReopened?.(rec);
+      } catch (e) {
+        if (e instanceof Error && /more than \d+ days ago/.test(e.message)) setExpired(true);
+        throw e;
+      }
+    }, d.version);
+  return (
+    <div className="dcard__reopen">
+      {!expired && (
+        <Button variant="quiet" small icon="undo" busy={w.busy} onClick={() => void run()}>
+          {label}
+        </Button>
+      )}
+      {w.error && (
+        <p className="field__error" role="alert">
+          {expired ? 'This can no longer be reopened. It was settled over 7 days ago.' : w.error}
+        </p>
+      )}
       {w.conflict && <ConflictBanner conflict={w.conflict} busy={w.busy} onKeepTheirs={w.keepTheirs} onUseMine={() => void w.useMine()} />}
     </div>
   );
@@ -58,286 +217,601 @@ interface CardProps {
   idx: Indexes;
   dir: Directory;
   today: string;
-  /** Show the options and the action row from the start (record pages, deep links, the "Later" list). */
+  /** Show the choices and the actions from the start (record pages, deep links). */
   startOpen?: boolean;
-  /** Leave out the card's own title when the page already shows it (the record page). */
+  /** Leave out the card's own heading when the page already shows the title (the record page). */
   hideTitle?: boolean;
   /** Heading level of the card title (the sub-headings follow it). */
   level?: 1 | 2 | 3;
-  /** Called when the last required person approves, so the page can keep the card visible for a moment. */
+  /** Called when the last required person agrees. */
   onDecidedTogether?: (d: Decision) => void;
+  /** Called when the decision is decided, put off or closed from this card, so a list can show "Decided … Undo" in place. */
+  onSettled?: (d: Decision, outcome: SettledOutcome) => void;
+  /** Called when I pick an answer, before it is saved, so a list can keep the card where it is. */
+  onChose?: (d: Decision) => void;
+  /** Called after "Reopen" succeeds. */
+  onReopened?: (d: Decision, rec: BaseRecord) => void;
+  /** Resolves record codes to names. Built from `idx` when not given. */
+  lookup?: KeyLookup;
 }
 
 /**
- * One decision. Collapsed it shows the question, who owns it, when it is needed and where approvals stand; Approve is
- * offered only after the options are on screen. Decisions already recorded as decided never ask again.
+ * One decision, about 60 words: whose turn, the question, when it is needed, what happens if we wait, the choices as
+ * radios, and one button that agrees with the picked choice. Everything else sits behind "Why and history".
+ * A decision settles only when every required person picked the same choice (the server enforces it).
  */
-export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle = false, level = 3, onDecidedTogether }: CardProps) {
+export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle = false, level = 3, onDecidedTogether, onSettled, onChose, onReopened, lookup: given }: CardProps) {
   const data = d.data ?? ({} as Decision['data']);
-  const plain = usePlain();
-  const { zone } = usePrefs();
-  const summary = approvalSummary(d, dir);
-  const recorded = recordedDecision(d);
-  const settled = settledPart(d);
-  const open = (d.status === 'open' || d.status === 'proposed') && !recorded;
+  const lookup = useMemo(() => given ?? keyLookup(idx.byKey), [given, idx]);
+  const meId = dir.me?.id ?? null;
+  const status = decisionStatus(d, meId, dir);
+  const open = isOpenDecision(d);
+  const question = displayQuestion(d, lookup);
+  const heading = question ?? displayTitle(d, lookup);
   const [expanded, setExpanded] = useState(startOpen);
-  const [approve, setApprove] = useState(false);
-  const [reasonMode, setReasonMode] = useState<'reject' | 'defer' | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [noting, setNoting] = useState(false);
-  const options = data.options ?? [];
-  const recommended = options.find((o) => o.id === data.recommended_option_id);
-  const mine = (data.approvals ?? []).find((a) => a.person_id === dir.me?.id);
-  const myOption = mine ? options.find((o) => o.id === mine.option_id) : null;
-  const needed = data.needed_by;
-  const required = requiredApproverIds(d, dir);
-  const iNeedToApprove = !dir.me ? true : required.includes(dir.me.id);
-  const onlyNames = required.map((id) => dir.nameOf(id));
-  const tone = recorded || d.status === 'approved' ? 'done' : d.status === 'proposed' ? 'proposal' : 'default';
-  const chipTone = recorded || d.status === 'approved' ? 'matcha' : d.status === 'proposed' ? 'neutral' : d.status === 'open' ? 'ai' : 'neutral';
-  const stateLabel = recorded ? 'Decided' : (DECISION_STATE_LABEL[d.status as keyof typeof DECISION_STATE_LABEL] ?? d.status);
-  const regionId = `dec-body-${d.key}`;
+  const showBody = startOpen || expanded;
+  const [announce, setAnnounce] = useState('');
+  const articleRef = useRef<HTMLElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const bodyId = useId();
   const Title = `h${level}` as 'h1' | 'h2' | 'h3';
   const Sub = `h${Math.min(level + 1, 6)}` as 'h2' | 'h3' | 'h4';
-  const showBody = expanded || startOpen;
+  const needed = data.needed_by?.date ?? null;
+  const when = !needed && open ? triggerLine(data.trigger, today, lookup) : null;
+  const delay = open ? displayDelay(d, lookup) : null;
+  const recorded = recordedDecision(d);
+  const required = requiredApproverIds(d, dir);
+  const iChoose = !!meId && required.includes(meId);
+
+  const say = (text: string) => {
+    setAnnounce('');
+    window.setTimeout(() => setAnnounce(text), 30);
+  };
+
+  const expand = () => {
+    setExpanded(true);
+    // Move into the revealed choices so a keyboard or screen-reader user lands on the question's options.
+    window.setTimeout(() => {
+      const body = document.getElementById(bodyId);
+      const target = body?.querySelector<HTMLElement>('input[type="radio"]:checked, input[type="radio"], button, [tabindex="-1"]');
+      (target ?? articleRef.current)?.focus();
+    }, 30);
+  };
+  const collapse = () => {
+    setExpanded(false);
+    window.setTimeout(() => toggleRef.current?.focus(), 30);
+  };
+
+  const settled = (outcome: SettledOutcome) => {
+    const words = outcome.kind === 'decided' ? `Decided: ${outcome.label ?? 'done'}.` : outcome.kind === 'put-off' ? 'Put off.' : 'Not doing this.';
+    say(words);
+    if (onSettled) onSettled(d, outcome);
+    else window.setTimeout(() => articleRef.current?.focus(), 60); // the buttons are gone; keep focus on the card
+  };
+
+  const labelOf = (id: string | null | undefined) => {
+    const o = (data.options ?? []).find((x) => x.id === id);
+    return o ? optionLabel(d, o, lookup) : null;
+  };
 
   return (
-    <li>
-      <Card as="article" tone={tone} id={`decision-${d.key}`} tabIndex={-1} className="decision" aria-labelledby={hideTitle ? undefined : `dt-${d.key}`} aria-label={hideTitle ? d.title : undefined}>
-        <header className="decision__head">
-          <span className={`chip chip--${chipTone} chip--sm`}>
-            <Icon name={recorded || d.status === 'approved' ? 'check' : d.status === 'proposed' ? 'pencil' : 'decide'} size={13} />
-            <span>{stateLabel}</span>
-          </span>
-          {open && <YourTurnTag decision={d} dir={dir} />}
-        </header>
-        {!hideTitle && (
-          <Title id={`dt-${d.key}`} className="decision__title">
-            {d.title}
+    <li className="dcard-item">
+      <Card
+        as="article"
+        ref={articleRef}
+        id={`decision-${d.key}`}
+        tabIndex={-1}
+        className={`decision dcard dcard--${status.kind}${showBody ? ' is-open' : ''}`}
+        aria-labelledby={hideTitle ? undefined : `dt-${d.key}`}
+        aria-label={hideTitle ? heading : undefined}
+      >
+        <div className="dcard__top">
+          <StatusLine status={status} />
+          {open && needed && <DecideBy date={needed} today={today} />}
+          {open && expanded && !startOpen && (
+            <button type="button" className="dcard__close" aria-expanded={true} aria-controls={bodyId} aria-label="Hide choices" title="Hide choices" onClick={collapse}>
+              <Icon name="x" size={18} />
+            </button>
+          )}
+        </div>
+        {!hideTitle ? (
+          <Title id={`dt-${d.key}`} ref={headingRef} tabIndex={-1} className="dcard__q">
+            {heading}
           </Title>
-        )}
-
-        {recorded ? (
-          <div className="stack stack--tight">
-            <p className="approval approval--agreed">
-              <Icon name="check" size={16} /> Decided {recorded.on ? civil(recorded.on, 'short') : 'earlier'} (recorded in the plan)
-            </p>
-            {recorded.summary && <p className="preline">{plain(recorded.summary)}</p>}
-            {recorded.open_part && (
-              <p className="small muted preline">
-                <strong>Still open, separately:</strong> {plain(recorded.open_part)}
-              </p>
-            )}
-          </div>
         ) : (
+          question && question !== displayTitle(d, lookup) && <p className="dcard__q dcard__q--sub">{question}</p>
+        )}
+        {when && <p className="dcard__when">{when}</p>}
+        {delay && showBody && (
+          <ClampText lines={2} className="dcard__delay" moreLabel="Show all">
+            <span className="dcard__label">If we don’t decide:</span> {delay}
+          </ClampText>
+        )}
+
+        {open ? (
           <>
-            {settled && (
-              <p className="settled">
-                <Icon name="check" size={14} /> <strong>Already decided:</strong> {plain(settled)}
-              </p>
-            )}
-            {data.question && data.question !== d.title && (
-              <p className="muted preline">
-                <Prose text={data.question} />
-              </p>
-            )}
-            <div className="item__meta">
-              <OwnerChip owner={d.owner} proposed={d.owner_proposed && open} compact />
-              {needed?.date ? (
-                <span className="item__when">
-                  <span className="faint small">Needed by</span>
-                  <DateText date={needed.date} today={today} />
-                  <DeadlineBadge kind={needed.kind} />
-                </span>
-              ) : data.trigger ? (
-                <span className="small muted">Needed when: {plain(data.trigger)}</span>
-              ) : (
-                <span className="small faint">No date yet</span>
-              )}
-            </div>
-            <p className={`approval approval--${summary.state}`}>
-              <Icon name={summary.state === 'agreed' ? 'check' : summary.state === 'disagree' ? 'alert' : 'clock'} size={16} /> {summary.text}
-            </p>
-          </>
-        )}
-
-        {!startOpen && (
-          <div>
-            <Button variant="secondary" small aria-expanded={expanded} aria-controls={regionId} icon={expanded ? 'chevron-down' : 'chevron-right'} onClick={() => setExpanded((v) => !v)}>
-              {open && !recorded ? (expanded ? 'Hide options' : 'Review options and decide') : expanded ? 'Hide details' : 'Show details'}
-            </Button>
-          </div>
-        )}
-
-        {!open && <ApplyEffect d={d} idx={idx} dir={dir} />}
-
-        {showBody && (
-          <div id={regionId} className="stack decision__body">
-            {!recorded && (
-              <>
-                {options.length > 0 && (
-                  <div>
-                    <Sub className="decision__sub">Options</Sub>
-                    <ul className="options">
-                      {options.map((o) => {
-                        const chose = (data.approvals ?? []).filter((a) => a.option_id === o.id).map((a) => dir.nameOf(a.person_id));
-                        return (
-                          <li key={o.id} className="option">
-                            <p>
-                              <strong>{o.label}</strong>
-                              {o.id === data.recommended_option_id && <span className="chip chip--ai chip--sm" style={{ marginLeft: 8 }}>Suggested</span>}
-                              {data.decided_option_id === o.id && <span className="chip chip--matcha chip--sm" style={{ marginLeft: 8 }}>Chosen</span>}
-                            </p>
-                            {o.consequences && <p className="small muted preline">{o.consequences}</p>}
-                            {chose.length > 0 && <p className="small faint">Approved by {chose.join(' and ')}</p>}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                    {open && options.length === 1 && (
-                      <p className="small muted">Only one suggestion is recorded and no alternatives have been considered.</p>
-                    )}
-                  </div>
-                )}
-                {!options.length && data.recommendation_text && (
-                  <p className="decision__rec">
-                    <span className="item__label">Suggested</span> <Prose text={data.recommendation_text} />
-                  </p>
-                )}
-                {recommended && data.recommendation_text && options.length > 1 && (
-                  <p className="small muted preline">
-                    <strong>Original suggestion:</strong> <Prose text={data.recommendation_text} />
-                  </p>
-                )}
-                {data.consequence_of_delay && open && (
-                  <p className="small muted preline">
-                    <strong>If we wait:</strong> <Prose text={data.consequence_of_delay} />
-                  </p>
-                )}
-                {data.rationale && (
-                  <div>
-                    <Sub className="decision__sub">Why</Sub>
-                    <p className="preline">
-                      <Prose text={data.rationale} />
-                    </p>
-                  </div>
-                )}
-                {data.acceptance_evidence && (
-                  <div>
-                    <Sub className="decision__sub">How we’ll know it’s settled</Sub>
-                    <p className="preline">
-                      <Prose text={data.acceptance_evidence} />
-                    </p>
-                  </div>
-                )}
-                {(data.dependencies ?? []).length > 0 && (
-                  <div>
-                    <Sub className="decision__sub">Depends on</Sub>
-                    <ul className="plain-list">
-                      {data.dependencies.map((k) => {
-                        const r = idx.byKey.get(k);
-                        return r ? (
-                          <li key={k}>
-                            <RecordLink id={r.id}>{r.title}</RecordLink>
-                          </li>
-                        ) : null;
-                      })}
-                    </ul>
-                  </div>
-                )}
-              </>
-            )}
-
-            <div>
-              <Sub className="decision__sub">History</Sub>
-              {(data.approvals ?? []).length === 0 && !data.history_note && !data.decided_at ? (
-                <p className="muted">Nothing has happened on this yet.</p>
-              ) : (
-                <ul className="plain-list">
-                  {[...(data.approvals ?? [])]
-                    .sort((a, b) => (a.at < b.at ? 1 : -1))
-                    .map((a) => (
-                      <li key={`${a.person_id}-${a.at}`}>
-                        {civil(dayIn(a.at, zone), 'short')}: {dir.nameOf(a.person_id)} approved “{trimEnd(options.find((o) => o.id === a.option_id)?.label ?? 'an option')}”
-                        {a.note ? ` — ${a.note}` : ''}
-                      </li>
-                    ))}
-                  {data.decided_at && <li>{civil(dayIn(data.decided_at, zone), 'short')}: decided.</li>}
-                  {data.history_note && <li className="preline">{plain(data.history_note)}</li>}
-                </ul>
-              )}
-            </div>
-
-            {open && showBody && (
-              <div className="decision__actions">
-                {iNeedToApprove ? (
-                  <>
-                    <div className="row-actions" style={{ marginTop: 0 }}>
-                      {mine ? (
-                        <Button variant="quiet" onClick={() => setApprove(true)}>
-                          Change my approval
-                        </Button>
-                      ) : (
-                        <Button variant="primary" onClick={() => setApprove(true)}>
-                          Approve as {dir.me?.display_name ?? 'me'}
-                        </Button>
-                      )}
-                      <Button variant="secondary" onClick={() => setReasonMode('defer')}>
-                        Put off…
-                      </Button>
-                      <Button variant="quiet" onClick={() => setReasonMode('reject')}>
-                        Reject…
-                      </Button>
-                    </div>
-                    {mine && myOption && <p className="small faint">You approved “{trimEnd(myOption.label)}.”</p>}
-                    {options.length === 1 && (
-                      <div>
-                        <Button variant="secondary" small icon="plus" onClick={() => setAdding(true)}>
-                          Add an alternative
-                        </Button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="muted">
-                      Only {onlyNames.length === 1 ? onlyNames[0] : onlyNames.join(' and ')} {onlyNames.length === 1 ? 'needs' : 'need'} to approve this.
-                    </p>
-                    <div>
-                      <Button variant="secondary" small onClick={() => setNoting(true)}>
-                        Add a note
-                      </Button>
-                    </div>
-                  </>
-                )}
+            {!showBody && (
+              <div className="dcard__toggle">
+                <FocusButton ref={toggleRef} variant={status.kind === 'my-turn' ? 'primary' : 'secondary'} aria-expanded={false} aria-controls={bodyId} onClick={expand}>
+                  {status.kind === 'my-turn' ? 'Decide' : 'See choices'}
+                </FocusButton>
               </div>
             )}
-
-          </div>
+            <div id={bodyId} className="dcard__body" hidden={!showBody}>
+              {showBody && (
+                <OpenBody
+                  d={d}
+                  idx={idx}
+                  dir={dir}
+                  lookup={lookup}
+                  heading={heading}
+                  hasQuestion={!!question}
+                  iChoose={iChoose}
+                  Sub={Sub}
+                  labelOf={labelOf}
+                  say={say}
+                  onQuestionSaved={() => window.setTimeout(() => headingRef.current?.focus(), 30)}
+                  onChose={() => onChose?.(d)}
+                  onSettled={(o) => {
+                    if (o.kind === 'decided') onDecidedTogether?.(d);
+                    settled(o);
+                  }}
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <ClosedBody d={d} idx={idx} dir={dir} today={today} lookup={lookup} Sub={Sub} labelOf={labelOf} recorded={recorded} onReopened={(rec) => {
+            say('Reopened.');
+            if (onReopened) onReopened(d, rec);
+            else window.setTimeout(() => articleRef.current?.focus(), 60);
+          }} />
         )}
       </Card>
-      <ApproveDialog
-        decision={d}
-        open={approve}
-        onClose={() => setApprove(false)}
-        dir={dir}
-        onDone={(rec) => {
-          if (rec.status === 'approved') onDecidedTogether?.(d);
-        }}
-      />
-      <ReasonDialog decision={d} mode={reasonMode} onClose={() => setReasonMode(null)} />
-      {adding && <AddAlternativeDialog decision={d} onClose={() => setAdding(false)} />}
-      {noting && <AddNoteDialog record={d} onClose={() => setNoting(false)} />}
+      <p role="status" className="visually-hidden">
+        {announce}
+      </p>
     </li>
   );
 }
 
-/** Shown for a few seconds in place of a card the moment the last required approval lands. */
+/* ------------------------------------------------------------------ open: choosing */
+
+/** "Suggested · Jun picked this", on its own line above a choice. Words, not colour. */
+function Tags({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return null;
+  return (
+    <span className="dopt__tags">
+      {tags.map((x, i) => (
+        <span key={x}>
+          {i > 0 && (
+            <>
+              <span aria-hidden="true"> · </span>
+              <span className="visually-hidden">, </span>
+            </>
+          )}
+          {x}
+        </span>
+      ))}
+      <span className="visually-hidden">: </span>
+    </span>
+  );
+}
+
+interface OpenBodyProps {
+  d: Decision;
+  idx: Indexes;
+  dir: Directory;
+  lookup: KeyLookup | undefined;
+  heading: string;
+  hasQuestion: boolean;
+  iChoose: boolean;
+  Sub: 'h2' | 'h3' | 'h4';
+  labelOf: (id: string | null | undefined) => string | null;
+  say: (text: string) => void;
+  onQuestionSaved: () => void;
+  onChose: () => void;
+  onSettled: (o: SettledOutcome) => void;
+}
+
+function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, labelOf, say, onQuestionSaved, onChose, onSettled }: OpenBodyProps) {
+  const { actions } = useSnapshot();
+  const w = useWrite();
+  const meId = dir.me?.id ?? null;
+  const t = decisionTurn(d, meId, dir);
+  const options = orderedOptions(d);
+  const rec = d.data?.recommended_option_id ?? null;
+  const otherName = t.otherId ? dir.nameOf(t.otherId) : null;
+  const waitingNames = requiredApproverIds(d, dir).filter((id) => id !== meId && !(d.data?.approvals ?? []).some((a) => a.person_id === id)).map((id) => dir.nameOf(id));
+  const [changing, setChanging] = useState(false);
+  const [selected, setSelected] = useState<string | null>(() => initialChoice(d, meId, dir));
+  const [reasonMode, setReasonMode] = useState<'reject' | 'defer' | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [noting, setNoting] = useState(false);
+  const changeRef = useRef<HTMLButtonElement>(null);
+  const fallback = cardSelector(d.key);
+
+  // Someone else's change arrived (refresh): start again from the rule, unless I am in the middle of picking.
+  const versionRef = useRef(d.version);
+  useEffect(() => {
+    if (versionRef.current !== d.version && !w.busy) {
+      versionRef.current = d.version;
+      setSelected(initialChoice(d, meId, dir));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.version]);
+
+  const agree = async () => {
+    if (!selected) return;
+    onChose(); // a list keeps the card where it is while the answer is saved
+    let out: BaseRecord | null = null;
+    const ok = await w.run(async (v) => {
+      out = await actions.approveDecision(d.id, v, selected, null);
+    }, d.version);
+    const res = out as BaseRecord | null;
+    if (!ok || !res) return;
+    const label = labelOf(selected);
+    setChanging(false);
+    if (res.status === 'approved') {
+      onSettled({ kind: 'decided', label, record: res });
+    } else {
+      versionRef.current = res.version;
+      const names = waitingNames.length ? waitingNames.join(' and ') : 'the others';
+      say(`You chose: ${label ?? 'your answer'}. Waiting for ${names}.`);
+      window.setTimeout(() => changeRef.current?.focus(), 60);
+    }
+  };
+
+  const showChosen = iChoose && t.turn === 'waiting_partner' && !changing;
+  const myLabel = labelOf(t.myOptionId);
+
+  const tags = (id: string) => {
+    const out: string[] = [];
+    if (id === rec && options.length > 1) out.push('Suggested');
+    if (otherName && id === t.otherOptionId) out.push(`${otherName} picked this`);
+    if (id === t.myOptionId && (changing || t.turn === 'disagree')) out.push('You picked this');
+    return out;
+  };
+
+  return (
+    <div className="dcard__inner">
+      {!hasQuestion && <WriteQuestion d={d} onSaved={onQuestionSaved} />}
+
+      {options.length === 0 ? (
+        <p className="dcard__none">No choices are written down yet.</p>
+      ) : showChosen ? (
+        <div className="dcard__chosen">
+          <p>
+            You chose: <strong>{myLabel ?? 'an answer'}</strong>. Waiting for {waitingNames.join(' and ') || 'the others'}.
+          </p>
+          <div>
+            <FocusButton
+              ref={changeRef}
+              variant="quiet"
+              small
+              onClick={(e) => {
+                const card = e.currentTarget.closest('article');
+                setChanging(true);
+                setSelected(t.myOptionId);
+                window.setTimeout(() => card?.querySelector<HTMLInputElement>('input[type="radio"]:checked, input[type="radio"]')?.focus(), 30);
+              }}
+            >
+              Change my choice
+            </FocusButton>
+          </div>
+        </div>
+      ) : iChoose ? (
+        <>
+          {options.length === 1 ? (
+            <p className="dopt dopt--single">
+              <span className="dopt__label">{optionLabel(d, options[0]!, lookup)}</span>
+            </p>
+          ) : (
+            <fieldset className="dopts">
+              <legend className="visually-hidden">{heading}</legend>
+              {options.map((o) => (
+                <label key={o.id} className="dopt">
+                  <input type="radio" name={`choice-${d.key}`} value={o.id} checked={selected === o.id} onChange={() => setSelected(o.id)} />
+                  <span className="dopt__text">
+                    <Tags tags={tags(o.id)} />
+                    <span className="dopt__label">{optionLabel(d, o, lookup)}</span>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <div className="dcard__actions">
+            <Button variant="primary" busy={w.busy} disabled={!selected || selected === t.myOptionId} onClick={() => void agree()}>
+              {agreeLabel(labelOf(selected))}
+            </Button>
+            {changing ? (
+              <Button variant="quiet" onClick={() => setChanging(false)}>
+                Keep my choice
+              </Button>
+            ) : (
+              <>
+                <Button variant="quiet" onClick={() => setReasonMode('defer')}>
+                  Not now
+                </Button>
+                <Button variant="quiet" onClick={() => setReasonMode('reject')}>
+                  None of these work
+                </Button>
+              </>
+            )}
+          </div>
+          {w.error && <p className="field__error" role="alert">{w.error}</p>}
+          {w.conflict && <ConflictBanner conflict={w.conflict} busy={w.busy} onKeepTheirs={w.keepTheirs} onUseMine={() => void w.useMine()} />}
+        </>
+      ) : (
+        <>
+          <ul className="dopts dopts--read">
+            {options.map((o) => (
+              <li key={o.id} className="dopt dopt--single">
+                <Tags tags={tags(o.id)} />
+                <span className="dopt__label">{optionLabel(d, o, lookup)}</span>
+              </li>
+            ))}
+          </ul>
+          <div>
+            <Button variant="quiet" small onClick={() => setNoting(true)}>
+              Add a note
+            </Button>
+          </div>
+        </>
+      )}
+
+      <WhyAndHistory d={d} idx={idx} dir={dir} lookup={lookup} Sub={Sub} labelOf={labelOf} onAddChoice={iChoose ? () => setAdding(true) : undefined} />
+
+      <ReasonDialog
+        decision={d}
+        mode={reasonMode}
+        onClose={() => setReasonMode(null)}
+        fallbackFocus={fallback}
+        onDone={(res, mode) => onSettled({ kind: mode === 'defer' ? 'put-off' : 'not-doing', label: null, record: res })}
+      />
+      {adding && <AddAlternativeDialog decision={d} onClose={() => setAdding(false)} fallbackFocus={fallback} />}
+      {noting && <AddNoteDialog record={d} onClose={() => setNoting(false)} />}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ closed: decided, put off, not doing */
+
+function ClosedBody({
+  d,
+  idx,
+  dir,
+  today,
+  lookup,
+  Sub,
+  labelOf,
+  recorded,
+  onReopened,
+}: {
+  d: Decision;
+  idx: Indexes;
+  dir: Directory;
+  today: string;
+  lookup: KeyLookup | undefined;
+  Sub: 'h2' | 'h3' | 'h4';
+  labelOf: (id: string | null | undefined) => string | null;
+  recorded: ReturnType<typeof recordedDecision>;
+  onReopened: (rec: BaseRecord) => void;
+}) {
+  const plain = usePlain();
+  const data = d.data ?? ({} as Decision['data']);
+  const chosen = labelOf(data.decided_option_id);
+  return (
+    <div className="dcard__inner">
+      {recorded ? (
+        recorded.summary && (
+          <ClampText lines={2} className="dcard__outcome">
+            {plain(recorded.summary)}
+          </ClampText>
+        )
+      ) : d.status === 'approved' ? (
+        <p className="dcard__outcome">
+          Decided: <strong>{chosen ?? 'yes'}</strong>
+        </p>
+      ) : (
+        data.rationale && (
+          <ClampText lines={2} className="dcard__outcome">
+            <span className="dcard__label">Why:</span> {stripCodes(data.rationale, lookup)}
+          </ClampText>
+        )
+      )}
+      {d.status === 'deferred' && data.revisit_on && (
+        <p className="dcard__when">
+          Look again <DateText date={data.revisit_on} today={today} />
+        </p>
+      )}
+      {d.status === 'approved' && <ApplyEffect d={d} idx={idx} dir={dir} />}
+      <Reopen d={d} onReopened={onReopened} />
+      <WhyAndHistory d={d} idx={idx} dir={dir} lookup={lookup} Sub={Sub} labelOf={labelOf} />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ why and history */
+
+function WhyAndHistory({
+  d,
+  idx,
+  dir,
+  lookup,
+  Sub,
+  labelOf,
+  onAddChoice,
+}: {
+  d: Decision;
+  idx: Indexes;
+  dir: Directory;
+  lookup: KeyLookup | undefined;
+  Sub: 'h2' | 'h3' | 'h4';
+  labelOf: (id: string | null | undefined) => string | null;
+  onAddChoice?: () => void;
+}) {
+  const plain = usePlain();
+  const { zone } = usePrefs();
+  const data = d.data ?? ({} as Decision['data']);
+  const recorded = recordedDecision(d);
+  const summary = displaySummary(d);
+  const settled = settledPart(d);
+  const options = data.options ?? [];
+  const meanings = options.filter((o) => o.consequences && o.consequences.trim());
+  const deps = (data.dependencies ?? []).map((k) => idx.byKey.get(k)).filter((r): r is NonNullable<typeof r> => !!r);
+  const approvals = [...(data.approvals ?? [])].sort((a, b) => (a.at < b.at ? 1 : -1));
+  const historyLines = (data.history_note ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  // The imported wording, shown only where the plain wording replaced it.
+  const shownTitle = displayQuestion(d, lookup) ?? displayTitle(d, lookup);
+  const original: { label: string; text: string }[] = [];
+  if (d.title.trim() && d.title.trim() !== shownTitle) original.push({ label: 'Title', text: d.title });
+  if (data.question && data.question.trim() !== d.title.trim() && data.question.trim() !== shownTitle) original.push({ label: 'Question', text: data.question });
+  for (const o of options) if (optionLabel(d, o, lookup) !== o.label.trim()) original.push({ label: 'Choice', text: o.label });
+  const why = summary ?? data.rationale ?? null;
+  const showRationale = d.status === 'open' || d.status === 'proposed' || d.status === 'approved';
+
+  return (
+    <More label="Why and history" className="dcard__more">
+      {settled && (
+        <p>
+          <span className="dcard__label">Already decided:</span> {plain(settled)}
+        </p>
+      )}
+      {recorded?.open_part && (
+        <p>
+          <span className="dcard__label">Still open:</span> {plain(recorded.open_part)}
+        </p>
+      )}
+      {why && showRationale && (
+        <div>
+          <Sub className="dcard__sub">Why</Sub>
+          <p className="preline">{summary ? summary : <Prose text={why} />}</p>
+        </div>
+      )}
+      {meanings.length > 0 && (
+        <div>
+          <Sub className="dcard__sub">What each choice means</Sub>
+          <ul className="plain-list">
+            {meanings.map((o) => (
+              <li key={o.id}>
+                <span className="dcard__label">{optionLabel(d, o, lookup)}</span> {stripCodes(o.consequences, lookup)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.acceptance_evidence && (
+        <div>
+          <Sub className="dcard__sub">Done when</Sub>
+          <p className="preline">
+            <Prose text={data.acceptance_evidence} />
+          </p>
+        </div>
+      )}
+      {deps.length > 0 && (
+        <div>
+          <Sub className="dcard__sub">Depends on</Sub>
+          <ul className="plain-list">
+            {deps.map((r) => (
+              <li key={r.id}>
+                <RecordLink id={r.id}>{displayTitle(r, lookup)}</RecordLink>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {(approvals.length > 0 || data.decided_at || historyLines.length > 0) && (
+        <div>
+          <Sub className="dcard__sub">History</Sub>
+          <ul className="plain-list">
+            {approvals.map((a) => (
+              <li key={`${a.person_id}-${a.at}`}>
+                {civil(dayIn(a.at, zone), 'weekday')}: {dir.nameOf(a.person_id)} chose “{trimEnd(labelOf(a.option_id) ?? 'a choice')}”
+                {a.note ? `. Note: ${a.note}` : ''}
+              </li>
+            ))}
+            {data.decided_at && <li>{civil(dayIn(data.decided_at, zone), 'weekday')}: decided.</li>}
+            {historyLines.map((l, i) => (
+              <li key={i} className="preline">
+                {plain(l)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {original.length > 0 && (
+        <div>
+          <Sub className="dcard__sub">Original wording</Sub>
+          <ul className="plain-list">
+            {original.map((o, i) => (
+              <li key={i}>
+                <span className="dcard__label">{o.label}:</span> <Prose text={o.text} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {onAddChoice && (
+        <div>
+          <Button variant="quiet" small icon="plus" onClick={onAddChoice}>
+            Add another choice
+          </Button>
+        </div>
+      )}
+    </More>
+  );
+}
+
+/* ------------------------------------------------------------------ in place after settling */
+
+/**
+ * Shown for a few seconds where a card was, the moment it is decided, put off or closed: "Decided: … Undo".
+ * Focus moves here (the card that held it is gone), so screen readers hear it.
+ */
+export function SettledNotice({ d, outcome, onUndone, focusMe = true }: { d: Decision; outcome: SettledOutcome; onUndone?: () => void; focusMe?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { actions, refresh, idx } = useSnapshot();
+  const w = useWrite();
+  useEffect(() => {
+    if (!focusMe) return;
+    const t = window.setTimeout(() => ref.current?.focus({ preventScroll: false }), 80);
+    return () => window.clearTimeout(t);
+  }, [focusMe]);
+  const current = (idx?.decisions.find((x) => x.id === d.id) ?? outcome.record) as BaseRecord;
+  const undo = () =>
+    w.run(async (v) => {
+      const rec = await api.reopenDecision(d.id, { baseVersion: v });
+      actions.adoptRecord(rec);
+      void refresh();
+      onUndone?.();
+    }, current.version);
+  const words = outcome.kind === 'decided' ? 'Decided:' : outcome.kind === 'put-off' ? 'Put off.' : 'Not doing this.';
+  return (
+    <li className="dcard-item">
+      <div ref={ref} id={`decision-${d.key}`} tabIndex={-1} className="dsettled" role="group" aria-label={words.replace(/[:.]$/, '')}>
+        <Icon name="check" size={16} />
+        <p>
+          <strong>{words}</strong>
+          {outcome.kind === 'decided' && outcome.label ? ` ${trimEnd(outcome.label)}.` : ''}{' '}
+          <Link to={{ pathname: '/decide/decided', hash: `#decision-${d.key}` }}>See it</Link>
+        </p>
+        <Button variant="quiet" small icon="undo" busy={w.busy} onClick={() => void undo()}>
+          Undo
+        </Button>
+        {w.error && <p className="field__error" role="alert">{w.error}</p>}
+        {w.conflict && <ConflictBanner conflict={w.conflict} busy={w.busy} onKeepTheirs={w.keepTheirs} onUseMine={() => void w.useMine()} />}
+      </div>
+    </li>
+  );
+}
+
+/** Kept for older callers: a short confirmation when a decision has just been agreed by everyone. */
 export function DecidedTogether({ d, focusMe }: { d: Decision; focusMe?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!focusMe) return;
-    // The card that held focus is gone; keep keyboard and screen-reader users on the confirmation.
     const t = window.setTimeout(() => ref.current?.focus({ preventScroll: false }), 80);
     return () => window.clearTimeout(t);
   }, [focusMe]);
@@ -345,7 +819,7 @@ export function DecidedTogether({ d, focusMe }: { d: Decision; focusMe?: boolean
     <div ref={ref} tabIndex={-1} className="decided-banner">
       <Icon name="check" size={16} />
       <p>
-        <strong>Decided together ✓</strong> — “{d.title}” moved to Decided.{' '}
+        <strong>Decided</strong>: {displayQuestion(d) ?? displayTitle(d)}{' '}
         <Link to={{ pathname: '/decide/decided', hash: `#decision-${d.key}` }}>See it</Link>
       </p>
     </div>

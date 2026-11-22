@@ -4,7 +4,8 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { BaseRecord } from '../../src/shared/types';
-import { countsLine, forAudience, numberedList, questionCounts, questionState } from '../../src/web/lib/questions';
+import { audienceLabel } from '../../src/shared/labels';
+import { copyLine, countsLine, forAudience, numberedList, questionCounts, questionState } from '../../src/web/lib/questions';
 import { buildDirectory, buildIndexes, type Question, type Risk } from '../../src/web/lib/records';
 import { QuestionsTab } from '../../src/web/screens/decide/QuestionsTab';
 import { RisksTab, sortRisks } from '../../src/web/screens/decide/RisksTab';
@@ -70,6 +71,17 @@ describe('question helpers', () => {
     expect(countsLine({ open: 2, answered: 0 })).toBe('2 open');
     expect(forAudience('tax_adviser', 'tax adviser')).toBe('For the tax adviser');
     expect(forAudience('embassy_hr', 'embassy hr')).toBe('For embassy HR');
+    expect(forAudience('realtor', audienceLabel('realtor'))).toBe('For the realtor');
+    expect(forAudience('airline', audienceLabel('airline'))).toBe('For the airline');
+    expect(forAudience('loan_servicer', audienceLabel('loan_servicer'))).toBe('For the mortgage company');
+    expect(forAudience('condo_association', audienceLabel('condo_association'))).toBe('For the condo association');
+    expect(forAudience('embassy_hr', audienceLabel('embassy_hr'))).toBe('For embassy HR');
+    expect(forAudience('narcotics_control_department', audienceLabel('narcotics_control_department'))).toBe('For the Narcotics Control Department');
+    expect(forAudience('hawaii_animal_quarantine', audienceLabel('hawaii_animal_quarantine'))).toBe('For the Hawaii animal quarantine');
+    expect(forAudience('some_new_office', audienceLabel('some_new_office'))).toBe('For the some new office');
+    expect(copyLine('Ask the realtor: do we need a form?')).toBe('Do we need a form?');
+    expect(copyLine('Ask Jun: what is it?')).toBe('What is it?');
+    expect(copyLine('Do we ask: why?')).toBe('Do we ask: why?');
     expect(numberedList(['One?', 'Two\nlines?'])).toBe('1. One?\n2. Two lines?');
   });
 });
@@ -116,11 +128,13 @@ describe('Questions tab', () => {
     const c = mount([q('Q1'), q('Q2', { audience: 'tax_adviser', question: 'Do we file twice?' }), q('Q3', { audience: 'tax_adviser', question: 'What is the deadline?' }), q('Q4', { audience: 'embassy_hr', question: 'Which forms?' })]);
     const heads = [...c.querySelectorAll('h3')].map((h) => h.querySelector('.qgroup__toggle > span')?.textContent ?? h.textContent);
     expect(heads).toEqual(['For us', 'For embassy HR', 'For the tax adviser']);
-    const copies = [...c.querySelectorAll('button')].filter((b) => /Copy these questions/.test(b.textContent ?? ''));
-    expect(copies).toHaveLength(2);
-    // The copy control works while the group is still folded.
+    const copyBtns = () => [...c.querySelectorAll('button')].filter((b) => /Copy these questions/.test(b.textContent ?? ''));
+    // Folded groups show only the heading and count: no copy control yet.
+    expect(copyBtns()).toHaveLength(0);
     expect(c.textContent).not.toContain('Do we file twice?');
-    await act(async () => copies[1]!.click());
+    click(c.querySelectorAll<HTMLButtonElement>('.qgroup__toggle')[1]!);
+    expect(copyBtns()).toHaveLength(1);
+    await act(async () => copyBtns()[0]!.click());
     expect(writeText).toHaveBeenCalledWith('1. Do we file twice?\n2. What is the deadline?');
     expect(c.textContent).toContain('Copied');
   });
@@ -143,9 +157,10 @@ describe('Questions tab', () => {
       expect(body?.hasAttribute('hidden')).toBe(true);
       expect(t.textContent).toMatch(/^For .+5 questions$/);
     }
-    expect([...c.querySelectorAll('button')].filter((b) => /Copy these questions/.test(b.textContent ?? ''))).toHaveLength(15);
-    // Tap one: only that group opens, with its own questions.
+    expect([...c.querySelectorAll('button')].filter((b) => /Copy these questions/.test(b.textContent ?? ''))).toHaveLength(0);
+    // Tap one: only that group opens, with its own questions and its one copy control.
     click(toggles[2]);
+    expect([...c.querySelectorAll('button')].filter((b) => /Copy these questions/.test(b.textContent ?? ''))).toHaveLength(1);
     expect(toggles[2]!.getAttribute('aria-expanded')).toBe('true');
     expect(document.getElementById(toggles[2]!.getAttribute('aria-controls')!)?.hasAttribute('hidden')).toBe(false);
     expect(c.querySelectorAll('li.qrow').length).toBe(10);

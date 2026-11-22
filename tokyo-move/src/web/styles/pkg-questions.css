@@ -234,3 +234,10 @@
 .qrow__foot .qrow__editor {
   flex: 1 1 100%;
 }
+
+/* Every filter chip is at least 44px wide and tall, even the short "All". */
+.qtab .segmented__btn,
+.qtab .fchip {
+  min-width: 44px;
+  min-height: 44px;
+}

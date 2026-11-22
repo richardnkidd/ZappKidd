@@ -12,7 +12,7 @@ import { More } from '../../components/More';
 import { Prose } from '../../components/Prose';
 import { RecordLink } from '../../components/RecordLink';
 import { currentPhase } from '../../lib/home';
-import { copyText, countsLine, forAudience, numberedList, questionCounts, questionState, type QuestionState } from '../../lib/questions';
+import { copyLine, copyText, countsLine, forAudience, numberedList, questionCounts, questionState, type QuestionState } from '../../lib/questions';
 import { isOpenWork, type Directory, type Indexes, type Question } from '../../lib/records';
 import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
@@ -293,7 +293,7 @@ function Group({
   // A row answered a moment ago stays in view even when it has moved down the list.
   const visible = expanded ? shownQs : shownQs.filter((q, i) => i < first || kept.has(q.id));
   const copy = async () => {
-    const ok = await copyText(numberedList(openQs.map((q) => questionText(q, lookup))));
+    const ok = await copyText(numberedList(openQs.map((q) => copyLine(questionText(q, lookup)))));
     setCopied(ok ? 'ok' : 'fail');
   };
   const list = (
@@ -337,7 +337,7 @@ function Group({
             <Icon name="chevron-down" size={16} className="qgroup__chev" />
           </button>
         </h3>
-        {openQs.length > 0 && (
+        {groupOpen && openQs.length > 0 && (
           <Button variant="quiet" small icon="file" onClick={() => void copy()}>
             Copy these questions<span className="visually-hidden"> for {group.title.replace(/^For /, '')}</span>
           </Button>

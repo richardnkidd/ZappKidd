@@ -1,0 +1,236 @@
+# Kadode design direction
+
+A private home for a move, not enterprise PM software with a Tokyo wallpaper. Think of a calm, well-lit *genkan*
+(entryway): paper, ink, indigo, a little persimmon. Quiet confidence; nothing shouts unless it is genuinely urgent.
+
+## Principles
+
+1. **Answer six questions fast, on a phone:** what matters now · who owns it · what is blocked · what decision is
+   needed · what is next · is each traveler ready.
+2. **Few decisions at once.** Never show more than three decisions awaiting a person on Home.
+3. **Plain language.** No internal IDs (W45, DOC12), sync jargon or field names in normal screens. IDs appear only in
+   a collapsible "Source & history" panel on record detail and on the Data screen.
+4. **Honest states.** Unknown is shown as unknown ("Amount not known yet", "Awaiting date"). No completion
+   percentages for immigration or readiness. Optional work looks optional (muted, labeled "Optional").
+5. **Progressive disclosure.** Lists show title, owner, status, next date. Detail holds the rest.
+6. **Calm urgency.** Legal deadlines and blockers get clear, restrained emphasis — never gamified, no confetti,
+   streaks or scores.
+
+## Identity
+
+- Name: **Kadode** with **門出** set small in Noto Serif JP ("setting out on a new start").
+- A one-line seasonal note on Home using the 24 solar terms (二十四節気), e.g. "霜降 Sōkō · Frost descends".
+  Approximate dates; decorative only, never data.
+- No stock imagery, no cherry-blossom clichés, no torii icons.
+
+## Tokens (light; provide a matching dark theme via `prefers-color-scheme`)
+
+| Token | Value | Use |
+|---|---|---|
+| `--paper` | `#F6F3EC` | page background |
+| `--surface` | `#FFFFFF` | cards |
+| `--surface-2` | `#FBF8F2` | inset areas |
+| `--ink` | `#1E1C19` | primary text |
+| `--ink-2` | `#4A463F` | secondary text |
+| `--ink-3` | `#655F55` | tertiary text (must still meet 4.5:1 on paper) |
+| `--line` | `#E2DCCF` | borders |
+| `--ai` (indigo) | `#2B4A6F` | primary actions, links, focus |
+| `--ai-soft` | `#E7EDF4` | selected backgrounds |
+| `--matcha` | `#47632F` | done / ready |
+| `--kaki` (persimmon) | `#A9471F` | blocked, legal deadlines near |
+| `--kin` (amber) | `#7A5300` on `#FBF0D9` | due soon / attention |
+
+Verify every text/background pair meets WCAG 2.2 AA (4.5:1 body, 3:1 large text and UI component boundaries).
+Never rely on color alone: pair with an icon shape and text.
+
+Type: headings **Source Serif 4** (600), UI/body **Inter Variable**; Japanese glyphs **Noto Serif JP** (self-hosted
+via @fontsource; no external requests). Scale 13/15/17/20/24/30/38 px; body 16–17px; line-height 1.5; max 68ch.
+Spacing: 4px base (4, 8, 12, 16, 24, 32, 48). Radius 12–14px cards, 999px chips. Borders over shadows.
+
+## Layout
+
+- Mobile first. `< 768px`: bottom tab bar — **Home · Plan · Decide · Money · More**; ≥ 1024px: left rail.
+- Content max-width ~1100px; single column on phones; generous 16–24px gutters; no horizontal scroll at 320px.
+- Touch targets ≥ 44×44px. Sticky bottom bar respects `env(safe-area-inset-bottom)`.
+
+## People
+
+Each person has a monogram badge (initial in a circle for adults; a simple paw glyph for the dog) **plus the name in
+text**. Ownership chips read "<name>", "Together", "Unassigned", "<name>? (not agreed yet)" (proposed owners are
+visibly provisional until accepted).
+
+## States (every screen must handle)
+
+Loading (skeletons, not spinners), empty (one helpful sentence + next step), saved ("Saved · 2:14 PM HST"),
+unsaved ("Unsaved changes" + Save/Discard), conflict ("<name> changed this while you were editing" — show both, choose),
+error (what failed, what still works, Retry), offline/stale ("Showing data loaded 2:10 PM HST — can't reach the
+app right now"), and pending task capture ("Waiting to be added to your task list").
+
+## Accessibility (WCAG 2.2 AA)
+
+Semantic landmarks and headings; real buttons/links; labels on every input; visible 3px focus ring (`--ai`,
+2px offset); skip link; focus moves to the page heading on navigation and returns sensibly after dialogs;
+`aria-live="polite"` for save/sync status; dialogs trap focus and close on Escape; no keyboard traps; target size ≥24px
+minimum (44px preferred); `prefers-reduced-motion` disables transitions; timeline has a list/table alternative.
+
+## Print
+
+Arrival pack prints cleanly on A4/Letter: no nav, black on white, links shown as text, sensitive fields excluded by
+default with an explicit opt-in per section.
+
+## Implementation notes (web)
+
+Source lives in `src/web/`. Plain CSS in `styles/` (`tokens.css` → `base.css` → `layout.css` → `components.css` →
+`screens.css`); one stylesheet per layer, no framework.
+
+**Tokens added to the table above.** `--line-strong` `#8A8375` (input and control borders, 3:1 on paper and cards),
+`--stone-soft` (neutral chip fill), and soft fills `--matcha-soft`, `--kaki-soft`, `--kin-soft` for tone chips and banners.
+`--line` is decorative only (dividers). Dark values are in the same file under `prefers-color-scheme`.
+`tests/web/contrast.test.tsx` reads `tokens.css` and checks every foreground/background pair the CSS uses in both themes
+(4.5:1 text, 3:1 boundaries/focus). Add a pair there when you add a token pairing.
+
+**Shell.** Phone: header (wordmark, account button), content, fixed bottom tab bar (Home · Plan · Decide · Money · More)
+with `env(safe-area-inset-bottom)`. ≥1024px: left rail (same `<nav>`, plus the "More" destinations listed under a rule).
+Record detail opens as a right-hand panel on ≥1024px when reached from a list (the opener passes `backgroundLocation`
+in router state) and as a full page on phones or a direct link. Focus moves to the page `<h1>` on route change
+(not on first load); the panel heading takes focus when it opens and focus returns to the opening link on close.
+
+**Components** (`components/`): `Card`, `Section`, `PageTitle`, `Chip`, `OwnerChip`, `PersonBadge` (initial or paw),
+`StatusBadge`, `DeadlineBadge`, `VerificationNote`, `DateText`, `ItemCard`, `EmptyState`, `Skeleton`, `SaveIndicator`
+(persistent polite live region), `ErrorBanner`, `StaleBanner`, `ConflictBanner`, `Dialog` (portal, focus trap, Escape,
+makes `#root` inert, bottom sheet on phones), `Disclosure` (native `<details>`), `SegmentedControl`, `FilterChips`,
+`Field` (label/hint/error wiring), `DataGate` (skeleton → content → error with Retry). Every icon is decorative; meaning is
+always carried by adjacent text.
+
+**Data and saving.** `state/snapshot.tsx` holds `/api/snapshot` with `status` (loading | ready | stale | error), `loadedAt`
+and `refresh()`; it refreshes on focus/visibility and every 90 s, and keeps showing the last data (dated banner) if a
+refresh fails. Writes go through `actions.*` and `useWrite()`, which send the `baseVersion` the person started editing
+from, track Saving / Saved / Unsaved / Conflict / Error, and on a 409 show both versions so the person chooses. Engines
+(`collectDeadlines`, `householdReadiness`, `dependencyChain`, `downstreamOf`) are wrapped in `attempt()`: a thrown error
+renders an inline error for that section only.
+
+**Honesty rules in the UI.** Check-ins (planning checkpoints) that share a date collapse into one expandable "Check-in on <date>
+(N items, not booked)" row and never appear as deadlines. Any rule not `verified_official` shows a
+plain verification note beside its date. `related` links are labelled "Related (nothing waits on these)". Imported text is
+passed through `plain()`/`plainRefs()` before display so internal codes such as "(W02)" read as plain words; the original
+is untouched in Source & history. Old commitment dates never appear in "Now" and never imply non-completion.
+
+**Why `src/web/net/` and not `src/web/api/`.** Vite's `/api` dev proxy would swallow requests for any source file under a
+top-level `api/` folder (`/api/client.ts`), so the client lives in `src/web/net/client.ts`.
+
+### Phase 2 additions (web)
+
+**Home on a phone.** A compact "Who's ready" strip (one tappable row per traveler) sits directly under the greeting and
+opens `/ready/:personId` (holding things up, what unlocks it, still to do, done, after arrival). On wide screens the
+right-hand cards stay, trimmed to two blockers plus "See everything for <name>". Filter chips scroll sideways inside their
+own box on phones. Blocked shows three then "See all N"; Coming up shows four weeks / eight rows, then "Show the next 8 weeks".
+
+**Dates, honestly.**
+- A legal date on a weekend (or a listed public holiday) keeps its weekday and adds "Falls on a weekend — aim for <prior business day>".
+- State `historical` (an old date in a read-only task-list copy, or a commitment flagged `historical`) is neutral grey text
+  "Date has passed · check whether it’s done". It never appears in Now or Blocked; it is listed once under "Old dates to check".
+- A milestone shows only its own deadline or review date. Linked task dates appear as "In your task list: <date> (copy as of <date>)";
+  a commitment that links to a milestone shows as "Recorded date" on that milestone and nowhere else. Done tasks never appear.
+- "Needs a decision" order: dated needed-by within 30 days, then `settings.first_review.decision_keys` in order, then the rest.
+- Instants are shown as the calendar day in the display zone (`dayIn`), never by slicing the UTC date.
+
+**Screens.** Money (scenario switch, exchange-rate panel, cash picture for 90 days or three years, one card per section with
+"known so far · N not known yet", edit one amount in one currency), Documents (four separate lifecycle facts, https link only,
+originals never stored), Contacts & evidence & plan review findings (relationship needs a basis beyond "potential resource";
+evidence shows verification from `direct_check` / `review_check_*`), Arrival & living in Tokyo (per traveler windows and dates,
+continuing obligations with no date, renewals register, property, return planning), Future work (calm, optional, interest
+selector), Data & imports (runs, receipts grouped by correction, task-list connection, export, backup/restore with RESTORE),
+Settings (display zone, household default, appearance, scenarios). Every record type has a plain detail view (`TypedDetail`).
+
+**Creative.** `/review` guided couple review (5 steps, optional gentle timer, saves a plain-text summary that names and links
+every record it mentions and never marks work done); `/what-if` compares moving the pet's arrival using `previewAnchorChange`
+and `computeBudget` without saving anything; `/arrival-pack` prints a short pack per traveler (two pages at most, A4 or Letter, black on white, links as
+text; sensitive sections off unless ticked).
+
+**Theme.** `data-theme="light|dark"` on `<html>` forces a theme; absent means follow the device. The forced-dark block is checked
+against the system dark block in `tests/web/contrast.test.tsx`.
+
+**Settings keys read defensively (not in the shared type yet).** `settings.first_review.decision_keys: string[]`;
+`settings.staging_analysis` (text, lists or labelled groups; `pet_specific` shown separately); `data.direct_check { on, url, result, quote, note }`
+and any `data.review_check_*` on rules and evidence.
+
+
+### Final fix round (web)
+
+Merged from four independent reviews. The rules that came out of it:
+
+- **One primary date per card** (`lib/when.ts`): legal, then contract, then our own target, then a task-list date, then a
+  check-in; other dates live on the record page. A check-in for work in a later phase is not shown on cards at all.
+  Wording follows what the date means (`bound`): "Due by", "Not before", a window, "On", "Repeats", with the engine's
+  `business_day_advice` for weekends (never an earlier day for a "not before"). Years appear whenever they differ from today's
+  or the date is more than about six months away.
+- **A proposed task is not "in your task list".** It reads "Proposed for your task list · not added yet" with an amber
+  "Waiting to be added" chip, has its own Home row, and is never overdue.
+- **Home on a phone**: This week (three items), a three-chip readiness strip, one sentence for Blocked. "Mine" includes joint
+  work; "Needs me" is the Monday glance. Focus never lands under the sticky header or tab bar (measured bar heights feed
+  `scroll-padding`).
+- **Decide**: "Up next" (three), "Later (N)" collapsed, "Decided" its own tab. Approve is offered only on an expanded card,
+  after the options; a person who is not a required approver gets "Add a note" instead. A single imported suggestion says so
+  and offers "Add an alternative". The last approval keeps the card for five seconds as "Decided together ✓" (`role=status`).
+- **Conditional steps** ask "Does this apply to <name>?" (Yes / No / Not sure, `aria-pressed`) and save per person.
+- **Questions for your advisers** (Decide → Questions): grouped by audience, "facts to bring" always visible, printable and
+  copyable as text. They are never offered as "a few to think about now".
+- **Evidence and rules in plain words**: one line per check ("<reviewer> checked <date>: Read directly / Official index only /
+  Site refused / Page gone"), last-checked from the newest check, no raw JSON, no snake_case codes.
+- **Nothing leaks**: record keys become titled links, unknown ones vanish (`lib/prose.ts`); web addresses become short links.
+- **Unsaved text**: a data router (`createBrowserRouter`) makes `useBlocker` possible; leaving a page with unsaved text asks
+  "Keep editing / Discard and leave". Drafts live in `sessionStorage` for the tab only and come back after a reload.
+- **Money** says "No amounts yet" until one amount is known, collapses sections, gives each unknown line one row with
+  "Add amount", and shows the exchange rate as one line. **Documents** are compact rows with Details.
+- **Readiness pages stay short**: holding-things-up and still-to-do show three then "Show all N"; "Does this apply?" is compact rows five at a time; steps after arrival, dates (open only when one is within 90 days) and done are closed disclosures with counts.
+- **Large text**: header chip and tab labels step aside by container query in `rem`, so they respond to text size, not only width.
+- **Print**: each traveler's arrival pack must stay within two pages on A4 and Letter; sensitivity comes from the record's
+  `sensitivity` field, documents from `carry_on_arrival`, practical checks from `review_note`.
+
+**Settings keys read defensively (additions).** `settings.decision_effects: { decision_key, record_key }[]` (a built-in pair is used
+when absent); record fields `applies_to`, `sensitivity`, `carry_on_arrival`, `recorded_decision`, `settled_part`; question fields
+`origin`, `audience`, `facts_needed`; contact `phone` / `email` (the pack lists a contact only when one is saved).
+
+### Plan timeline (Gantt)
+
+`Plan → Timeline` is a chart (CSS grid and absolutely positioned buttons, no chart library) with a **Chart | Table** switch;
+the dated table is the accessible alternative. The model is `lib/gantt.ts` (pure, unit-tested); `screens/plan/Gantt.tsx` draws it
+and `styles/gantt.css` styles it with existing tokens only.
+
+- **Honest bars.** A bar ending at a real computed date is *firm* (solid, with a diamond). A bar placed only by its phase window
+  is *timing from its phase* (pale, hatched, dashed edge). A bar placed by `settings.planning_target` because a departure date
+  is not set is *placed by the target* (dotted edge and fill, grey). A check-in (`review_date`) is a hollow circle, never a
+  deadline. With no phase and no date, or a departure-relative phase and neither a departure date nor a target, the item sits in
+  "Not placed yet" with words and no bar. Every bar's accessible name says which of these it is; colour is never the only signal
+  (pattern, glyph for blocked/done/in progress, and text).
+- **Phase windows** live in one table (`PHASE_RULES`): Now = plan baseline (or today) to 30 Nov 2026; Nov–Dec 2026; Jan–Mar 2027;
+  then relative to the item's departure D: D−90…D−61, D−60…D−1, D…D+90, D+90…D+3 years. D is the one traveler's own departure
+  anchor for an item scoped to exactly one person; for an item shared by several people it is the earliest departure set among
+  those people (shared work has to be done before the first of them leaves), falling back to the household anchor when none of
+  them has a date; for household-wide work it is the household anchor. When that is not set the planning target stands in
+  (flagged), otherwise there is none. The phase strip follows the same rule for everyone.
+- **`planning_target`** (`{ date, label, note? }`, household overrides key `planning_target`, read-only setting like `plan_baseline`)
+  is used only to place that undated relative work. It is never shown as a deadline and never moves one. Unset travel dates fall
+  back to it with a dashed departure marker reading "<name>: not set — <label> target".
+- **Axis.** "To day 90" runs from the start of the month of the earlier of today and the plan baseline to the latest departure
+  (or target) plus 90 days, in month columns; "Three years" runs to departure plus three years in quarter columns. The narrowest
+  column is 72px (56px on phones). The chart scrolls inside its own `role="region"` box (first paint puts today near the left
+  edge); the page itself never scrolls sideways. At 900px and wider the box also scrolls vertically (`max-height: min(78vh, 960px)`):
+  the axis, phase strip and key-dates rows stick to the top and the label column to the left, so group headers never repeat month
+  labels. Below 900px there is no inner vertical scroll (it would trap a thumb); each traveler group repeats a small, lighter month
+  axis instead (every few rows when grouped by area).
+- **Rows and groups.** Grouped **by traveler** by default (each person in directory order, then "Shared" for several people or the
+  household); "By area" is the other choice. The grouping and the range are remembered per browser (`timeline-group`,
+  `timeline-range` through the prefs helpers). Rows in a group read as a staircase: bar start, then end, then title. A group header
+  shows its counts in the label column and one thin neutral bar from the group's earliest start to its latest end.
+- **Shared check-ins.** When three or more items in the chart (after the plan's filters) share one proposed review date, the date
+  is drawn once, as a quiet dotted marker and guide line in Key dates ("Check-in · Nov 11, 2026 · 60 items · not scheduled"). It is a
+  button that lists those items, each linking to its page. Their rows lose the circle and its leader, group spans and ordering
+  ignore that date, and each bar's accessible name still says "household check-in on <date>, not a deadline". A row whose only date
+  was that check-in, with no bar of its own, goes to "Not placed yet". A check-in on fewer items stays a hollow circle on its row,
+  with a dotted leader only when it falls outside the bar.
+- **Interaction.** Each bar is a button. Enter or a click opens a small details popover (a bottom sheet on phones) with owner,
+  status, date and kind, "Waits on" and "Open item"; the unmet prerequisites of the selected item are outlined and joined to it by
+  thin lines (selected item only). Escape closes, and focus returns to the bar; Tab out of the details does the same.
+- **Travel dates** sit in a closed disclosure above the chart with a one-line summary; the date editor is unchanged.
+

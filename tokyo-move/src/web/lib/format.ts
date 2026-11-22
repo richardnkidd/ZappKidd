@@ -1,0 +1,136 @@
+import { diffDays, formatCivil, formatInstant, isCivilDate, relativeDays, todayIn } from '@shared/dates';
+import type { IanaZone } from '@shared/types';
+import { AWAITING_DATE } from '@shared/labels';
+
+/** Today in the display zone, kept here so every date can decide whether it needs a year (set by the data provider). */
+let formatToday: string | null = null;
+export function setFormatToday(today: string | null): void {
+  formatToday = today && isCivilDate(today) ? today : null;
+}
+
+/** A year is shown when it differs from this year, or the date is more than six months away (a 3-year plan is ambiguous without it). */
+export function needsYear(date: string, today: string | null = formatToday): boolean {
+  if (!isCivilDate(date)) return false;
+  if (!today) return true;
+  if (date.slice(0, 4) !== today.slice(0, 4)) return true;
+  return Math.abs(diffDays(today, date)) > 183;
+}
+
+/** Civil date → text; never shifts timezone. Unknown → "Awaiting date". Short and long styles always carry the year. */
+export function civil(date: string | null | undefined, style: 'short' | 'long' | 'compact' | 'weekday' = 'short', empty = AWAITING_DATE): string {
+  if (!date) return empty;
+  if (!isCivilDate(date)) return date; // show source text as-is rather than crash
+  try {
+    const base = formatCivil(date, style);
+    return (style === 'weekday' || style === 'compact') && needsYear(date) ? `${base}, ${date.slice(0, 4)}` : base;
+  } catch {
+    return date;
+  }
+}
+
+/** Instant → text in the display zone. */
+export function instant(iso: string | null | undefined, zone: IanaZone, style: 'short' | 'time' | 'long' = 'short', empty = 'Not known yet'): string {
+  if (!iso) return empty;
+  try {
+    return formatInstant(iso, zone, style);
+  } catch {
+    return empty;
+  }
+}
+
+export function relative(date: string | null | undefined, today: string): string | null {
+  if (!date || !isCivilDate(date) || !isCivilDate(today)) return null;
+  try {
+    return relativeDays(date, today);
+  } catch {
+    return null;
+  }
+}
+
+export function plural(n: number, one: string, many?: string): string {
+  return `${n} ${n === 1 ? one : many ?? one + 's'}`;
+}
+
+export function truncate(text: string, max: number): string {
+  const t = text.trim();
+  return t.length <= max ? t : t.slice(0, max - 1).trimEnd() + '…';
+}
+
+/** Sort comparator for nullable civil dates: dated first (ascending), unknown last. */
+export function compareDates(a: string | null | undefined, b: string | null | undefined): number {
+  if (a && b) return a < b ? -1 : a > b ? 1 : 0; // ISO strings sort lexically
+  if (a) return -1;
+  if (b) return 1;
+  return 0;
+}
+
+/** Hour of day (0-23) in a zone, for a time-of-day greeting. */
+export function hourIn(zone: string, now: Date = new Date()): number {
+  try {
+    const h = new Intl.DateTimeFormat('en-US', { timeZone: zone, hour: 'numeric', hourCycle: 'h23' }).format(now);
+    return Number(h) % 24;
+  } catch {
+    return now.getHours();
+  }
+}
+
+export function greetingFor(hour: number): string {
+  if (hour < 5) return 'Good evening';
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/** Only http(s) links are ever rendered as links. Anything else is shown as plain text. */
+export function safeHref(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Readable name for a data key when we have no label: 'next_action' -> 'Next action'. */
+export function humanizeKey(key: string): string {
+  const s = key.replace(/_/g, ' ').trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * Display-only cleanup of imported text: removes parenthesised internal reference codes such as " (W02)" or
+ * " (W02 and W06)" so normal screens carry no IDs. The original text stays untouched in Source & history.
+ */
+const REF = /\b(?:DOC|INV|PROP|EX|FW|FN|W|S|Q|D|R|B|A|Y)\d{2,3}\b/g;
+
+/** Like plain(), and also swaps a bare reference code for the quoted title of the thing it points to. */
+export function plainRefs(text: string | null | undefined, titleOf: (key: string) => string | null): string {
+  return plain(text).replace(REF, (m) => {
+    const t = titleOf(m);
+    return t ? `“${t}”` : m;
+  });
+}
+
+export function plain(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    .replace(/\s*\(\s*[A-Z]{1,4}\d{1,3}(?:\s*(?:,|and|&|\/|;)\s*[A-Z]{1,4}\d{1,3})*\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/**
+ * The calendar day an instant falls on in a zone, or the value itself when it already is a calendar date.
+ * Slicing the first ten characters of a UTC instant would give the wrong day for Honolulu and Tokyo evenings.
+ */
+export function dayIn(value: string | null | undefined, zone: IanaZone): string | null {
+  if (!value) return null;
+  if (isCivilDate(value)) return value;
+  try {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : todayIn(zone, d);
+  } catch {
+    return null;
+  }
+}

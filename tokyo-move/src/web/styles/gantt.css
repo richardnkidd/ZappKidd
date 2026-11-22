@@ -1,0 +1,767 @@
+/*
+ * Plan timeline (Gantt). Only existing tokens are used, so the light/dark pairs already checked by
+ * tests/web/contrast.test.tsx cover it. Positions (left/width) arrive as React style props; this file only decides how
+ * things look. A bar's certainty is shown by its pattern (solid, hatched + dashed, dotted), never by colour alone.
+ */
+
+/* ---------- Travel dates (collapsed, above the chart) ---------- */
+.travel-dates > .disclosure__summary {
+  flex-wrap: wrap;
+}
+.travel-dates .disclosure__meta {
+  flex: 1 0 100%;
+  padding-left: 26px;
+  font-size: var(--fs-1);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+@media (min-width: 720px) {
+  .travel-dates .disclosure__meta {
+    flex: 0 1 auto;
+    max-width: 62%;
+    text-align: right;
+  }
+}
+.travel-dates .disclosure__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding-top: var(--s-3);
+}
+
+/* ---------- Frame ---------- */
+.gantt {
+  --gl: 240px; /* width of the sticky label column */
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.gantt__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-4);
+}
+.segmented--tool .segmented__btn {
+  min-height: 40px;
+}
+.glegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--s-4);
+  font-size: var(--fs-0);
+  color: var(--ink-2);
+}
+.glegend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gantt__scroll {
+  position: relative;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  container-type: inline-size; /* lets phone titles be exactly as wide as the visible part */
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+.gantt__scroll:focus-visible {
+  border-radius: var(--r-card);
+}
+/* Wide screens: the chart is its own scroll box in both directions; the axis sticks to the top and the labels to the left. */
+@media (min-width: 900px) {
+  .gantt__scroll {
+    max-height: min(78vh, 960px);
+    overflow: auto;
+    scroll-padding-top: var(--gh);
+    scroll-padding-left: var(--gl);
+  }
+}
+.gantt__canvas {
+  position: relative;
+  min-width: 100%;
+}
+
+/* ---------- Axis header ---------- */
+.ghead {
+  position: relative;
+  z-index: 6;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-strong);
+}
+@media (min-width: 900px) {
+  .ghead {
+    position: sticky;
+    top: 0;
+  }
+}
+.ghrow {
+  display: grid;
+  grid-template-columns: var(--gl) var(--gw);
+}
+.ghrow__label {
+  position: sticky;
+  left: 0;
+  z-index: 5;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+  padding: 5px var(--s-3) 0;
+  font-size: var(--fs-0);
+  font-weight: 650;
+  color: var(--ink-2);
+}
+.ghrow__area {
+  position: relative;
+}
+.ghrow--years .ghrow__area {
+  height: 24px;
+}
+.ghrow--cols .ghrow__area {
+  height: 26px;
+}
+.gyear,
+.gcol {
+  position: absolute;
+  top: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border-left: 1px solid var(--line);
+  padding-left: 8px;
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+}
+.gyear {
+  height: 24px;
+  line-height: 24px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: visible; /* the label sticks to the left edge while its year is partly scrolled away */
+  padding-left: 0;
+  border-left-color: var(--line-strong);
+}
+.gyear__text {
+  position: sticky;
+  left: var(--gl);
+  display: inline-block;
+  padding-left: 8px;
+}
+.gcol {
+  height: 26px;
+  line-height: 24px;
+}
+
+.gband {
+  position: absolute;
+  height: 20px;
+  border-radius: 6px;
+  white-space: nowrap;
+  font-size: var(--fs-0);
+  font-weight: 600;
+  line-height: 18px;
+}
+/* The name sticks to the left edge of the visible chart while its band is partly scrolled away. */
+.gband__text {
+  position: sticky;
+  left: var(--gl);
+  display: block;
+  width: fit-content; /* narrower than the band, so it has room to slide */
+  max-width: 100%;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gband--more .gband__text {
+  padding-right: 18px;
+}
+.gband > .icon {
+  position: absolute;
+  top: 3px;
+  right: 2px;
+}
+.gband--calendar,
+.gband--anchor {
+  background: var(--ai-soft);
+  color: var(--ai);
+  border: 1px solid var(--ai);
+}
+.gband--target {
+  background: var(--stone-soft);
+  color: var(--ink-2);
+  border: 1.5px dotted var(--ink-3);
+}
+
+.gmark {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px 0 6px;
+  margin-left: 3px;
+  border-radius: 10px;
+  white-space: nowrap;
+  font-size: var(--fs-0);
+  font-weight: 600;
+  line-height: 1;
+}
+.gmark--flip {
+  margin-left: 0;
+  margin-right: 3px;
+}
+.gmark--today {
+  background: var(--ink);
+  color: var(--paper);
+}
+.gmark--anchor {
+  color: var(--matcha);
+}
+.gmark--target {
+  color: var(--ink-2);
+  border: 1px dashed var(--ink-3);
+}
+/* A check-in shared by many items: one quiet, focusable marker, lighter than a departure. */
+.gmark--checkin {
+  height: 24px;
+  padding: 0 10px 0 8px;
+  gap: 6px;
+  border: 1px dotted var(--ink-3);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.gmark--checkin:hover {
+  background: var(--surface-2);
+}
+.gmark--checkin.is-selected {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.gcheck {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--ink-2);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+/* ---------- Vertical lines: months, today, departures ---------- */
+.glines {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--gl);
+  z-index: 1;
+  pointer-events: none;
+}
+.gline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--line);
+}
+.gline--dep,
+.gline--today {
+  border-left-width: 2px;
+  margin-left: -1px;
+}
+.gline--anchor {
+  border-left-color: var(--matcha);
+}
+.gline--target {
+  border-left-style: dashed;
+  border-left-color: var(--matcha);
+}
+.gline--today {
+  border-left-color: var(--ink);
+}
+.gline--checkin {
+  border-left-style: dotted;
+  border-left-color: var(--ink-3);
+}
+
+/* ---------- Groups and rows ---------- */
+.ggroup {
+  position: relative;
+}
+.ggroup__head {
+  /* No z-index here: the label (sticky, z-index 3) must sit above the month and Today lines (z-index 1) at every width. */
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--gl) var(--gw);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-ui);
+  font-size: var(--fs-1);
+  font-weight: 650;
+  line-height: 1.3;
+}
+.ggroup + .ggroup > .ggroup__head,
+.ghead + .ggroup > .ggroup__head {
+  border-top: 1px solid var(--line);
+}
+.ggroup__toggle {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px var(--s-3);
+  border: 0;
+  border-right: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+button.ggroup__toggle:hover {
+  background: var(--stone-soft);
+}
+.ggroup__chev {
+  flex: none;
+  color: var(--ink-2);
+  transition: transform 150ms;
+}
+.ggroup__toggle[aria-expanded='true'] .ggroup__chev {
+  transform: rotate(90deg);
+}
+.ggroup__title {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.ggroup__head--static .ggroup__title {
+  padding-left: 24px;
+}
+.ggroup__meta {
+  flex: 1 0 100%;
+  padding-left: 24px;
+  color: var(--ink-2);
+  font-size: var(--fs-0);
+  font-weight: 500;
+}
+.ggroup__head--static .ggroup__meta {
+  padding-left: 24px;
+}
+.ggroup__area {
+  position: relative;
+  min-height: 44px;
+}
+.ggroup__area--axis {
+  min-height: 44px;
+}
+/* A thin neutral bar from the group's earliest start to its latest end. */
+.ggroup__span {
+  position: absolute;
+  top: 50%;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 3px;
+  background: var(--line-strong);
+  opacity: 0.75;
+}
+.ggroup__area--axis .ggroup__span {
+  top: auto;
+  bottom: 8px;
+  margin-top: 0;
+  height: 5px;
+}
+/* A small month axis, lighter than the main one, for charts whose main axis cannot stay in view. */
+.ggroup__tick {
+  position: absolute;
+  top: 0;
+  padding: 4px 0 0 6px;
+  border-left: 1px solid var(--line);
+  height: 100%;
+  white-space: nowrap;
+  color: var(--ink-3);
+  font-size: var(--fs-0);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.grow {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: var(--gl) var(--gw);
+  min-height: 48px;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+.ggroup__rows > .grow:first-child {
+  border-top: 0;
+}
+.grow--unplaced {
+  cursor: default;
+}
+.grow__label {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px var(--s-3);
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+.grow:hover .grow__label,
+.grow.is-selected .grow__label {
+  background: var(--surface-2);
+}
+.grow.is-selected .grow__label {
+  box-shadow: inset 3px 0 0 var(--ai);
+}
+.grow__title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--fs-1);
+  font-weight: 550;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.grow--done .grow__title {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.grow__area {
+  position: relative;
+  min-height: 48px;
+}
+.grow__why {
+  position: sticky;
+  left: calc(var(--gl) + var(--s-3));
+  display: block;
+  width: max-content;
+  max-width: calc(100cqw - var(--gl) - var(--s-4));
+  padding: 14px 0;
+  color: var(--ink-2);
+  font-size: var(--fs-1);
+}
+
+/* ---------- Bars ---------- */
+.gbar {
+  --c: var(--ai);
+  --soft: var(--ai-soft);
+  position: absolute;
+  top: 50%;
+  height: 28px;
+  margin-top: -14px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--c);
+  cursor: pointer;
+  scroll-margin-left: calc(var(--gl) + var(--s-5));
+}
+.gbar--target {
+  --c: var(--ink-2);
+  --soft: var(--stone-soft);
+}
+.gbar--blocked {
+  --c: var(--kaki);
+  --soft: var(--kaki-soft);
+}
+.gbar--done {
+  --c: var(--ink-3);
+  --soft: var(--stone-soft);
+}
+.gbar__fill {
+  position: absolute;
+  top: 4px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  padding: 0 2px;
+  overflow: hidden;
+  border: 1.5px solid var(--c);
+  border-radius: 6px;
+  background-color: var(--soft);
+  color: var(--c);
+}
+.gbar:hover .gbar__fill {
+  box-shadow: 0 1px 5px rgb(30 28 25 / 0.28);
+}
+/* Firm: ends at a real computed date. Solid. */
+.gbar--firm .gbar__fill {
+  background-color: var(--c);
+  color: var(--on-ai);
+}
+/* Timing from its phase only: pale, hatched, dashed edge. */
+.gbar--phase .gbar__fill {
+  border-style: dashed;
+  background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 30%, transparent) 0 2px, transparent 2px 7px);
+}
+/* Placed by the planning target: dotted edge and dotted fill, grey unless blocked. */
+.gbar--target .gbar__fill {
+  border-style: dotted;
+  border-width: 2px;
+  background-image: radial-gradient(circle at 3px 3px, var(--c) 1px, transparent 1.4px);
+  background-size: 7px 7px;
+}
+.gbar__more {
+  margin-left: auto;
+}
+.gbar__tie {
+  position: absolute;
+  top: 50%;
+  height: 0;
+  margin-top: -1px;
+  border-top: 2px dotted var(--ink-3);
+}
+.gbar__diamond {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  color: var(--ink);
+}
+.gbar__diamond--legal {
+  color: var(--kaki);
+}
+.gbar__diamond path {
+  fill: currentColor;
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+.gbar__check {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid var(--ink-2);
+  border-radius: 50%;
+  background: var(--surface);
+}
+.gbar.is-selected .gbar__fill,
+.gbar.is-selected .gbar__check {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.gbar.is-prereq .gbar__fill,
+.gbar.is-prereq .gbar__check {
+  outline: 2px solid var(--kin);
+  outline-offset: 2px;
+}
+
+/* ---------- Prerequisite lines (selected item only) ---------- */
+.glinks {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  overflow: visible;
+  pointer-events: none;
+}
+.glinks__path {
+  fill: none;
+  stroke: var(--kin);
+  stroke-width: 1.75;
+}
+.glinks__arrow {
+  fill: var(--kin);
+}
+
+/* ---------- Legend swatches ---------- */
+.gsw {
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+}
+.gsw--firm,
+.gsw--phase,
+.gsw--target {
+  width: 24px;
+  height: 12px;
+  border: 1.5px solid var(--ai);
+  border-radius: 4px;
+}
+.gsw--firm {
+  background: var(--ai);
+}
+.gsw--phase {
+  border-style: dashed;
+  background-color: var(--ai-soft);
+  background-image: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ai) 30%, transparent) 0 2px, transparent 2px 6px);
+}
+.gsw--target {
+  border-color: var(--ink-2);
+  border-style: dotted;
+  border-width: 2px;
+  background-color: var(--stone-soft);
+  background-image: radial-gradient(circle at 3px 3px, var(--ink-2) 1px, transparent 1.4px);
+  background-size: 7px 7px;
+}
+.gsw--check {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ink-2);
+  border-radius: 50%;
+  background: var(--surface);
+}
+.gsw--today {
+  width: 0;
+  height: 14px;
+  border-left: 2px solid var(--ink);
+}
+.gsw-icon--diamond path {
+  fill: var(--ink);
+}
+
+/* ---------- Details popover (bottom sheet on phones) ---------- */
+.gpop {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(70vh, 520px);
+  overflow-y: auto;
+  padding: var(--s-2) var(--s-4) var(--s-4);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-panel);
+  outline: none;
+}
+.gpop__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.gpop__title {
+  max-width: none;
+  padding-top: var(--s-2);
+  font-family: var(--font-head);
+  font-size: var(--fs-3);
+  font-weight: 600;
+  line-height: 1.25;
+}
+.gpop__meta,
+.gpop__when {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: none;
+}
+.gpop__timing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.gpop__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.gpop__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gpop__list a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+}
+.gpop--sheet {
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: auto;
+  max-height: 60dvh;
+  padding-bottom: calc(var(--s-4) + env(safe-area-inset-bottom));
+  border-width: 1px 0 0;
+  border-radius: 20px 20px 0 0;
+  box-shadow: var(--shadow-sheet);
+  animation: sheet-in 200ms ease-out;
+}
+
+/* ---------- Phones: the title sits on its own line above the bar, and stays put while the chart scrolls ---------- */
+@media (max-width: 600px) {
+  .gantt {
+    --gl: 0px;
+  }
+  .ghrow,
+  .ggroup__head,
+  .grow {
+    grid-template-columns: var(--gw);
+  }
+  .ghrow__label:empty {
+    display: none;
+  }
+  .ghrow__label,
+  .grow__label,
+  .ggroup__toggle {
+    width: calc(100cqw - 2px);
+    border-right: 0;
+  }
+  .ghrow__label {
+    padding: 4px var(--s-3) 0;
+  }
+  .grow__label {
+    padding: 8px var(--s-3) 0;
+  }
+  .grow__area {
+    min-height: 38px;
+  }
+  .grow__why {
+    left: var(--s-3);
+    max-width: calc(100cqw - var(--s-5));
+    padding: 4px 0 12px;
+  }
+  .ggroup__area {
+    min-height: 22px;
+  }
+  .ggroup__area--axis {
+    min-height: 36px;
+  }
+  .ggroup__span {
+    top: 8px;
+    margin-top: 0;
+    height: 6px;
+  }
+  .ggroup__area--axis .ggroup__span {
+    top: auto;
+    bottom: 5px;
+  }
+  .gbar {
+    scroll-margin-left: var(--s-5);
+  }
+  .gantt__tools {
+    gap: var(--s-2) 6px;
+  }
+  .segmented--tool .segmented__btn {
+    padding: 0 6px;
+    font-size: 0.8125rem;
+  }
+}
+
+@media print {
+  .gpop {
+    display: none;
+  }
+}

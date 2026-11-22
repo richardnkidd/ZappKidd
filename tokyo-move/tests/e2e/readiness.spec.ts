@@ -64,17 +64,20 @@ test.describe('Conditional steps change readiness', () => {
       await loaded(page);
       await expect(page.getByRole('region', { name: /^Not sure yet if it applies/ }).getByRole('group', { name: `Does “${STEP_TITLE}” apply to Jun?` }).getByRole('button', { name: 'Not sure', exact: true })).toHaveAttribute('aria-pressed', 'true');
 
-      // The answer survives a reload and shows on Home (wide screen: the readiness card carries the same sentence).
+      // The answer survives a reload and shows on Home: Avery's traveller chip counts the same steps left, on a phone
+      // and on a wide screen.
       await page.goto('/ready/avery');
       await loaded(page);
       await expect(page.getByRole('region', { name: /^Not sure yet if it applies/ })).toHaveCount(0);
-      await page.setViewportSize({ width: 1280, height: 900 });
-      await page.goto('/');
-      await loaded(page);
-      const averyCard = page.getByRole('region', { name: /^Who.s ready/ }).getByRole('article').filter({ hasText: 'Avery' }).first();
-      await expect(averyCard).toBeVisible();
-      await expect(averyCard).not.toContainText(/yes or no/);
-      await page.setViewportSize({ width: 390, height: 844 });
+      for (const size of [{ width: 1280, height: 900 }, { width: 390, height: 844 }]) {
+        await page.setViewportSize(size);
+        await page.goto('/');
+        await loaded(page);
+        const averyChip = page.getByRole('region', { name: 'Travellers' }).getByRole('link', { name: /^Avery:/ });
+        await expect(averyChip).toBeVisible();
+        await expect(averyChip).toHaveAccessibleName(new RegExp(`^Avery: ${left} left\\b`));
+        await expect(averyChip).not.toContainText(/yes or no|Preparing/);
+      }
 
       // YES: now it counts. One more step is left, and it is listed outside "Not sure yet".
       await page.goto('/ready/avery');
@@ -187,6 +190,11 @@ test.describe('The pet’s dates', () => {
       await expect(row).not.toContainText(/Due by/);
 
       // Weekend advice: the window opens on a Saturday; it names the first business day INSIDE it (a later day).
+      // The advice sits behind the date's info button (one date format; caveats are not paragraphs).
+      const advice = row.getByText(/window opens on a Saturday/i);
+      await expect(advice).toBeHidden();
+      await row.getByRole('button', { name: 'About this date', exact: true }).click();
+      await expect(advice).toBeVisible();
       const text = (await row.innerText()).replace(/\s+/g, ' ');
       expect(text).toMatch(/window opens on a Saturday/i);
       const m = text.match(/first business day inside it is (?:[A-Z][a-z]{2}), ([A-Z][a-z]{2}) (\d{1,2})/);

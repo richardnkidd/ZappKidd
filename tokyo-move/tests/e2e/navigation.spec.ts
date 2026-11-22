@@ -1,12 +1,30 @@
+import type { Locator } from '@playwright/test';
 import { expect, loaded, test } from './support/fixtures';
 
+// Home's heading is one small line (the person's name for screen readers, then the date and season).
 const MAIN: { name: string; url: RegExp; h1: string | RegExp }[] = [
-  { name: 'Home', url: /\/$/, h1: /^(Good (morning|afternoon|evening)|Hello|Welcome)/ },
+  { name: 'Home', url: /\/$/, h1: /^Avery’s home, \w{3}, \w{3} \d{1,2} · /u },
   { name: 'Plan', url: /\/plan/, h1: 'Plan' },
   { name: 'Decide', url: /\/decide/, h1: 'Decide' },
   { name: 'Money', url: /\/money/, h1: 'Money' },
   { name: 'More', url: /\/more/, h1: 'More' },
 ];
+
+/** A main tab by its label. The Decide tab may carry a count ("Decide, 2 need you"). */
+const tab = (nav: Locator, name: string) => nav.getByRole('link', { name: new RegExp(`^${name}(, \\d+ needs? you)?$`) });
+
+/** Decisions waiting for this person: open or suggested, they must approve, and they have not, or they disagree. */
+function expectedMyTurn(records: any[], me: string): number {
+  return records.filter((r) => {
+    if (r.type !== 'decision' || !['open', 'proposed'].includes(r.status)) return false;
+    const approvers: string[] = r.data?.required_approvers ?? [];
+    if (!approvers.includes(me)) return false;
+    const approvals = (r.data?.approvals ?? []).filter((a: any) => approvers.includes(a.person_id));
+    const mine = approvals.find((a: any) => a.person_id === me);
+    if (!mine) return true;
+    return approvals.some((a: any) => a.person_id !== me && a.option_id !== mine.option_id);
+  }).length;
+}
 
 test.describe('Navigation', () => {
   test('the five main destinations work, say where you are, and sit where the layout promises', async ({ page, signIn }) => {
@@ -27,38 +45,73 @@ test.describe('Navigation', () => {
     }
 
     for (const dest of MAIN) {
-      await nav.getByRole('link', { name: dest.name, exact: true }).click();
+      await tab(nav, dest.name).click();
       await expect(page).toHaveURL(dest.url);
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(dest.h1);
-      await expect(nav.getByRole('link', { name: dest.name, exact: true })).toHaveAttribute('aria-current', 'page');
+      await expect(tab(nav, dest.name)).toHaveAttribute('aria-current', 'page');
       for (const other of MAIN.filter((m) => m.name !== dest.name)) {
-        await expect(nav.getByRole('link', { name: other.name, exact: true })).not.toHaveAttribute('aria-current', 'page');
+        await expect(tab(nav, other.name)).not.toHaveAttribute('aria-current', 'page');
       }
       await loaded(page);
+    }
+  });
+
+  test('the Decide tab shows how many decisions need you, for each adult, and no badge at zero', async ({ page, signIn, api }) => {
+    for (const who of ['avery', 'jun'] as const) {
+      const records = (await (await api(who)).snapshot()).records as any[];
+      const n = expectedMyTurn(records, who);
+      await signIn(page, who, '/');
+      await loaded(page);
+      const nav = page.getByRole('navigation', { name: 'Main' });
+      const decide = tab(nav, 'Decide');
+      // The five tabs, in their order.
+      const items = nav.locator('.app-nav__list > li');
+      await expect(items).toHaveCount(5);
+      for (const [i, name] of ['Home', 'Plan', 'Decide', 'Money', 'More'].entries()) {
+        await expect(items.nth(i).getByRole('link')).toHaveAccessibleName(new RegExp(`^${name}(,|$)`));
+      }
+      if (n > 0) {
+        await expect(decide).toHaveAccessibleName(`Decide, ${n} ${n === 1 ? 'needs' : 'need'} you`);
+        await expect(decide.locator('.nav-badge')).toHaveText(String(n));
+        // Home's "Your turn" agrees: it shows the same decisions (never more than three).
+        const rows = page.getByRole('region', { name: /^Your turn/ }).getByRole('listitem').filter({ has: page.locator('a[href^="/decide"]') });
+        await expect(rows.first()).toBeVisible();
+        expect(await rows.count()).toBeLessThanOrEqual(Math.min(n, 3));
+      } else {
+        await expect(decide).toHaveAccessibleName('Decide');
+        await expect(decide.locator('.nav-badge')).toHaveCount(0);
+      }
+      await page.context().clearCookies();
     }
   });
 
   test('"More" leads to every other screen', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/more');
     await loaded(page);
+    // "Future work" joins the list once the plan has loaded (the demo has optional future work).
     const links = page.getByRole('main').getByRole('list').first().getByRole('link');
+    await expect(links.filter({ hasText: 'Future work' })).toHaveCount(1);
     const count = await links.count();
     expect(count).toBeGreaterThanOrEqual(6);
     const seen: string[] = [];
     for (let i = 0; i < count; i += 1) {
       await page.goto('/more');
       await loaded(page);
+      // "Future work" joins the list once the plan has loaded, so wait for the full list before picking by position.
+      await expect(page.getByRole('main').getByRole('list').first().getByRole('link')).toHaveCount(count);
       const link = page.getByRole('main').getByRole('list').first().getByRole('link').nth(i);
       const label = ((await link.innerText()).split('\n')[0] ?? '').trim();
       await link.click();
+      await expect(page).not.toHaveURL(/\/more$/);
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('More');
       const h1 = (await page.getByRole('heading', { level: 1 }).innerText()).trim();
       expect(h1.length).toBeGreaterThan(2);
       await expect(page.getByRole('heading', { level: 1, name: /couldn.t find that page/i }), `${label} is a real screen`).toHaveCount(0);
       await expect(page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'More', exact: true })).toHaveAttribute('aria-current', 'page');
       seen.push(h1);
     }
-    expect(new Set(seen).size).toBe(count);
+    expect(new Set(seen).size, seen.join(" | ")).toBe(count);
   });
 
   test('on phones the bottom bar never hides the end of a page', async ({ page, signIn }) => {

@@ -110,7 +110,6 @@ export const WORK_STATUS_TYPES: ReadonlySet<RecordType> = new Set(['milestone', 
 /** Record types that carry `data.traveler_progress` (independent per-traveler status on a shared item). */
 export const TRAVELER_PROGRESS_TYPES: ReadonlySet<RecordType> = new Set(['milestone', 'arrival']);
 export const STATUS_NEEDS_REASON: ReadonlySet<string> = new Set(['eliminated', 'not_applicable', 'blocked']);
-export const STATUS_NEEDS_EVIDENCE: ReadonlySet<string> = new Set(['completed']);
 export const statusSlug = z.string().regex(/^[a-z][a-z0-9_]{1,39}$/, 'Expected a lowercase status such as in_progress');
 
 /* ---------- editable data fields per record type (PATCH allowlist) ---------- */

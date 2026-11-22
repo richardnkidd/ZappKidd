@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router';
 import { Icon, type IconName } from '../components/Icon';
 import { hasOptionalFuture } from '../lib/records';
+import { countMyTurn } from '../lib/turn';
 import { useLoaded } from '../state/snapshot';
 
 interface NavItem {
@@ -24,16 +25,23 @@ export const MAIN_NAV: NavItem[] = [
 ];
 
 export const MORE_NAV: { to: string; label: string; icon: IconName; blurb: string }[] = [
-  { to: '/documents', label: 'Documents', icon: 'doc', blurb: 'What we need, who holds it, and whether it has been accepted.' },
-  { to: '/contacts', label: 'Contacts & evidence', icon: 'contacts', blurb: 'People we may talk to, and the sources behind the plan.' },
-  { to: '/arrival', label: 'Arrival & living in Tokyo', icon: 'plane', blurb: 'The first days, weeks and months after landing.' },
-  { to: '/review', label: 'Couple review', icon: 'compass', blurb: 'A calm twenty-minute walk through where things stand.' },
-  { to: '/what-if', label: 'What if the pet arrives later?', icon: 'plane', blurb: 'Compare dates and costs without changing anything.' },
-  { to: '/arrival-pack', label: 'Printable arrival pack', icon: 'file', blurb: 'A page per traveler to take with you.' },
-  { to: '/future', label: 'Future work', icon: 'sprout', blurb: 'Optional ideas that sit outside the move.' },
-  { to: '/data', label: 'Data & imports', icon: 'database', blurb: 'Where the plan came from and what changed.' },
-  { to: '/settings', label: 'Settings', icon: 'gear', blurb: 'Dates, display and household preferences.' },
+  { to: '/documents', label: 'Documents', icon: 'doc', blurb: 'Papers we need' },
+  { to: '/contacts', label: 'Contacts & evidence', icon: 'contacts', blurb: 'People and sources' },
+  { to: '/arrival', label: 'Arrival & living in Tokyo', icon: 'plane', blurb: 'After landing' },
+  { to: '/review', label: 'Couple review', icon: 'compass', blurb: 'Look at it together' },
+  { to: '/what-if', label: 'What if the pet arrives later?', icon: 'plane', blurb: 'Try other dates' },
+  { to: '/arrival-pack', label: 'Printable arrival pack', icon: 'file', blurb: 'One page each' },
+  { to: '/future', label: 'Future work', icon: 'sprout', blurb: 'Ideas for later' },
+  { to: '/data', label: 'Data & imports', icon: 'database', blurb: 'Where the plan came from' },
+  { to: '/settings', label: 'Settings', icon: 'gear', blurb: 'Dates and display' },
 ];
+
+/** How many decisions need the signed-in person now (the badge on the Decide tab). Same rule as Home and Decide. */
+export function useMyTurnCount(): number {
+  const loaded = useLoaded();
+  if (!loaded) return 0;
+  return countMyTurn(loaded.idx.decisions, loaded.dir.me?.id ?? null);
+}
 
 /** The "More" places, without Future work while the plan holds no optional future items. */
 export function useMoreNav(): typeof MORE_NAV {
@@ -43,6 +51,7 @@ export function useMoreNav(): typeof MORE_NAV {
 
 export function MainNav() {
   const moreNav = useMoreNav();
+  const myTurn = useMyTurnCount();
   const { pathname, state } = useLocation();
   // A record opened from somewhere keeps that place highlighted; one opened directly highlights nothing.
   const from = (state as { backgroundLocation?: { pathname?: string } } | null)?.backgroundLocation?.pathname ?? null;
@@ -56,11 +65,22 @@ export function MainNav() {
         {MAIN_NAV.map((item) => {
           const exact = item.match(pathname);
           const via = !exact && pathname.startsWith('/r/') && from !== null && item.match(from);
+          const badge = item.to === '/decide' ? myTurn : 0;
           return (
             <li key={item.to}>
-              <Link to={item.to} className="nav-link" aria-current={exact ? 'page' : via ? 'true' : undefined}>
+              <Link
+                to={item.to}
+                className="nav-link"
+                aria-current={exact ? 'page' : via ? 'true' : undefined}
+                aria-label={badge > 0 ? `${item.label}, ${badge} ${badge === 1 ? 'needs' : 'need'} you` : undefined}
+              >
                 <Icon name={item.icon} size={24} />
                 <span>{item.label}</span>
+                {badge > 0 && (
+                  <span className="nav-badge" aria-hidden="true">
+                    {badge}
+                  </span>
+                )}
               </Link>
             </li>
           );

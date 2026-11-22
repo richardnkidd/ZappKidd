@@ -23,7 +23,6 @@ import {
   CREATE_STATUS,
   PATCHABLE_DATA,
   PATCH_REDIRECT,
-  STATUS_NEEDS_EVIDENCE,
   STATUS_NEEDS_REASON,
   TRAVELER_PROGRESS_TYPES,
   WORK_STATUSES,
@@ -545,9 +544,8 @@ export function changeStatus(deps: Deps, ctx: AuthContext, id: string, rawBody: 
 
     // Server-enforced status rules.
     const issues: ValidationIssue[] = [];
-    if (STATUS_NEEDS_EVIDENCE.has(body.status) && summary.length === 0) {
-      issues.push(issue('evidence', 'Completing needs evidence: say what shows it is done'));
-    }
+    // Evidence is optional when completing (one-tap "Done"). When given, it is kept below; the history entry
+    // records who completed it and when either way.
     if (STATUS_NEEDS_REASON.has(body.status) && !reason) {
       issues.push(issue('reason', `A reason is required for "${body.status}"`));
     }

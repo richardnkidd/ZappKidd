@@ -237,6 +237,13 @@ export const api = {
         ...(body.traveler ? { traveler: body.traveler } : {}),
       }),
     ),
+  /** One-tap "Done" (Home): completes an item without evidence and returns the history entry that undoes it. */
+  completeRecord: async (id: string, baseVersion: number): Promise<{ record: BaseRecord; undo_audit_id: string | null }> => {
+    const body = await send<{ record?: BaseRecord; undo_audit_id?: string }>('POST', `/api/records/${q(id)}/status`, { baseVersion, status: 'completed' });
+    return { record: unwrapRecord(body), undo_audit_id: body?.undo_audit_id ?? null };
+  },
+  /** Mark the plan as seen now (the "since you last looked" line on Home). */
+  markSeen: () => send<{ previous_seen_at: string | null; last_seen_at: string }>('POST', '/api/me/seen', {}),
 
   approveDecision: async (id: string, body: { baseVersion: number; option_id: string; note?: string | null }) =>
     unwrapRecord(await send<unknown>('POST', `/api/decisions/${q(id)}/approve`, body)),

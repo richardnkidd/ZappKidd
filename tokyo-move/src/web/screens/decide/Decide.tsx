@@ -1,12 +1,10 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router';
 import { PageTitle } from '../../components/Layout';
-import { isMyTurn } from '../../lib/turn';
-import { useSnapshot } from '../../state/snapshot';
+import { badgeWords, useDecideBadge } from '../../layout/nav';
 import { DecidedTab, DecisionsTab } from './DecisionsTab';
 import { QuestionsTab } from './QuestionsTab';
 import { RisksTab } from './RisksTab';
-import { isOpenDecision, requiredApproverIds } from './decisionText';
 
 const TABS = [
   { to: '/decide', label: 'Decisions', end: true },
@@ -17,13 +15,8 @@ const TABS = [
 
 export function Decide() {
   const { pathname, hash } = useLocation();
-  const { idx, dir } = useSnapshot();
-  // How many decisions need me: the same rule as Home and the bottom navigation.
-  const myTurn = useMemo(() => {
-    if (!idx || !dir) return 0;
-    const meId = dir.me?.id ?? null;
-    return idx.decisions.filter((d) => isOpenDecision(d) && isMyTurn({ status: d.status, data: { ...(d.data ?? {}), required_approvers: requiredApproverIds(d, dir) } }, meId)).length;
-  }, [idx, dir]);
+  // The same badge as the bottom navigation, so the two never disagree.
+  const badge = useDecideBadge();
 
   // Jump to a specific decision when linked from Home.
   useEffect(() => {
@@ -45,15 +38,16 @@ export function Decide() {
       <nav aria-label="Decide sections" className="segmented segmented--nav">
         {TABS.map((t) => {
           const active = t.end ? pathname === t.to || pathname === `${t.to}/` : pathname.startsWith(t.to);
+          const words = t.to === '/decide' ? badgeWords(badge) : '';
           return (
-            <Link key={t.to} to={t.to} className="segmented__btn" aria-current={active ? 'page' : undefined}>
+            <Link key={t.to} to={t.to} className="segmented__btn" aria-current={active ? 'page' : undefined} aria-label={words ? `${t.label}${words}` : undefined}>
               {t.label}
-              {t.to === '/decide' && myTurn > 0 && (
-                <span className="dtab-count">
-                  <span aria-hidden="true">{myTurn}</span>
-                  <span className="visually-hidden">, {myTurn} your turn</span>
+              {words && badge.count > 0 && (
+                <span className="dtab-count" aria-hidden="true">
+                  {badge.count}
                 </span>
               )}
+              {words && badge.count === 0 && <span className="dtab-dot" aria-hidden="true" />}
             </Link>
           );
         })}

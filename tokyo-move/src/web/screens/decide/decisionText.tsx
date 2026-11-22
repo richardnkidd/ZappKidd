@@ -7,7 +7,7 @@ import { Icon, type IconName } from '../../components/Icon';
 import { recordedDecision } from '../../lib/home';
 import { civil } from '../../lib/format';
 import type { Decision, Directory } from '../../lib/records';
-import { turnInfo, type DecisionTurn, type TurnInfo } from '../../lib/turn';
+import { turnBadge, turnInfo, type DecisionTurn, type TurnBadge, type TurnInfo } from '../../lib/turn';
 
 export interface ApprovalSummary {
   /** Plain sentence, e.g. "Approved by <name> · awaiting <name>". */
@@ -163,9 +163,9 @@ export function orderedOptions(d: Pick<Decision, 'data'>): DecisionOption[] {
 }
 
 /**
- * Which option starts selected on the card. Mine if I already chose. If the other adult chose something other than the
- * suggestion, nothing: selecting the suggestion would silently disagree with them. Otherwise the suggestion (or the only
- * option).
+ * Which option starts selected on the card. Mine if I already chose. If the other adult chose, theirs: the button then
+ * says "Agree with <name>", so nothing is agreed silently, and picking anything else says "<name> picked something
+ * else". Otherwise the suggestion (or the only option).
  */
 export function initialChoice(d: Decision, meId: string | null | undefined, dir: Directory): string | null {
   const options = d.data?.options ?? [];
@@ -174,9 +174,39 @@ export function initialChoice(d: Decision, meId: string | null | undefined, dir:
   const t = decisionTurn(d, meId, dir);
   const has = (id: string | null | undefined) => !!id && options.some((o) => o.id === id);
   if (has(t.myOptionId)) return t.myOptionId;
+  if (has(t.otherOptionId)) return t.otherOptionId;
   const rec = d.data?.recommended_option_id ?? null;
-  if (has(t.otherOptionId) && t.otherOptionId !== rec) return null;
   return has(rec) ? rec : null;
+}
+
+/** End a piece of text with a full stop, unless it already ends with one (or with "?", "!" or "…"). */
+export function sentence(text: string): string {
+  const t = text.replace(/\s+$/, '');
+  return /[.?!…]$/.test(t) ? t : `${t}.`;
+}
+
+/** A label without its closing full stop or trailing punctuation, for buttons and quotes. */
+export function bare(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().replace(/[.;:,\s]+$/, '');
+}
+
+/**
+ * The words on the card's main button for the option I selected:
+ * nobody chose yet, or I pick something other than my partner did: "Choose: <label>";
+ * my partner chose and I pick the same: "Agree with <name>".
+ * The full label is kept; CSS cuts a long one to one line with an ellipsis.
+ */
+export function mainButtonLabel(selectedLabel: string | null | undefined, opts: { selectedId: string | null; otherOptionId: string | null; otherName: string | null }): string {
+  if (opts.otherName && opts.otherOptionId && opts.selectedId === opts.otherOptionId) return `Agree with ${opts.otherName}`;
+  return selectedLabel ? `Choose: ${bare(selectedLabel)}` : 'Choose';
+}
+
+/** The Decide tab badge for the signed-in person, from the open decisions. The navigation and the Decide tabs share it. */
+export function decideBadge(decisions: readonly Decision[], meId: string | null | undefined, dir: Directory, today: string): TurnBadge {
+  return turnBadge(
+    decisions.map((d) => decisionTurn(d, meId, dir)),
+    today,
+  );
 }
 
 const SMALL_WORDS = new Set(['a', 'an', 'and', 'or', 'but', 'the', 'to', 'of', 'for', 'with', 'in', 'on', 'at', 'by', 'from', 'until', 'than', 'that', 'we', 'our', 'is', 'are', 'be']);

@@ -187,7 +187,9 @@ test.describe('Edit conflicts', () => {
     const a = await openAs('avery', '/decide');
     await loaded(a.page);
     const c = a.page.getByRole('article', { name: question });
-    await c.getByRole('button', { name: 'Decide' }).click();
+    // A new decision with no date may sit under "Later": open that list first.
+    if (!(await c.isVisible())) await a.page.getByRole('button', { name: /^Later \(\d+\)$/ }).click();
+    await c.getByRole('button', { name: /^(Decide|Open)$/ }).click();
     await expect(c.getByRole('radio', { name: /The local firm/ })).toBeChecked();
 
     // Meanwhile Jun picks the other firm on another phone.
@@ -195,20 +197,21 @@ test.describe('Edit conflicts', () => {
     await jun.post(`/api/decisions/${enc(created.id)}/approve`, { baseVersion: v, option_id: 'opt-2' });
 
     // Avery's tap is refused because the card is out of date: the conflict is explained, nothing is saved.
-    await c.getByRole('button', { name: 'Agree: The local firm' }).click();
+    await c.getByRole('button', { name: 'Choose: The local firm' }).click();
     const banner = a.page.getByRole('alert').filter({ hasText: 'changed this while you were editing' });
     await expect(banner).toBeVisible();
     await expect(banner).toContainText('Jun changed this while you were editing.');
     let rec = await avery.record(created.id);
     expect(rec.data.approvals.map((x: any) => x.person_id)).toEqual(['jun']);
 
-    // Keep Jun's version: the card now says Jun chose, and preselects nothing (Jun's pick is not the suggestion).
+    // Keep Jun's version: the card now says Jun chose, and preselects Jun's pick with a button that says so.
+    // Nothing is agreed until Avery taps "Agree with Jun".
     await banner.getByRole('button', { name: /^Keep Jun.s version$/ }).click();
     await expect(banner).toHaveCount(0);
     await expect(c).toContainText('Jun chose. Your turn');
-    await expect(c.getByRole('radio', { name: /Jun picked this.*The big firm/ })).toBeVisible();
-    await expect(c.getByRole('radio', { checked: true })).toHaveCount(0);
-    await expect(c.getByRole('button', { name: /^Agree/ })).toBeDisabled();
+    await expect(c.getByRole('radio', { name: /Jun picked this.*The big firm/ })).toBeChecked();
+    await expect(c.getByRole('button', { name: 'Agree with Jun' })).toBeEnabled();
+    await expect(c.getByRole('button', { name: /^Choose: The local firm/ })).toHaveCount(0);
     rec = await avery.record(created.id);
     expect(rec.status).toBe('proposed');
   });

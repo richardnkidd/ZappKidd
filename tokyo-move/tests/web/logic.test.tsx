@@ -31,16 +31,21 @@ import { solarTermFor, solarTermLine, SOLAR_TERMS } from '../../src/web/lib/sola
 import {
   agreeLabel,
   approvalSummary,
+  bare,
   canReopen,
   decisionStatusWords,
   initialChoice,
+  mainButtonLabel,
   needsMyApproval,
   orderedOptions,
   partnerChoiceLine,
+  sentence,
   shortLabel,
   triggerLine,
 } from '../../src/web/screens/decide/decisionText';
-import { groupDecisions } from '../../src/web/screens/decide/DecisionsTab';
+import { DECISION_STATE_LABEL } from '../../src/shared/labels';
+import { outcomeLine } from '../../src/web/screens/decide/DecisionCard';
+import { groupDecisions, placeDecisions, UP_NEXT } from '../../src/web/screens/decide/DecisionsTab';
 import { computed, DIR, decision, deadline, milestone, PEOPLE, rec } from './helpers';
 
 const TODAY = '2026-10-29';
@@ -390,11 +395,11 @@ describe('decision card: whose turn, what is picked, what the button says', () =
     expect(orderedOptions(decision('D1', 'open', three) as never).map((o) => o.id)).toEqual(['b', 'a', 'c']);
   });
 
-  it('preselects mine, else nothing when my partner picked something else, else the suggestion', () => {
+  it('preselects mine, else what my partner picked (the button then says "Agree with Bo"), else the suggestion', () => {
     expect(initialChoice(decision('D1', 'open', three) as never, 'ann', DIR)).toBe('b');
     expect(initialChoice(decision('D1', 'proposed', { ...three, approvals: [ann('c')] }) as never, 'ann', DIR)).toBe('c');
-    // Bo chose A, not the suggestion: nothing is preselected, so agreeing never silently disagrees with Bo.
-    expect(initialChoice(decision('D1', 'proposed', { ...three, approvals: [bo('a')] }) as never, 'ann', DIR)).toBeNull();
+    // Bo chose A, not the suggestion: Bo's pick is preselected, never the suggestion, so nothing silently disagrees.
+    expect(initialChoice(decision('D1', 'proposed', { ...three, approvals: [bo('a')] }) as never, 'ann', DIR)).toBe('a');
     // Bo chose the suggestion: preselecting it agrees with Bo.
     expect(initialChoice(decision('D1', 'proposed', { ...three, approvals: [bo('b')] }) as never, 'ann', DIR)).toBe('b');
     // Disagreement: my own choice stays selected.
@@ -444,6 +449,88 @@ describe('decision card: whose turn, what is picked, what the button says', () =
     const g = groupDecisions(list as never, 'ann', DIR);
     expect(g.mine.map((d) => d.key)).toEqual(['D4', 'D3', 'D2']);
     expect(g.waiting.map((d) => d.key)).toEqual(['D1']);
+  });
+
+  it('puts decisions with a real needed-by date first, soonest first, then partner-answered, then the rest', () => {
+    const by = (date: string) => ({ needed_by: { date, kind: 'user_committed', basis: '', source_ids: [], jurisdiction: 'household', timezone: 'Pacific/Honolulu', verified_on: null, traveler: null } }) as never;
+    const list = [
+      decision('D1', 'open', { trigger: 'Before the lease is signed' }), // no date: a trigger sentence is not a date
+      decision('D2', 'open', by('2026-12-20')),
+      decision('D3', 'proposed', { approvals: [bo('a')] }), // Bo answered
+      decision('D4', 'open', by('2026-11-30')),
+      decision('D5', 'open'),
+    ];
+    expect(groupDecisions(list as never, 'ann', DIR).mine.map((d) => d.key)).toEqual(['D4', 'D2', 'D3', 'D1', 'D5']);
+  });
+
+  it('says the right verb on the main button in each situation', () => {
+    const opts = (selectedId: string | null, otherOptionId: string | null) => ({ selectedId, otherOptionId, otherName: otherOptionId ? 'Bo' : null });
+    // Nobody has chosen yet.
+    expect(mainButtonLabel('Wait for visa advice.', opts('a', null))).toBe('Choose: Wait for visa advice');
+    // Bo chose, and I select the same: agree with Bo.
+    expect(mainButtonLabel('Option A', opts('a', 'a'))).toBe('Agree with Bo');
+    // Bo chose, and I select something else: choose it (the card adds "Bo picked something else").
+    expect(mainButtonLabel('Option B', opts('b', 'a'))).toBe('Choose: Option B');
+    // Nothing selected.
+    expect(mainButtonLabel(null, opts(null, null))).toBe('Choose');
+    // A long label is kept whole: CSS ends it with "…" on one line, it is never cut mid-word in the text.
+    const long = 'Protect a safety fund now. Sign nothing non-refundable until the budget is set.';
+    expect(mainButtonLabel(long, opts('a', null))).toBe(`Choose: ${long.slice(0, -1)}`);
+  });
+
+  it('never puts a second full stop after text that already ends with one', () => {
+    expect(sentence('Until the paperwork is tied up.')).toBe('Until the paperwork is tied up.');
+    expect(sentence('Until the paperwork is tied up')).toBe('Until the paperwork is tied up.');
+    expect(sentence('Set firm limits…')).toBe('Set firm limits…');
+    expect(sentence('Is it settled?')).toBe('Is it settled?');
+    expect(bare('Tied up.. ')).toBe('Tied up');
+  });
+
+  it('says how a closed decision ended in one line, in the house words', () => {
+    expect(outcomeLine(decision('D1', 'approved') as never, 'Option A.', null, '2026-11-22').text).toBe('Decided: Option A');
+    expect(outcomeLine(decision('D1', 'superseded') as never, null, null, '2026-11-22').text).toBe('Replaced by a newer decision');
+    expect(outcomeLine(decision('D1', 'rejected', { rationale: 'Too costly.' }) as never, null, null, '2026-11-22').text).toBe('Not doing this');
+    expect(outcomeLine(decision('D1', 'deferred', { revisit_on: '2026-12-01' }) as never, null, null, '2026-11-22')).toMatchObject({ text: 'Put off until', date: '2026-12-01' });
+    expect(outcomeLine(decision('D1', 'deferred') as never, null, null, '2026-11-22')).toMatchObject({ text: 'Put off', date: null });
+    // The status word stays consistent with the shared label for a replaced decision.
+    expect(outcomeLine(decision('D1', 'superseded') as never, null, null, '2026-11-22').text.startsWith(DECISION_STATE_LABEL.superseded)).toBe(true);
+  });
+});
+
+describe('Decide list: "Up next" and "Later", and cards that stay put', () => {
+  const ids = (xs: { id: string }[]) => xs.map((x) => x.id);
+  const items = (...names: string[]) => names.map((id) => ({ id }));
+  const resolveAll = (id: string) => ({ id });
+
+  it('shows at most three under "Up next" and the rest of mine under "Later"', () => {
+    const out = placeDecisions({ mine: items('a', 'b', 'c', 'd', 'e'), waiting: items('w') }, (x) => x.id, new Map(), resolveAll);
+    expect(UP_NEXT).toBe(3);
+    expect(ids(out.next)).toEqual(['a', 'b', 'c']);
+    expect(ids(out.later)).toEqual(['d', 'e']);
+    expect(ids(out.waiting)).toEqual(['w']);
+  });
+
+  it('keeps a card I answered exactly where it was, and nothing else moves', () => {
+    // I answered "b": now it waits for my partner, so naturally it would leave "Up next" for "Waiting".
+    const pins = new Map([['b', { place: 'next' as const, index: 1 }]]);
+    const out = placeDecisions({ mine: items('a', 'c', 'd', 'e'), waiting: items('b', 'w') }, (x) => x.id, pins, resolveAll);
+    expect(ids(out.next)).toEqual(['a', 'b', 'c']);
+    expect(ids(out.later)).toEqual(['d', 'e']);
+    expect(ids(out.waiting)).toEqual(['w']);
+  });
+
+  it('keeps a card answered under "Later" in its place there too', () => {
+    const pins = new Map([['d', { place: 'later' as const, index: 0 }]]);
+    const out = placeDecisions({ mine: items('a', 'b', 'c', 'e'), waiting: items('d') }, (x) => x.id, pins, resolveAll);
+    expect(ids(out.next)).toEqual(['a', 'b', 'c']);
+    expect(ids(out.later)).toEqual(['d', 'e']);
+    expect(ids(out.waiting)).toEqual([]);
+  });
+
+  it('frees the slot once a pinned card has nothing left to show', () => {
+    const pins = new Map([['b', { place: 'next' as const, index: 1 }]]);
+    const out = placeDecisions({ mine: items('a', 'c', 'd'), waiting: [] }, (x) => x.id, pins, () => null);
+    expect(ids(out.next)).toEqual(['a', 'c', 'd']);
   });
 });
 

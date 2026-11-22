@@ -23,19 +23,23 @@ import { useSnapshot } from '../../state/snapshot';
 import { useWrite } from '../../state/useWrite';
 import { AddAlternativeDialog, AddNoteDialog, ReasonDialog } from './decisionDialogs';
 import {
-  agreeLabel,
+  bare,
   canReopen,
   decisionStatus,
   decisionTurn,
   initialChoice,
   isOpenDecision,
+  mainButtonLabel,
   orderedOptions,
   requiredApproverIds,
-  triggerLine,
+  sentence,
   type DecisionStatus,
 } from './decisionText';
 
 const trimEnd = (t: string) => t.replace(/[.\s]+$/, '');
+
+/** How long the "Saved" line stays on the card after a choice. */
+const SAID_MS = 6000;
 
 /** The shared Button's look, for the few buttons that must take focus back after an action (they need a ref). */
 function FocusButton({
@@ -229,6 +233,12 @@ interface CardProps {
   onSettled?: (d: Decision, outcome: SettledOutcome) => void;
   /** Called when I pick an answer, before it is saved, so a list can keep the card where it is. */
   onChose?: (d: Decision) => void;
+  /** Called when the card is opened from its collapsed state, so a list can keep it where it is. */
+  onExpand?: (d: Decision) => void;
+  /** Collapsed, show only the question and a quiet "Open" (the cards under "Later"). */
+  slim?: boolean;
+  /** The words the list heading already says for every card in it ("Your turn"): a status saying the same is left out. */
+  groupSays?: string | null;
   /** Called after "Reopen" succeeds. */
   onReopened?: (d: Decision, rec: BaseRecord) => void;
   /** Resolves record codes to names. Built from `idx` when not given. */
@@ -240,7 +250,23 @@ interface CardProps {
  * radios, and one button that agrees with the picked choice. Everything else sits behind "Why and history".
  * A decision settles only when every required person picked the same choice (the server enforces it).
  */
-export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle = false, level = 3, onDecidedTogether, onSettled, onChose, onReopened, lookup: given }: CardProps) {
+export function DecisionCard({
+  d,
+  idx,
+  dir,
+  today,
+  startOpen = false,
+  hideTitle = false,
+  level = 3,
+  onDecidedTogether,
+  onSettled,
+  onChose,
+  onExpand,
+  onReopened,
+  slim = false,
+  groupSays = null,
+  lookup: given,
+}: CardProps) {
   const data = d.data ?? ({} as Decision['data']);
   const lookup = useMemo(() => given ?? keyLookup(idx.byKey), [given, idx]);
   const meId = dir.me?.id ?? null;
@@ -250,26 +276,38 @@ export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle 
   const heading = question ?? displayTitle(d, lookup);
   const [expanded, setExpanded] = useState(startOpen);
   const showBody = startOpen || expanded;
-  const [announce, setAnnounce] = useState('');
+  // What just happened, said on the card under its heading (never over a button): visible words plus words only
+  // a screen reader needs.
+  const [announce, setAnnounce] = useState<{ shown: string; extra: string }>({ shown: '', extra: '' });
+  const saidTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (saidTimer.current) window.clearTimeout(saidTimer.current);
+  }, []);
   const articleRef = useRef<HTMLElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const bodyId = useId();
   const Title = `h${level}` as 'h1' | 'h2' | 'h3';
   const Sub = `h${Math.min(level + 1, 6)}` as 'h2' | 'h3' | 'h4';
+  // Only a real date is shown on the card. A trigger sentence ("before the lease is signed") waits behind "Why and
+  // history".
   const needed = data.needed_by?.date ?? null;
-  const when = !needed && open ? triggerLine(data.trigger, today, lookup) : null;
   const delay = open ? displayDelay(d, lookup) : null;
   const recorded = recordedDecision(d);
   const required = requiredApproverIds(d, dir);
   const iChoose = !!meId && required.includes(meId);
+  const showStatus = open && !(groupSays && status.text === groupSays);
+  const collapsedSlim = slim && open && !showBody;
 
-  const say = (text: string) => {
-    setAnnounce('');
-    window.setTimeout(() => setAnnounce(text), 30);
+  const say = (shown: string, extra = '') => {
+    setAnnounce({ shown: '', extra: '' });
+    if (saidTimer.current) window.clearTimeout(saidTimer.current);
+    window.setTimeout(() => setAnnounce({ shown, extra }), 30);
+    saidTimer.current = window.setTimeout(() => setAnnounce({ shown: '', extra: '' }), SAID_MS);
   };
 
   const expand = () => {
+    onExpand?.(d);
     setExpanded(true);
     // Move into the revealed choices so a keyboard or screen-reader user lands on the question's options.
     window.setTimeout(() => {
@@ -279,12 +317,13 @@ export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle 
     }, 30);
   };
   const collapse = () => {
+    if (articleRef.current) articleRef.current.style.minHeight = '';
     setExpanded(false);
     window.setTimeout(() => toggleRef.current?.focus(), 30);
   };
 
   const settled = (outcome: SettledOutcome) => {
-    const words = outcome.kind === 'decided' ? `Decided: ${outcome.label ?? 'done'}.` : outcome.kind === 'put-off' ? 'Put off.' : 'Not doing this.';
+    const words = outcome.kind === 'decided' ? `Decided: ${sentence(bare(outcome.label ?? 'done'))}` : outcome.kind === 'put-off' ? 'Put off.' : 'Not doing this.';
     say(words);
     if (onSettled) onSettled(d, outcome);
     else window.setTimeout(() => articleRef.current?.focus(), 60); // the buttons are gone; keep focus on the card
@@ -295,6 +334,8 @@ export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle 
     return o ? optionLabel(d, o, lookup) : null;
   };
 
+  const hasTop = !collapsedSlim && (showStatus || (open && !!needed) || (open && expanded && !startOpen));
+
   return (
     <li className="dcard-item">
       <Card
@@ -302,19 +343,21 @@ export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle 
         ref={articleRef}
         id={`decision-${d.key}`}
         tabIndex={-1}
-        className={`decision dcard dcard--${status.kind}${showBody ? ' is-open' : ''}`}
+        className={`decision dcard dcard--${status.kind}${showBody ? ' is-open' : ''}${collapsedSlim ? ' dcard--slim' : ''}`}
         aria-labelledby={hideTitle ? undefined : `dt-${d.key}`}
         aria-label={hideTitle ? heading : undefined}
       >
-        <div className="dcard__top">
-          <StatusLine status={status} />
-          {open && needed && <DecideBy date={needed} today={today} />}
-          {open && expanded && !startOpen && (
-            <button type="button" className="dcard__close" aria-expanded={true} aria-controls={bodyId} aria-label="Hide choices" title="Hide choices" onClick={collapse}>
-              <Icon name="x" size={18} />
-            </button>
-          )}
-        </div>
+        {hasTop && (
+          <div className="dcard__top">
+            {showStatus && <StatusLine status={status} />}
+            {open && needed && <DecideBy date={needed} today={today} />}
+            {open && expanded && !startOpen && (
+              <button type="button" className="dcard__close" aria-expanded={true} aria-controls={bodyId} aria-label="Hide choices" title="Hide choices" onClick={collapse}>
+                <Icon name="x" size={18} />
+              </button>
+            )}
+          </div>
+        )}
         {!hideTitle ? (
           <Title id={`dt-${d.key}`} ref={headingRef} tabIndex={-1} className="dcard__q">
             {heading}
@@ -322,7 +365,15 @@ export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle 
         ) : (
           question && question !== displayTitle(d, lookup) && <p className="dcard__q dcard__q--sub">{question}</p>
         )}
-        {when && <p className="dcard__when">{when}</p>}
+        <p role="status" className="dcard__said">
+          {announce.shown && (
+            <>
+              <Icon name="check" size={16} />
+              <span>{announce.shown}</span>
+            </>
+          )}
+          {announce.extra && <span className="visually-hidden"> {announce.extra}</span>}
+        </p>
         {delay && showBody && (
           <ClampText lines={2} className="dcard__delay" moreLabel="Show all">
             <span className="dcard__label">If we don’t decide:</span> {delay}
@@ -333,9 +384,15 @@ export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle 
           <>
             {!showBody && (
               <div className="dcard__toggle">
-                <FocusButton ref={toggleRef} variant={status.kind === 'my-turn' ? 'primary' : 'secondary'} aria-expanded={false} aria-controls={bodyId} onClick={expand}>
-                  {status.kind === 'my-turn' ? 'Decide' : 'See choices'}
-                </FocusButton>
+                {slim ? (
+                  <FocusButton ref={toggleRef} variant="quiet" small aria-expanded={false} aria-controls={bodyId} onClick={expand}>
+                    Open
+                  </FocusButton>
+                ) : (
+                  <FocusButton ref={toggleRef} variant={status.kind === 'my-turn' ? 'primary' : 'secondary'} aria-expanded={false} aria-controls={bodyId} onClick={expand}>
+                    {status.kind === 'my-turn' ? 'Decide' : 'See choices'}
+                  </FocusButton>
+                )}
               </div>
             )}
             <div id={bodyId} className="dcard__body" hidden={!showBody}>
@@ -369,9 +426,6 @@ export function DecisionCard({ d, idx, dir, today, startOpen = false, hideTitle 
           }} />
         )}
       </Card>
-      <p role="status" className="visually-hidden">
-        {announce}
-      </p>
     </li>
   );
 }
@@ -409,7 +463,7 @@ interface OpenBodyProps {
   iChoose: boolean;
   Sub: 'h2' | 'h3' | 'h4';
   labelOf: (id: string | null | undefined) => string | null;
-  say: (text: string) => void;
+  say: (shown: string, extra?: string) => void;
   onQuestionSaved: () => void;
   onChose: () => void;
   onSettled: (o: SettledOutcome) => void;
@@ -430,6 +484,7 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
   const [adding, setAdding] = useState(false);
   const [noting, setNoting] = useState(false);
   const changeRef = useRef<HTMLButtonElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const fallback = cardSelector(d.key);
 
   // Someone else's change arrived (refresh): start again from the rule, unless I am in the middle of picking.
@@ -445,6 +500,10 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
   const agree = async () => {
     if (!selected) return;
     onChose(); // a list keeps the card where it is while the answer is saved
+    // The card gets shorter once the choices give way to "You chose". Near the end of the page that would pull the
+    // page up under the reader's thumb, so the card keeps its height until it is closed or the page is left.
+    const article = innerRef.current?.closest('article');
+    const height = article?.getBoundingClientRect().height ?? 0;
     let out: BaseRecord | null = null;
     const ok = await w.run(async (v) => {
       out = await actions.approveDecision(d.id, v, selected, null);
@@ -457,25 +516,52 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
       onSettled({ kind: 'decided', label, record: res });
     } else {
       versionRef.current = res.version;
-      const names = waitingNames.length ? waitingNames.join(' and ') : 'the others';
-      say(`You chose: ${label ?? 'your answer'}. Waiting for ${names}.`);
-      window.setTimeout(() => changeRef.current?.focus(), 60);
+      if (article && height > 0) article.style.minHeight = `${Math.round(height)}px`;
+      const names = waitingNames.length ? waitingNames.join(' and ') : null;
+      const differs = !!t.otherOptionId && t.otherOptionId !== selected;
+      const after = differs ? `${otherName ?? 'They'} picked something else.` : names ? `Waiting for ${names}.` : '';
+      say('Saved.', `You chose: ${sentence(bare(label ?? 'your answer'))} ${after}`.trim());
+      // Stay on the card: focus the next thing to do, without scrolling the page.
+      window.setTimeout(() => changeRef.current?.focus({ preventScroll: true }), 60);
     }
   };
 
   const showChosen = iChoose && t.turn === 'waiting_partner' && !changing;
+  const showDisagree = iChoose && t.turn === 'disagree' && !changing;
   const myLabel = labelOf(t.myOptionId);
+  const otherLabel = labelOf(t.otherOptionId);
+
+  const startChanging = (e: React.MouseEvent<HTMLButtonElement>, preselect: string | null) => {
+    const card = e.currentTarget.closest('article');
+    setChanging(true);
+    setSelected(preselect);
+    window.setTimeout(() => card?.querySelector<HTMLInputElement>('input[type="radio"]:checked, input[type="radio"]')?.focus(), 30);
+  };
 
   const tags = (id: string) => {
     const out: string[] = [];
     if (id === rec && options.length > 1) out.push('Suggested');
     if (otherName && id === t.otherOptionId) out.push(`${otherName} picked this`);
-    if (id === t.myOptionId && (changing || t.turn === 'disagree')) out.push('You picked this');
+    if (id === t.myOptionId && changing) out.push('You picked this');
     return out;
   };
 
+  const buttonText = mainButtonLabel(labelOf(selected), { selectedId: selected, otherOptionId: t.otherOptionId, otherName });
+  const pickedElse = !!otherName && !!t.otherOptionId && !!selected && selected !== t.otherOptionId;
+
+  const quietActions = (
+    <>
+      <Button variant="quiet" onClick={() => setReasonMode('defer')}>
+        Not now
+      </Button>
+      <Button variant="quiet" onClick={() => setReasonMode('reject')}>
+        None of these work
+      </Button>
+    </>
+  );
+
   return (
-    <div className="dcard__inner">
+    <div className="dcard__inner" ref={innerRef}>
       {!hasQuestion && <WriteQuestion d={d} onSaved={onQuestionSaved} />}
 
       {options.length === 0 ? (
@@ -483,29 +569,39 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
       ) : showChosen ? (
         <div className="dcard__chosen">
           <p>
-            You chose: <strong>{myLabel ?? 'an answer'}</strong>. Waiting for {waitingNames.join(' and ') || 'the others'}.
+            You chose: <strong>{bare(myLabel ?? 'an answer')}</strong>
           </p>
           <div>
-            <FocusButton
-              ref={changeRef}
-              variant="quiet"
-              small
-              onClick={(e) => {
-                const card = e.currentTarget.closest('article');
-                setChanging(true);
-                setSelected(t.myOptionId);
-                window.setTimeout(() => card?.querySelector<HTMLInputElement>('input[type="radio"]:checked, input[type="radio"]')?.focus(), 30);
-              }}
-            >
-              Change my choice
+            <FocusButton ref={changeRef} variant="quiet" small onClick={(e) => startChanging(e, t.myOptionId)}>
+              Change my answer
             </FocusButton>
           </div>
+        </div>
+      ) : showDisagree ? (
+        <div className="dcard__chosen dcard__chosen--both">
+          <p>
+            You: <strong>{bare(myLabel ?? 'an answer')}</strong>
+          </p>
+          <p>
+            {otherName ?? 'They'}: <strong>{bare(otherLabel ?? 'another answer')}</strong>
+          </p>
+          <p className="dcard__hint">Talk it over, then one of you changes.</p>
+          <div className="dcard__actions">
+            <FocusButton ref={changeRef} variant="primary" onClick={(e) => startChanging(e, t.otherOptionId ?? t.myOptionId)}>
+              Change my answer
+            </FocusButton>
+            {quietActions}
+          </div>
+          {w.error && <p className="field__error" role="alert">{w.error}</p>}
         </div>
       ) : iChoose ? (
         <>
           {options.length === 1 ? (
             <p className="dopt dopt--single">
-              <span className="dopt__label">{optionLabel(d, options[0]!, lookup)}</span>
+              <span className="dopt__text">
+                <Tags tags={tags(options[0]!.id).filter((x) => x !== 'Suggested')} />
+                <span className="dopt__label">{optionLabel(d, options[0]!, lookup)}</span>
+              </span>
             </p>
           ) : (
             <fieldset className="dopts">
@@ -521,23 +617,17 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
               ))}
             </fieldset>
           )}
+          {pickedElse && <p className="dcard__hint">{otherName} picked something else</p>}
           <div className="dcard__actions">
-            <Button variant="primary" busy={w.busy} disabled={!selected || selected === t.myOptionId} onClick={() => void agree()}>
-              {agreeLabel(labelOf(selected))}
+            <Button variant="primary" className="dcard__main" busy={w.busy} disabled={!selected || selected === t.myOptionId} onClick={() => void agree()}>
+              <span className="dcard__main-text">{buttonText}</span>
             </Button>
             {changing ? (
               <Button variant="quiet" onClick={() => setChanging(false)}>
-                Keep my choice
+                Keep my answer
               </Button>
             ) : (
-              <>
-                <Button variant="quiet" onClick={() => setReasonMode('defer')}>
-                  Not now
-                </Button>
-                <Button variant="quiet" onClick={() => setReasonMode('reject')}>
-                  None of these work
-                </Button>
-              </>
+              quietActions
             )}
           </div>
           {w.error && <p className="field__error" role="alert">{w.error}</p>}
@@ -578,6 +668,22 @@ function OpenBody({ d, idx, dir, lookup, heading, hasQuestion, iChoose, Sub, lab
 
 /* ------------------------------------------------------------------ closed: decided, put off, not doing */
 
+/** One line saying how a closed decision ended, in the house status words. */
+export function outcomeLine(d: Decision, chosen: string | null, recordedSummary: string | null, today: string, lookup?: KeyLookup): { text: string; date: string | null; icon: IconName } {
+  const data = d.data ?? ({} as Decision['data']);
+  if (d.status === 'approved' || recordedSummary !== null) {
+    const what = chosen ?? (recordedSummary ? stripCodes(recordedSummary, lookup) : null);
+    return { text: what ? `Decided: ${bare(what)}` : 'Decided', date: null, icon: 'check' };
+  }
+  if (d.status === 'superseded') return { text: 'Replaced by a newer decision', date: null, icon: 'x' };
+  if (d.status === 'rejected') return { text: 'Not doing this', date: null, icon: 'x' };
+  if (d.status === 'deferred') {
+    const on = data.revisit_on ?? null;
+    return { text: on ? 'Put off until' : 'Put off', date: on && today ? on : null, icon: 'hourglass' };
+  }
+  return { text: 'Decided', date: null, icon: 'check' };
+}
+
 function ClosedBody({
   d,
   idx,
@@ -599,33 +705,23 @@ function ClosedBody({
   recorded: ReturnType<typeof recordedDecision>;
   onReopened: (rec: BaseRecord) => void;
 }) {
-  const plain = usePlain();
   const data = d.data ?? ({} as Decision['data']);
   const chosen = labelOf(data.decided_option_id);
+  const line = outcomeLine(d, chosen, recorded ? (recorded.summary ?? '') : null, today, lookup);
   return (
     <div className="dcard__inner">
-      {recorded ? (
-        recorded.summary && (
-          <ClampText lines={2} className="dcard__outcome">
-            {plain(recorded.summary)}
-          </ClampText>
-        )
-      ) : d.status === 'approved' ? (
-        <p className="dcard__outcome">
-          Decided: <strong>{chosen ?? 'yes'}</strong>
-        </p>
-      ) : (
-        data.rationale && (
-          <ClampText lines={2} className="dcard__outcome">
-            <span className="dcard__label">Why:</span> {stripCodes(data.rationale, lookup)}
-          </ClampText>
-        )
-      )}
-      {d.status === 'deferred' && data.revisit_on && (
-        <p className="dcard__when">
-          Look again <DateText date={data.revisit_on} today={today} />
-        </p>
-      )}
+      <p className={`dcard__outcome dcard__outcome--${d.status}`}>
+        <Icon name={line.icon} size={16} />
+        <span className="dcard__outcome-text">
+          {line.text}
+          {line.date && (
+            <>
+              {' '}
+              <DateText date={line.date} today={today} />
+            </>
+          )}
+        </span>
+      </p>
       {d.status === 'approved' && <ApplyEffect d={d} idx={idx} dir={dir} />}
       <Reopen d={d} onReopened={onReopened} />
       <WhyAndHistory d={d} idx={idx} dir={dir} lookup={lookup} Sub={Sub} labelOf={labelOf} />
@@ -670,10 +766,23 @@ function WhyAndHistory({
   if (data.question && data.question.trim() !== d.title.trim() && data.question.trim() !== shownTitle) original.push({ label: 'Question', text: data.question });
   for (const o of options) if (optionLabel(d, o, lookup) !== o.label.trim()) original.push({ label: 'Choice', text: o.label });
   const why = summary ?? data.rationale ?? null;
-  const showRationale = d.status === 'open' || d.status === 'proposed' || d.status === 'approved';
+  // Why a closed decision ended the way it did is history too: everything but the one outcome line lives here.
+  const open = d.status === 'open' || d.status === 'proposed';
+  const trigger = open && !data.needed_by?.date ? stripCodes(data.trigger ?? '', lookup) : '';
+  const recordedSummary = recorded?.summary ? stripCodes(recorded.summary, lookup) : '';
 
   return (
     <More label="Why and history" className="dcard__more">
+      {recordedSummary && (
+        <p>
+          <span className="dcard__label">What we decided:</span> {recordedSummary}
+        </p>
+      )}
+      {trigger && (
+        <p>
+          <span className="dcard__label">Needed when:</span> {trigger}
+        </p>
+      )}
       {settled && (
         <p>
           <span className="dcard__label">Already decided:</span> {plain(settled)}
@@ -684,7 +793,7 @@ function WhyAndHistory({
           <span className="dcard__label">Still open:</span> {plain(recorded.open_part)}
         </p>
       )}
-      {why && showRationale && (
+      {why && (
         <div>
           <Sub className="dcard__sub">Why</Sub>
           <p className="preline">{summary ? summary : <Prose text={why} />}</p>

@@ -1,7 +1,10 @@
 import { Link, useLocation } from 'react-router';
 import { Icon, type IconName } from '../components/Icon';
 import { hasOptionalFuture } from '../lib/records';
-import { countMyTurn } from '../lib/turn';
+import { useMemo } from 'react';
+import { countMyTurn, type TurnBadge } from '../lib/turn';
+import { decideBadge } from '../screens/decide/decisionText';
+import { useData } from '../state/data';
 import { useLoaded } from '../state/snapshot';
 
 interface NavItem {
@@ -36,11 +39,29 @@ export const MORE_NAV: { to: string; label: string; icon: IconName; blurb: strin
   { to: '/settings', label: 'Settings', icon: 'gear', blurb: 'Dates and display' },
 ];
 
-/** How many decisions need the signed-in person now (the badge on the Decide tab). Same rule as Home and Decide. */
+/** How many decisions are my turn in all (Home's "Your turn" uses the same rule). */
 export function useMyTurnCount(): number {
   const loaded = useLoaded();
   if (!loaded) return 0;
   return countMyTurn(loaded.idx.decisions, loaded.dir.me?.id ?? null);
+}
+
+/**
+ * The Decide badge: decisions that are my turn AND are needed within 14 days or my partner already chose. When that is
+ * 0 but other decisions are my turn, `mine` is above 0 and the tab shows a dot. The bottom navigation and the
+ * Decisions tab on the Decide screen both use this, so they always agree.
+ */
+export function useDecideBadge(): TurnBadge {
+  const loaded = useLoaded();
+  const { today } = useData();
+  return useMemo(() => (loaded ? decideBadge(loaded.idx.decisions, loaded.dir.me?.id ?? null, loaded.dir, today) : { count: 0, mine: 0 }), [loaded?.idx, loaded?.dir, today]);
+}
+
+/** The accessible words for the badge, after the tab's name: ", 2 need you" or ", some need you later". */
+export function badgeWords(b: TurnBadge): string {
+  if (b.count > 0) return `, ${b.count} ${b.count === 1 ? 'needs' : 'need'} you`;
+  if (b.mine > 0) return ', some need you later';
+  return '';
 }
 
 /** The "More" places, without Future work while the plan holds no optional future items. */
@@ -51,7 +72,7 @@ export function useMoreNav(): typeof MORE_NAV {
 
 export function MainNav() {
   const moreNav = useMoreNav();
-  const myTurn = useMyTurnCount();
+  const badge = useDecideBadge();
   const { pathname, state } = useLocation();
   // A record opened from somewhere keeps that place highlighted; one opened directly highlights nothing.
   const from = (state as { backgroundLocation?: { pathname?: string } } | null)?.backgroundLocation?.pathname ?? null;
@@ -65,22 +86,24 @@ export function MainNav() {
         {MAIN_NAV.map((item) => {
           const exact = item.match(pathname);
           const via = !exact && pathname.startsWith('/r/') && from !== null && item.match(from);
-          const badge = item.to === '/decide' ? myTurn : 0;
+          const isDecide = item.to === '/decide';
+          const words = isDecide ? badgeWords(badge) : '';
           return (
             <li key={item.to}>
               <Link
                 to={item.to}
                 className="nav-link"
                 aria-current={exact ? 'page' : via ? 'true' : undefined}
-                aria-label={badge > 0 ? `${item.label}, ${badge} ${badge === 1 ? 'needs' : 'need'} you` : undefined}
+                aria-label={words ? `${item.label}${words}` : undefined}
               >
                 <Icon name={item.icon} size={24} />
                 <span>{item.label}</span>
-                {badge > 0 && (
+                {isDecide && badge.count > 0 && (
                   <span className="nav-badge" aria-hidden="true">
-                    {badge}
+                    {badge.count}
                   </span>
                 )}
+                {isDecide && badge.count === 0 && badge.mine > 0 && <span className="nav-badge nav-badge--dot" aria-hidden="true" />}
               </Link>
             </li>
           );

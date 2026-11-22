@@ -87,15 +87,22 @@ test.describe('Home', () => {
     expect(await decisionRows.count()).toBeLessThanOrEqual(3);
     expect(await turn.getByRole('listitem').count()).toBeLessThanOrEqual(3);
     for (const row of await decisionRows.all()) {
-      await expect(row.getByRole('link')).toHaveAccessibleName(/^(Decide: .+|Avery chose “[^”]+”\. Agree\?|You chose differently: .+)$/);
+      // The question first; then who picked what, when someone did. Never "<Name> chose “…”. Agree?" alone.
+      await expect(row.getByRole('link')).toHaveAccessibleName(/^[^.]+[?.]?( Avery picked: .+[.…]| You: .+[.…] Avery: .+[.…])?$/);
+      await expect(row.getByRole('link')).not.toHaveAccessibleName(/^Avery chose/);
     }
     if (d04?.status === 'proposed' && (d04.data.approvals as any[]).some((a) => a.person_id === 'avery') && !(d04.data.approvals as any[]).some((a) => a.person_id === 'jun')) {
       // Other specs on this server can add decisions Avery answered, so pick D04's row by where it goes.
       const agree = turn.locator('a[href="/decide#decision-D04"]');
-      await expect(agree).toHaveAccessibleName(/^Avery chose “.+”\. Agree\?/);
+      await expect(agree).toHaveAccessibleName('How much can we spend on moving, rent and a reserve? Avery picked: Set firm limits and keep a return reserve.');
+      await expect(agree.locator('.turn-row__title')).toHaveText('How much can we spend on moving, rent and a reserve?');
+      await expect(agree.locator('.turn-row__sub')).toHaveText('Avery picked: Set firm limits and keep a return reserve');
+      await expect(agree.locator('.turn-row__go')).toHaveText('Agree');
       await agree.click();
       await expect(page).toHaveURL(/\/decide#decision-D04$/);
       await expect(page.getByRole('heading', { level: 1, name: 'Decide' })).toBeVisible();
+      // The decision opens expanded, with Avery's pick ready to agree with.
+      await expect(page.getByRole('article', { name: 'How much can we spend on moving, rent and a reserve?' }).getByRole('button', { name: 'Agree with Avery' })).toBeVisible();
     }
   });
 

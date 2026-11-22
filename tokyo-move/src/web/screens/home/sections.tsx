@@ -5,7 +5,7 @@
  */
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import type { KeyLookup } from '@shared/plain';
+import { displayQuestion, displayTitle, optionLabel, type KeyLookup } from '@shared/plain';
 import { DoneButton, useDoneWithUndo } from '../../components/DoneWithUndo';
 import { ErrorBanner } from '../../components/Feedback';
 import { LineTime } from '../../components/Badges';
@@ -20,8 +20,10 @@ import {
   selectYourTurn,
   travellerChip,
   type SinceLine,
+  type TurnDecisionRow,
 } from '../../lib/home';
-import type { Directory, Indexes } from '../../lib/records';
+import type { Decision, Directory, Indexes } from '../../lib/records';
+import { decisionTurn, sentence, shortLabel } from '../decide/decisionText';
 import { api, describeError } from '../../net/client';
 import { useData } from '../../state/data';
 import { useSnapshot } from '../../state/snapshot';
@@ -111,14 +113,7 @@ export function YourTurnSection({ idx, dir, lookup }: Props) {
         <ul className="turn-list">
           {rows.map((row) =>
             row.kind === 'decision' ? (
-              <li key={row.id} className="turn-row turn-row--decision">
-                <Link className="turn-row__link" to={{ pathname: '/decide', hash: `#decision-${row.key}` }}>
-                  <span className="turn-row__title">{row.text}</span>
-                  <span className="turn-row__go" aria-hidden="true">
-                    {row.partner ? 'Open' : 'Decide'}
-                  </span>
-                </Link>
-              </li>
+              <DecisionTurnRow key={row.id} row={row} idx={idx} dir={dir} lookup={lookup} />
             ) : (
               <li key={row.id} className="turn-row turn-row--task">
                 <span className="turn-row__body">
@@ -139,6 +134,63 @@ export function YourTurnSection({ idx, dir, lookup }: Props) {
         </ul>
       )}
     </HomeSection>
+  );
+}
+
+export interface HomeDecisionWords {
+  /** First line: the decision's plain question (or its title). */
+  question: string;
+  /** The lines under it when someone already picked: ["Jun picked: Set firm limits"], or ["You: …", "Jun: …"]. */
+  lines: string[];
+  /** The word on the row's button. */
+  verb: string;
+  /** The link's accessible name: the question, then each line. */
+  label: string;
+}
+
+/** What a decision row on Home says. Leads with the question, then who picked what. */
+export function homeDecisionWords(d: Decision, meId: string | null, dir: Directory, lookup?: KeyLookup): HomeDecisionWords {
+  const question = displayQuestion(d, lookup) ?? displayTitle(d, lookup);
+  const t = decisionTurn(d, meId, dir);
+  const label = (id: string | null) => {
+    const o = (d.data?.options ?? []).find((x) => x.id === id);
+    return o ? shortLabel(optionLabel(d, o, lookup), 10) : null;
+  };
+  const other = t.otherId ? dir.nameOf(t.otherId) : 'They';
+  let lines: string[] = [];
+  let verb = 'Decide';
+  if (t.turn === 'mine_after_partner') {
+    const theirs = label(t.otherOptionId);
+    lines = [theirs ? `${other} picked: ${theirs}` : `${other} picked`];
+    verb = 'Agree';
+  } else if (t.turn === 'disagree') {
+    // Both picks, the same way the card says them.
+    lines = [`You: ${label(t.myOptionId) ?? 'one choice'}`, `${other}: ${label(t.otherOptionId) ?? 'another'}`];
+    verb = 'Open';
+  }
+  return { question, lines, verb, label: [question, ...lines.map(sentence)].join(' ') };
+}
+
+/** A decision on Home: tapping anywhere opens the decision, expanded, on the Decide screen. */
+function DecisionTurnRow({ row, idx, dir, lookup }: { row: TurnDecisionRow; idx: Indexes; dir: Directory; lookup?: KeyLookup }) {
+  const d = idx.decisions.find((x) => x.id === row.id);
+  const words = d ? homeDecisionWords(d, dir.me?.id ?? null, dir, lookup) : { question: row.text, lines: [], verb: 'Decide', label: row.text };
+  return (
+    <li className="turn-row turn-row--decision">
+      <Link className="turn-row__link" to={{ pathname: '/decide', hash: `#decision-${row.key}` }} aria-label={words.label}>
+        <span className="turn-row__body">
+          <span className="turn-row__title">{words.question}</span>
+          {words.lines.map((l) => (
+            <span key={l} className="turn-row__sub">
+              {l}
+            </span>
+          ))}
+        </span>
+        <span className="turn-row__go" aria-hidden="true">
+          {words.verb}
+        </span>
+      </Link>
+    </li>
   );
 }
 

@@ -1,5 +1,5 @@
 import type { Locator } from '@playwright/test';
-import { expect, loaded, test } from './support/fixtures';
+import { addDays, expect, loaded, test, todayInZone } from './support/fixtures';
 
 // Home's heading is one small line (the person's name for screen readers, then the date and season).
 const MAIN: { name: string; url: RegExp; h1: string | RegExp }[] = [
@@ -10,20 +10,30 @@ const MAIN: { name: string; url: RegExp; h1: string | RegExp }[] = [
   { name: 'More', url: /\/more/, h1: 'More' },
 ];
 
-/** A main tab by its label. The Decide tab may carry a count ("Decide, 2 need you"). */
-const tab = (nav: Locator, name: string) => nav.getByRole('link', { name: new RegExp(`^${name}(, \\d+ needs? you)?$`) });
+/** A main tab by its label. The Decide tab may carry a count ("Decide, 2 need you") or a dot ("Decide, some need you later"). */
+const tab = (nav: Locator, name: string) => nav.getByRole('link', { name: new RegExp(`^${name}(, \\d+ needs? you|, some need you later)?$`) });
 
-/** Decisions waiting for this person: open or suggested, they must approve, and they have not, or they disagree. */
-function expectedMyTurn(records: any[], me: string): number {
-  return records.filter((r) => {
-    if (r.type !== 'decision' || !['open', 'proposed'].includes(r.status)) return false;
+/**
+ * The Decide badge, worked out independently of the app. "Mine": open or suggested, I must approve, and I have not,
+ * or we disagree. The number counts those needed within 14 days (or late), or that my partner already answered.
+ */
+function expectedBadge(records: any[], me: string, today: string): { count: number; mine: number } {
+  const mine = records.filter((r) => {
+    if (r.type !== 'decision' || !['open', 'proposed'].includes(r.status) || r.data?.recorded_decision) return false;
     const approvers: string[] = r.data?.required_approvers ?? [];
     if (!approvers.includes(me)) return false;
     const approvals = (r.data?.approvals ?? []).filter((a: any) => approvers.includes(a.person_id));
-    const mine = approvals.find((a: any) => a.person_id === me);
-    if (!mine) return true;
-    return approvals.some((a: any) => a.person_id !== me && a.option_id !== mine.option_id);
-  }).length;
+    const own = approvals.find((a: any) => a.person_id === me);
+    if (!own) return true;
+    return approvals.some((a: any) => a.person_id !== me && a.option_id !== own.option_id);
+  });
+  const soon = addDays(today, 14);
+  const urgent = mine.filter((r) => {
+    const partner = (r.data?.approvals ?? []).some((a: any) => a.person_id !== me && (r.data?.required_approvers ?? []).includes(a.person_id));
+    const date: string | null = r.data?.needed_by?.date ?? null;
+    return partner || (!!date && /^\d{4}-\d{2}-\d{2}$/.test(date) && date <= soon);
+  });
+  return { count: urgent.length, mine: mine.length };
 }
 
 test.describe('Navigation', () => {
@@ -56,10 +66,12 @@ test.describe('Navigation', () => {
     }
   });
 
-  test('the Decide tab shows how many decisions need you, for each adult, and no badge at zero', async ({ page, signIn, api }) => {
+  test('the Decide tab counts the decisions that need you soon, for each adult, with a dot when none are urgent', async ({ page, signIn, api }) => {
     for (const who of ['avery', 'jun'] as const) {
-      const records = (await (await api(who)).snapshot()).records as any[];
-      const n = expectedMyTurn(records, who);
+      const snap = await (await api(who)).snapshot();
+      const records = snap.records as any[];
+      const today = todayInZone(snap.me.household.display_timezone);
+      const { count: n, mine } = expectedBadge(records, who, today);
       await signIn(page, who, '/');
       await loaded(page);
       const nav = page.getByRole('navigation', { name: 'Main' });
@@ -73,14 +85,24 @@ test.describe('Navigation', () => {
       if (n > 0) {
         await expect(decide).toHaveAccessibleName(`Decide, ${n} ${n === 1 ? 'needs' : 'need'} you`);
         await expect(decide.locator('.nav-badge')).toHaveText(String(n));
-        // Home's "Your turn" agrees: it shows the same decisions (never more than three).
+        // Home's "Your turn" shows decisions too (never more than three).
         const rows = page.getByRole('region', { name: /^Your turn/ }).getByRole('listitem').filter({ has: page.locator('a[href^="/decide"]') });
         await expect(rows.first()).toBeVisible();
-        expect(await rows.count()).toBeLessThanOrEqual(Math.min(n, 3));
+        expect(await rows.count()).toBeLessThanOrEqual(Math.min(mine, 3));
+      } else if (mine > 0) {
+        // Nothing urgent, but some decisions are still this person's turn: a dot, with words for screen readers.
+        await expect(decide).toHaveAccessibleName('Decide, some need you later');
+        await expect(decide.locator('.nav-badge--dot')).toHaveCount(1);
+        await expect(decide.locator('.nav-badge')).toHaveText('');
       } else {
         await expect(decide).toHaveAccessibleName('Decide');
         await expect(decide.locator('.nav-badge')).toHaveCount(0);
       }
+      // The Decisions tab on the Decide screen says the same as the navigation.
+      await decide.click();
+      await loaded(page);
+      const words = n > 0 ? `, ${n} ${n === 1 ? 'needs' : 'need'} you` : mine > 0 ? ', some need you later' : '';
+      await expect(page.getByRole('navigation', { name: 'Decide sections' }).getByRole('link', { name: /^Decisions/ })).toHaveAccessibleName(`Decisions${words}`);
       await page.context().clearCookies();
     }
   });

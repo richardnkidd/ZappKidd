@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addCalendarDays, isCivilDate } from '@shared/dates';
 import { defaultNewTaskDue } from '@shared/deadlines';
-import { WORK_STATUS_ORDER } from '@shared/labels';
+import { displayTitle, keyLookup } from '@shared/plain';
 import type { OwnerRef, WorkStatus } from '@shared/types';
 import type { AnyRecord } from '../../lib/records';
 import { Button, Field, TextArea, TextInput, Select } from '../../components/Controls';
 import { Dialog } from '../../components/Dialog';
+import { More } from '../../components/More';
 import { ConflictBanner } from '../../components/Feedback';
 import { StatusBadge } from '../../components/Badges';
 import { useDir } from '../../components/People';
@@ -17,14 +18,18 @@ import { useWrite } from '../../state/useWrite';
 
 const NEEDS_REASON: WorkStatus[] = ['blocked', 'eliminated', 'not_applicable'];
 
+/** The four most-used statuses come first; the rest sit behind "More". One short line each. */
+const MAIN_STATUSES: WorkStatus[] = ['planned', 'in_progress', 'blocked', 'completed'];
+const OTHER_STATUSES: WorkStatus[] = ['waiting_external', 'eliminated', 'not_applicable'];
+
 const STATUS_HELP: Record<WorkStatus, string> = {
   planned: 'Not started yet.',
   in_progress: 'Someone is working on it.',
-  blocked: 'Stuck. You will say what it is waiting on.',
+  blocked: 'Stuck. Say what it waits on.',
   waiting_external: 'The next move is someone else’s.',
-  completed: 'Finished. You will say what shows it is done.',
-  eliminated: 'We chose not to do this. You will say why.',
-  not_applicable: 'It does not apply to us. You will say why.',
+  completed: 'All finished.',
+  eliminated: 'We chose not to do it.',
+  not_applicable: 'We do not need it.',
 };
 
 const REASON_LABEL: Partial<Record<WorkStatus, string>> = {
@@ -44,7 +49,7 @@ interface StatusDialogProps {
 }
 
 export function StatusDialog({ open, onClose, record, traveler = null, currentStatus }: StatusDialogProps) {
-  const { actions } = useSnapshot();
+  const { actions, idx } = useSnapshot();
   const dir = useDir();
   const w = useWrite();
   const [status, setStatus] = useState<WorkStatus>(currentStatus as WorkStatus);
@@ -62,7 +67,7 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
   useEffect(() => {
     if (!open) return;
     if (!chosenByUser.current) return;
-    const target = status === 'completed' ? summaryRef.current : NEEDS_REASON.includes(status) || status === 'waiting_external' ? reasonRef.current : null;
+    const target = status === 'completed' ? null : NEEDS_REASON.includes(status) || status === 'waiting_external' ? reasonRef.current : null;
     target?.focus({ preventScroll: true });
     target?.scrollIntoView({ block: 'nearest' });
   }, [status, open]);
@@ -82,16 +87,15 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
   }, [open]);
 
   const needsReason = NEEDS_REASON.includes(status);
-  const needsEvidence = status === 'completed';
+  const completing = status === 'completed';
   const reasonMissing = needsReason && reason.trim().length === 0;
-  const evidenceMissing = needsEvidence && summary.trim().length === 0;
   const linkBad = link.trim().length > 0 && !safeHref(link);
   const unchanged = status === currentStatus && !traveler;
 
   const submit = async () => {
     setTried(true);
     // Never fail silently: put the cursor in the first field that needs attention.
-    const firstInvalid = reasonMissing ? reasonRef.current : evidenceMissing ? summaryRef.current : linkBad ? linkRef.current : null;
+    const firstInvalid = reasonMissing ? reasonRef.current : linkBad ? linkRef.current : null;
     if (firstInvalid) {
       firstInvalid.focus();
       firstInvalid.scrollIntoView({ block: 'nearest' });
@@ -103,7 +107,8 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
           baseVersion,
           status,
           reason: reason.trim() || null,
-          evidence: needsEvidence ? { summary: summary.trim(), link: safeHref(link) } : null,
+          // Evidence is optional: it is sent only when something was filled in.
+          evidence: completing && (summary.trim() || safeHref(link)) ? { summary: summary.trim() || (safeHref(link) as string), link: safeHref(link) } : null,
           traveler,
         }),
       startVersion,
@@ -112,12 +117,62 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
   };
 
   const who = traveler ? dir.nameOf(traveler) : null;
+  const name = displayTitle(record, keyLookup(idx?.byKey));
+
+  const option = (s: WorkStatus) => (
+    <div key={s} className="choice-wrap">
+      <label className="choice">
+        <input
+          type="radio"
+          name="status"
+          value={s}
+          checked={status === s}
+          onChange={() => {
+            chosenByUser.current = true;
+            setStatus(s);
+          }}
+        />
+        <span className="choice__text">
+          <span>
+            <StatusBadge status={s} small showLabel /> {s === currentStatus && <span className="faint small">(current)</span>}
+          </span>
+          <span className="choice__hint">{STATUS_HELP[s]}</span>
+        </span>
+      </label>
+      {status === s && (needsReason || s === 'waiting_external') && (
+        <div className="choice-wrap__follow">
+          <Field
+            label={REASON_LABEL[s] ?? 'Reason'}
+            hint={needsReason ? 'Required.' : 'Optional.'}
+            error={tried && reasonMissing ? 'Please say why, so it makes sense later.' : null}
+          >
+            <TextArea ref={reasonRef} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
+          </Field>
+        </div>
+      )}
+      {status === s && completing && (
+        <div className="choice-wrap__follow stack">
+          <Field label="What shows this is done? (optional)">
+            <TextArea ref={summaryRef} value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} />
+          </Field>
+          <Field
+            label="Link to the proof (optional)"
+            error={tried && linkBad ? 'That doesn’t look like a web address (it should start with https://).' : null}
+          >
+            <TextInput ref={linkRef} value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="https://" />
+          </Field>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
       title={who ? `Update ${who}’s progress` : 'Change status'}
-      description={who ? `This only changes ${who}’s part of “${record.title}”.` : `“${record.title}”`}
+      description={who ? `This only changes ${who}’s part of “${name}”.` : `“${name}”`}
+      fallbackFocus="[data-status-control]"
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>
@@ -132,57 +187,10 @@ export function StatusDialog({ open, onClose, record, traveler = null, currentSt
       <fieldset>
         <legend>New status</legend>
         <div className="stack stack--tight">
-          {WORK_STATUS_ORDER.map((s) => (
-            <div key={s} className="choice-wrap">
-              <label className="choice">
-                <input
-                  type="radio"
-                  name="status"
-                  value={s}
-                  checked={status === s}
-                  onChange={() => {
-                    chosenByUser.current = true;
-                    setStatus(s);
-                  }}
-                />
-                <span className="choice__text">
-                  <span>
-                    <StatusBadge status={s} small /> {s === currentStatus && <span className="faint small">(current)</span>}
-                  </span>
-                  <span className="choice__hint">{STATUS_HELP[s]}</span>
-                </span>
-              </label>
-              {status === s && (needsReason || s === 'waiting_external') && (
-                <div className="choice-wrap__follow">
-                  <Field
-                    label={REASON_LABEL[s] ?? 'Reason'}
-                    hint={needsReason ? 'Required. A sentence in plain words is enough.' : 'Optional, but it helps the other person.'}
-                    error={tried && reasonMissing ? 'Please say why, so it makes sense later.' : null}
-                  >
-                    <TextArea ref={reasonRef} value={reason} onChange={(e) => setReason(e.target.value)} rows={2} />
-                  </Field>
-                </div>
-              )}
-              {status === s && needsEvidence && (
-                <div className="choice-wrap__follow stack">
-                  <Field
-                    label="What shows this is done?"
-                    hint="Plain text, for example “Confirmation received by email on the 3rd”."
-                    error={tried && evidenceMissing ? 'Please add a line about what shows it is done.' : null}
-                  >
-                    <TextArea ref={summaryRef} value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} />
-                  </Field>
-                  <Field
-                    label="Link to the proof (optional)"
-                    hint="Link to where the original is kept, such as a restricted folder. Kadode never stores the document itself."
-                    error={tried && linkBad ? 'That doesn’t look like a web address (it should start with https://).' : null}
-                  >
-                    <TextInput ref={linkRef} value={link} onChange={(e) => setLink(e.target.value)} inputMode="url" placeholder="https://" />
-                  </Field>
-                </div>
-              )}
-            </div>
-          ))}
+          {MAIN_STATUSES.map(option)}
+          <More label="More" defaultOpen={OTHER_STATUSES.includes(currentStatus as WorkStatus)}>
+            {OTHER_STATUSES.map(option)}
+          </More>
         </div>
       </fieldset>
 
@@ -269,7 +277,7 @@ export function ProposeActionDialog({ open, onClose, record, defaultTitle = '' }
       open={open}
       onClose={onClose}
       title="Propose an action for your task list"
-      description={`Kadode won’t add this for you. ${ownerName} will see it on Home until it is added to the task list.`}
+      description={`Kadode won’t add this. ${ownerName} adds it by hand.`}
       footer={
         <>
           <Button variant="quiet" onClick={onClose}>
@@ -302,7 +310,6 @@ export function ProposeActionDialog({ open, onClose, record, defaultTitle = '' }
             <input type="radio" name="due" checked={dueChoice === 'default'} onChange={() => setDueChoice('default')} />
             <span className="choice__text">
               <span>In about 14 days — {civil(defaultDue, 'weekday')}</span>
-              <span className="choice__hint">A gentle default so it doesn’t get lost.</span>
             </span>
           </label>
           <label className="choice">
@@ -320,7 +327,6 @@ export function ProposeActionDialog({ open, onClose, record, defaultTitle = '' }
             <input type="radio" name="due" checked={dueChoice === 'blank'} onChange={() => setDueChoice('blank')} />
             <span className="choice__text">
               <span>Leave blank</span>
-              <span className="choice__hint">No due date.</span>
             </span>
           </label>
         </div>

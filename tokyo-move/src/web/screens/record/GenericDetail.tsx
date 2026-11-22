@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
 import { DECISION_STATE_LABEL } from '@shared/labels';
 import type { BaseRecord, DecisionState } from '@shared/types';
 import { StatusBadge } from '../../components/Badges';
+import { displayTitle, keyLookup, stripCodes } from '@shared/plain';
 import { Button, ButtonLink } from '../../components/Controls';
 import { Fact, Section } from '../../components/Layout';
 import { OwnerChip } from '../../components/People';
@@ -57,14 +57,14 @@ export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: I
       : record.type === 'risk'
         ? { to: '/decide/risks', label: 'Open risks and issues' }
         : record.type === 'question'
-          ? { to: '/decide/questions', label: 'Open questions' }
+          ? { to: '/decide/questions', label: 'Go to the questions' }
           : null;
   const statusLabel = record.type === 'decision' ? (DECISION_STATE_LABEL[record.status as DecisionState] ?? record.status) : null;
   const related = Array.isArray((data as { related?: unknown }).related) ? ((data as { related: unknown[] }).related.filter((x) => typeof x === 'string') as string[]) : [];
   return (
     <div className="record stack stack--loose">
       <div className="item__meta">
-        {statusLabel ? <span className="chip chip--ai">{statusLabel}</span> : <StatusBadge status={record.status} />}
+        {statusLabel ? <span className="status-text">{statusLabel}</span> : <StatusBadge status={record.status} />}
         <OwnerChip owner={record.owner} proposed={record.owner_proposed} />
       </div>
       {hasWorkStatus && (
@@ -89,7 +89,7 @@ export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: I
           <dl className="facts">
             {rows.map(([k, v]) => (
               <Fact key={k} label={DATA_FIELD_LABEL[k] ?? humanizeKey(k)} wide={v.length > 80}>
-                <span className="preline">{v}</span>
+                <span className="preline">{stripCodes(v)}</span>
               </Fact>
             ))}
           </dl>
@@ -100,13 +100,13 @@ export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: I
         })}
         {related.length > 0 && (
           <p className="small muted">
-            Related (nothing waits on these):{' '}
+            Related:{' '}
             {related.map((k, i) => {
               const r = idx.byKey.get(k);
               return (
                 <span key={k}>
                   {i > 0 && ', '}
-                  {r ? <RecordLink id={r.id}>{r.title}</RecordLink> : k}
+                  {r ? <RecordLink id={r.id}>{displayTitle(r, keyLookup(idx.byKey))}</RecordLink> : null}
                 </span>
               );
             })}
@@ -116,9 +116,6 @@ export function GenericDetail({ record, idx, dir }: { record: BaseRecord; idx: I
       <Notes record={record} idx={idx} dir={dir} />
       <SourceHistory record={record} idx={idx} dir={dir} />
       {hasWorkStatus && <StatusDialog open={statusOpen} onClose={() => setStatusOpen(false)} record={record} currentStatus={record.status} />}
-      <p className="small">
-        <Link to="/plan" className="more-link">Back to the plan</Link>
-      </p>
     </div>
   );
 }

@@ -1,36 +1,46 @@
-import { Fragment, useMemo, useState, type Dispatch, type SetStateAction } from 'react';
+import { useMemo, useState, type Dispatch, type SetStateAction } from 'react';
 import { Link } from 'react-router';
 import { PHASE_LABEL, ANCHOR_CONFIDENCE_LABEL } from '@shared/labels';
 import type { AnchorData, HouseholdSettings, WorkStatus } from '@shared/types';
 import { AnchorDialog } from '../../components/AnchorDialog';
 import { DateText, DeadlineBadge, OptionalTag, StatusBadge } from '../../components/Badges';
-import { Button, Field, SegmentedControl, Select } from '../../components/Controls';
+import { Button, SegmentedControl } from '../../components/Controls';
 import { Disclosure } from '../../components/Disclosure';
 import { Icon } from '../../components/Icon';
 import { ItemCard } from '../../components/ItemCard';
 import { Card, Section } from '../../components/Layout';
-import { OwnerChip, PersonBadge, usePlain } from '../../components/People';
+import { OwnerChip, PersonBadge } from '../../components/People';
 import { RecordLink } from '../../components/RecordLink';
-import { civil, plural } from '../../lib/format';
+import { displayNext, displayTitle, keyLookup, stripCodes, type KeyLookup } from '@shared/plain';
+import { dateLineText } from '../../lib/dateLine';
+import { plural } from '../../lib/format';
 import { departureAnchors, travelSummary } from '../../lib/gantt';
-import { groupByStatus, groupPlan, sortPlanItems, type PlanItemData, type SortKey } from '../../lib/plan';
+import { groupByStatus, groupPlan, nextToDo, sortForGroup, sortPlanItems, splitByDate, type PlanItemData } from '../../lib/plan';
 import { dataOf, isOpenWork, type Directory, type Indexes } from '../../lib/records';
 import { GanttChart } from './Gantt';
 
 /* ------------------------------------------------------------------ shared */
 
-function PlanItemCard({ it, today, showStatus = true }: { it: PlanItemData; today: string; showStatus?: boolean }) {
+function useLookup(idx: Indexes) {
+  return useMemo(() => keyLookup(idx.byKey), [idx]);
+}
+
+/** One slim row: title, next step, date and person. Status is a quiet icon, only when it says something (not for "planned"). */
+function PlanItemCard({ it, today, lookup, showStatus = true }: { it: PlanItemData; today: string; lookup: KeyLookup | undefined; showStatus?: boolean }) {
   const { m } = it;
+  // A check-in is a reminder to look again. It never reads as a deadline, so it is told in words, never "N days late".
+  const checkIn = it.when.primary?.kind === 'review_date' ? it.when.primary : null;
   return (
     <ItemCard
       recordId={m.id}
-      title={m.title}
+      title={displayTitle(m, lookup)}
       owner={m.owner}
       ownerProposed={m.owner_proposed}
-      nextAction={m.data?.next_action}
+      nextAction={displayNext(m, lookup)}
       status={m.status}
-      showStatus={showStatus}
-      when={it.when}
+      showStatus={showStatus && m.status !== 'planned'}
+      when={checkIn ? undefined : it.when}
+      note={checkIn ? `Check-in ${dateLineText(checkIn.date, today, { open: false })}` : undefined}
       today={today}
       optional={m.data?.optional_future_work}
       tone={m.status === 'blocked' ? 'blocked' : 'default'}
@@ -38,51 +48,47 @@ function PlanItemCard({ it, today, showStatus = true }: { it: PlanItemData; toda
   );
 }
 
-/* ------------------------------------------------------------------ by workstream */
+/* ------------------------------------------------------------------ list (grouped; the default) */
 
-export function WorkstreamView({ items, idx, today }: { items: PlanItemData[]; idx: Indexes; today: string }) {
-  const { mode, groups } = useMemo(() => {
+/**
+ * Groups, each a heading with a count. Every group starts closed except the one that holds the next thing to do
+ * (or all of them, when a filter has left only a few items). Inside a group, past-due items come first.
+ */
+export function WorkstreamView({ items, idx, today, filtered = false }: { items: PlanItemData[]; idx: Indexes; today: string; filtered?: boolean }) {
+  const lookup = useLookup(idx);
+  const { groups, nextId } = useMemo(() => {
     const sorted = sortPlanItems(items, 'date', (o) => o ?? '');
-    return groupPlan(sorted, idx);
-  }, [items, idx]);
+    const g = groupPlan(sorted, idx).groups.map((x) => ({ ...x, items: sortForGroup(x.items, today) }));
+    return { groups: g, nextId: nextToDo(items, today)?.m.id ?? null };
+  }, [items, idx, today]);
   return (
-    <div className="stack grid-wide grid-wide--2" aria-label={mode === 'area' ? 'Areas of work' : 'Workstreams'}>
-      {mode === 'area' && <p className="small muted">Grouped by the kind of work. Every group starts closed; the counts say what is still to do.</p>}
+    <div className="stack grid-wide grid-wide--2">
       {groups.map((g) => {
         const open = g.items.filter((i) => isOpenWork(i.m.status));
         const blocked = g.items.filter((i) => i.m.status === 'blocked').length;
         const closed = g.items.filter((i) => !isOpenWork(i.m.status));
+        const hasNext = nextId !== null && g.items.some((i) => i.m.id === nextId);
         return (
-          <Disclosure key={g.key || 'other'} title={g.title} meta={`${open.length} to do${blocked ? ` · ${blocked} blocked` : ''}`}>
-            {g.related.length > 0 && (
-              <p className="small muted related">
-                Related:{' '}
-                {g.related.map((k, i) => {
-                  const rec = idx.byKey.get(k);
-                  return (
-                    <Fragment key={k}>
-                      {i > 0 && ', '}
-                      {rec ? <RecordLink id={rec.id}>{rec.title}</RecordLink> : k}
-                    </Fragment>
-                  );
-                })}{' '}
-                <span className="faint">(for context; nothing here is waiting on these)</span>
-              </p>
-            )}
+          <Disclosure
+            key={`${g.key || 'other'}-${filtered ? 'f' : 'a'}`}
+            title={g.title}
+            meta={`${open.length} to do${blocked ? ` · ${blocked} blocked` : ''}`}
+            defaultOpen={hasNext || filtered}
+          >
             {open.length > 0 ? (
               <ul className="item-list">
                 {open.map((it) => (
-                  <PlanItemCard key={it.m.id} it={it} today={today} />
+                  <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
                 ))}
               </ul>
             ) : (
-              <p className="muted">Everything here is finished or set aside.</p>
+              <p className="muted">All finished or set aside.</p>
             )}
             {closed.length > 0 && (
-              <Disclosure title={`Finished or set aside`} meta={String(closed.length)} level={4} className="disclosure--flat">
+              <Disclosure title="Finished or set aside" meta={String(closed.length)} level={4} className="disclosure--flat">
                 <ul className="item-list">
                   {closed.map((it) => (
-                    <PlanItemCard key={it.m.id} it={it} today={today} />
+                    <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
                   ))}
                 </ul>
               </Disclosure>
@@ -94,92 +100,39 @@ export function WorkstreamView({ items, idx, today }: { items: PlanItemData[]; i
   );
 }
 
-/* ------------------------------------------------------------------ list */
+/* ------------------------------------------------------------------ by date */
 
-const SORT_LABEL: Record<SortKey, string> = {
-  date: 'Next date',
-  status: 'Status',
-  owner: 'Owner',
-  title: 'Title',
-  priority: 'Priority',
-};
-
-export function ListView({ items, dir, today }: { items: PlanItemData[]; dir: Directory; today: string }) {
-  const plain = usePlain();
-  const [sort, setSort] = useState<SortKey>('date');
-  const sorted = useMemo(() => sortPlanItems(items, sort, (o) => dir.ownerLabel(o)), [items, sort, dir]);
-  const th = (key: SortKey, label: string) => (
-    <th scope="col" aria-sort={sort === key ? 'ascending' : 'none'}>
-      <button type="button" className="sort-btn" aria-pressed={sort === key} onClick={() => setSort(key)}>
-        {label}
-        {sort === key && <Icon name="chevron-down" size={14} />}
-        <span className="visually-hidden">{sort === key ? ', sorted' : ', sort by this'}</span>
-      </button>
-    </th>
-  );
+/**
+ * "By date": what is past its date, then what is coming up, then what has no date yet.
+ * This is where Home's "Coming up" and "Past their date" links land: `/plan?view=list`.
+ */
+export function ListView({ items, idx, today }: { items: PlanItemData[]; idx: Indexes; today: string }) {
+  const lookup = useLookup(idx);
+  const parts = useMemo(() => splitByDate(items, today), [items, today]);
+  const block = (id: string, title: string, list: PlanItemData[]) =>
+    list.length === 0 ? null : (
+      <Section title={title} count={list.length} headingLevel={3} className={`bydate bydate--${id}`}>
+        <ul className="item-list">
+          {list.map((it) => (
+            <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
+          ))}
+        </ul>
+      </Section>
+    );
   return (
-    <div className="stack">
-      <div className="list-sort">
-        <Field label="Sort by">
-          <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
-            {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
-              <option key={k} value={k}>
-                {SORT_LABEL[k]}
-              </option>
+    <div className="bydate-wrap stack stack--loose">
+      {block('past', 'Past their date', parts.past)}
+      {block('coming', 'Coming up', parts.coming)}
+      {block('undated', 'No date yet', parts.undated)}
+      {parts.closed.length > 0 && (
+        <Disclosure title="Finished or set aside" meta={String(parts.closed.length)}>
+          <ul className="item-list">
+            {parts.closed.map((it) => (
+              <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
             ))}
-          </Select>
-        </Field>
-      </div>
-      <ul className="item-list list-cards">
-        {sorted.map((it) => (
-          <PlanItemCard key={it.m.id} it={it} today={today} />
-        ))}
-      </ul>
-      <div className="table-wrap list-table">
-        <table className="table">
-          <caption className="visually-hidden">All plan items, sortable</caption>
-          <thead>
-            <tr>
-              <th scope="col">What</th>
-              {th('owner', 'Owner')}
-              {th('status', 'Status')}
-              {th('date', 'Next date')}
-              <th scope="col">Phase</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map(({ m, date, dateKind, dateState }) => (
-              <tr key={m.id}>
-                <th scope="row">
-                  <RecordLink id={m.id}>{m.title}</RecordLink>
-                  {m.data?.optional_future_work && (
-                    <>
-                      {' '}
-                      <OptionalTag />
-                    </>
-                  )}
-                  {m.data?.next_action && <p className="small muted table-next preline">{plain(m.data.next_action)}</p>}
-                </th>
-                <td>
-                  <OwnerChip owner={m.owner} proposed={m.owner_proposed} compact />
-                </td>
-                <td>
-                  <StatusBadge status={m.status} small />
-                </td>
-                <td>
-                  <DateText date={date} today={today} state={dateState ?? undefined} kind={dateKind} />
-                  {dateKind && (
-                    <div>
-                      <DeadlineBadge kind={dateKind} />
-                    </div>
-                  )}
-                </td>
-                <td className="small">{m.data?.phase ? PHASE_LABEL[m.data.phase] : <span className="faint">Not placed yet</span>}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          </ul>
+        </Disclosure>
+      )}
     </div>
   );
 }
@@ -191,15 +144,18 @@ const COLUMN_CAP = 8;
 
 export function BoardView({
   items,
+  idx,
   today,
   expanded,
   setExpanded,
 }: {
   items: PlanItemData[];
+  idx: Indexes;
   today: string;
   expanded: Record<string, boolean>;
   setExpanded: Dispatch<SetStateAction<Record<string, boolean>>>;
 }) {
+  const lookup = useLookup(idx);
   const byStatus = useMemo(() => groupByStatus(sortPlanItems(items, 'date', (o) => o ?? '')), [items]);
   const set = (list: PlanItemData[]) => list;
   const closedOnes = [...(byStatus.get('eliminated') ?? []), ...(byStatus.get('not_applicable') ?? [])];
@@ -221,7 +177,7 @@ export function BoardView({
               ) : (
                 <ul className="item-list item-list--compact">
                   {visible.map((it) => (
-                    <PlanItemCard key={it.m.id} it={it} today={today} showStatus={false} />
+                    <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} showStatus={false} />
                   ))}
                 </ul>
               )}
@@ -238,7 +194,7 @@ export function BoardView({
         <Disclosure title="Dropped or not needed" meta={String(closedOnes.length)}>
           <ul className="item-list item-list--compact">
             {closedOnes.map((it) => (
-              <PlanItemCard key={it.m.id} it={it} today={today} />
+              <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} />
             ))}
           </ul>
         </Disclosure>
@@ -260,7 +216,7 @@ function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
     const d = dataOf<AnchorData>(a);
     return (
       <li key={a.id} className="lane__row">
-        <span className="lane__what">{d.meaning ?? a.title}</span>
+        <span className="lane__what">{stripCodes(d.meaning ?? a.title)}</span>
         <span className="lane__when">
           <DateText date={d.date ?? null} />
           {d.confidence && d.confidence !== 'awaiting' && <span className="chip chip--neutral chip--sm">{ANCHOR_CONFIDENCE_LABEL[d.confidence] ?? d.confidence}</span>}
@@ -273,7 +229,6 @@ function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
   };
   return (
     <>
-      <p className="small muted">Each traveler has their own dates. Moving one person's date never moves another's.</p>
       <div className="lanes">
         {dir.people.map((p) => {
           const rows = forPerson(p.id).filter((a) => !dataOf<AnchorData>(a).coordination_only);
@@ -290,7 +245,6 @@ function TravelLanes({ idx, dir }: { idx: Indexes; dir: Directory }) {
       {editing && <AnchorDialog record={editing} onClose={() => setEditing(null)} />}
       {helpers.length > 0 && (
         <Disclosure title="Household helper dates" level={4} className="disclosure--flat">
-          <p className="small muted">Used only to coordinate. They never decide any one person's legal deadlines.</p>
           <ul>{helpers.map(row)}</ul>
         </Disclosure>
       )}
@@ -323,6 +277,7 @@ export function TimelineView({ items, idx, dir, today, settings }: { items: Plan
   );
   const reviewOnly = items.filter((i) => i.dateKind === 'review_date');
   const undated = items.filter((i) => !i.date);
+  const lookup = useLookup(idx);
 
   return (
     <div className="stack stack--loose">
@@ -330,7 +285,7 @@ export function TimelineView({ items, idx, dir, today, settings }: { items: Plan
       <Section
         title="When things happen"
         headingLevel={2}
-        intro={view === 'chart' ? 'Bars show when work happens. Only a solid bar ends at a real date.' : 'Everything that has a date, in date order. The chart shows the rest by their phase.'}
+        intro={view === 'chart' ? 'Bars show when work happens. Only a solid bar ends at a real date.' : undefined}
         action={
           <SegmentedControl
             label="Timeline layout"
@@ -364,7 +319,7 @@ export function TimelineView({ items, idx, dir, today, settings }: { items: Plan
                       <DateText date={it.date} today={today} state={it.dateState ?? undefined} />
                     </td>
                     <th scope="row">
-                      <RecordLink id={it.m.id}>{it.m.title}</RecordLink>
+                      <RecordLink id={it.m.id}>{displayTitle(it.m, lookup)}</RecordLink>
                     </th>
                     <td>
                       <OwnerChip owner={it.m.owner} compact />
@@ -383,13 +338,13 @@ export function TimelineView({ items, idx, dir, today, settings }: { items: Plan
             </table>
             {(reviewOnly.length > 0 || undated.length > 0) && (
               <p className="small muted table-foot">
-                {undated.length > 0 && <>{plural(undated.length, 'more item')} {undated.length === 1 ? 'has' : 'have'} no date yet; the chart shows where their phase puts them. </>}
+                {undated.length > 0 && <>{plural(undated.length, 'item')} {undated.length === 1 ? 'has' : 'have'} no date yet. </>}
                 {reviewOnly.length > 0 && (
                   <>
-                    {plural(reviewOnly.length, 'item')} only {reviewOnly.length === 1 ? 'has' : 'have'} a proposed review checkpoint, which is not a deadline.{' '}
+                    {plural(reviewOnly.length, 'item')} only {reviewOnly.length === 1 ? 'has' : 'have'} a check-in, which is not a deadline.{' '}
                   </>
                 )}
-                <Link to="/plan?view=list">See them in the list</Link>
+                <Link to="/plan?view=list">See them by date</Link>
               </p>
             )}
           </div>

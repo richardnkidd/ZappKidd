@@ -1,8 +1,9 @@
-import { useId, useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { PHASE_LABEL, PHASE_ORDER, WORK_STATUS_LABEL, WORK_STATUS_ORDER } from '@shared/labels';
-import { Button, Field, Select } from '../../components/Controls';
+import { Button, Field, SegmentedControl, Select } from '../../components/Controls';
 import { Icon } from '../../components/Icon';
-import type { PlanFilters } from '../../lib/plan';
+import { applyQuickFilter, quickFilterOf, type PlanFilters, type QuickFilter } from '../../lib/plan';
 import type { Directory } from '../../lib/records';
 
 interface Props {
@@ -13,39 +14,50 @@ interface Props {
   activeCount: number;
   shown: number;
   total: number;
+  /** Optional future items the filter hides, so the box can say how many. */
+  hiddenOptional: number;
+  /** The workload line (a gentle limit), which lives inside "More filters" so the page opens on content. */
+  children?: ReactNode;
 }
 
-/** Filters: collapsed behind a button on phones, always visible on wider screens. */
-export function PlanFilterBar({ filters, dir, onChange, onReset, activeCount, shown, total }: Props) {
+const QUICK: { value: QuickFilter | 'custom'; label: string }[] = [
+  { value: 'mine', label: 'Mine' },
+  { value: 'blocked', label: 'Blocked' },
+  { value: 'all', label: 'All' },
+];
+
+/**
+ * One simple control (Mine, Blocked, All) and, on the same line as the count, a "More filters" button that opens the
+ * full set. The count line says how many items are shown, once.
+ */
+export function PlanFilterBar({ filters, dir, onChange, onReset, activeCount, shown, total, hiddenOptional, children }: Props) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const set = <K extends keyof PlanFilters>(k: K, v: PlanFilters[K]) => onChange({ ...filters, [k]: v });
   const otherName = dir.others[0]?.display_name;
+  const quick = quickFilterOf(filters);
+  // Anything the quick choice does not cover is in the full set: count it on the button so it is never hidden.
+  const extra = quick === null ? activeCount : 0;
 
   return (
-    <div className="filterbar">
-      <div className="filterbar__top">
-        <Button
-          variant="secondary"
-          icon="plan"
-          className="filterbar__toggle"
-          aria-expanded={open}
-          aria-controls={panelId}
-          onClick={() => setOpen((o) => !o)}
-        >
-          Filters{activeCount > 0 ? ` (${activeCount})` : ''}
-          <Icon name={open ? 'chevron-down' : 'chevron-right'} size={16} />
-        </Button>
-        <p className="filterbar__count" role="status">
+    <div className="planbar">
+      <SegmentedControl
+        label="Show"
+        value={(quick ?? 'custom') as QuickFilter | 'custom'}
+        options={QUICK}
+        onChange={(v) => v !== 'custom' && onChange(applyQuickFilter(v))}
+        className="planbar__quick"
+      />
+      <div className="planbar__line">
+        <p className="planbar__count" role="status">
           Showing {shown} of {total}
         </p>
-        {activeCount > 0 && (
-          <Button variant="quiet" onClick={onReset}>
-            Clear filters
-          </Button>
-        )}
+        <button type="button" className="more__btn planbar__more" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((o) => !o)}>
+          <span>More filters{extra > 0 ? ` (${extra})` : ''}</span>
+          <Icon name="chevron-down" size={16} className="more__chev" />
+        </button>
       </div>
-      <div id={panelId} className={`filterbar__panel${open ? ' is-open' : ''}`}>
+      <div id={panelId} className="planbar__panel" hidden={!open}>
         <Field label="Owner">
           <Select value={filters.owner} onChange={(e) => set('owner', e.target.value as PlanFilters['owner'])}>
             <option value="all">Anyone</option>
@@ -87,13 +99,27 @@ export function PlanFilterBar({ filters, dir, onChange, onReset, activeCount, sh
             ))}
           </Select>
         </Field>
-        <label className="choice filterbar__check">
-          <input type="checkbox" checked={filters.hideOptional} onChange={(e) => set('hideOptional', e.target.checked)} />
-          <span className="choice__text">
-            <span>Hide optional future work</span>
-            <span className="choice__hint">Ideas that are not part of the move.</span>
-          </span>
-        </label>
+        <div className="planbar__optional">
+          <label className="choice planbar__check">
+            <input type="checkbox" checked={filters.hideOptional} onChange={(e) => set('hideOptional', e.target.checked)} />
+            <span className="choice__text">
+              <span>Hide optional future work{filters.hideOptional && hiddenOptional > 0 ? ` (${hiddenOptional})` : ''}</span>
+            </span>
+          </label>
+          {filters.hideOptional && hiddenOptional > 0 && (
+            <Link to="/future" className="more-link">
+              See Future work
+            </Link>
+          )}
+        </div>
+        {children}
+        {activeCount > 0 && (
+          <div>
+            <Button variant="quiet" onClick={onReset}>
+              Clear filters
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

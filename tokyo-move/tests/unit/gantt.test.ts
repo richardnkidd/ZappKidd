@@ -219,7 +219,7 @@ describe('placing items', () => {
   it('a real date ends a firm bar at that date and starts it at the phase window start', () => {
     const g = placeItem(item({ phase: 'p3_jan_mar2027', date: '2027-02-12', kind: 'internal_target' }), input());
     expect(g).toMatchObject({ basis: 'firm', start: '2027-01-01', end: '2027-02-12', deadline: { date: '2027-02-12', kind: 'internal_target' } });
-    expect(barLabel(g, 'Jun', TARGET)).toBe('Item W99, owner Jun, planned, ends Feb 12, 2027 (our target)');
+    expect(barLabel(g, 'Jun', TARGET)).toBe('Item, owner Jun, planned, ends Feb 12, 2027 (our target)');
   });
 
   it('starts 14 days before the date when the window starts on or after it, or when there is no window', () => {

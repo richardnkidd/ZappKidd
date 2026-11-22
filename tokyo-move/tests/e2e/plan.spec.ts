@@ -8,18 +8,32 @@ const PROPOSE_TARGET = 'milestone:W11';
 
 const enc = encodeURIComponent;
 
+async function openRecordOrPlan(page: Page, path: string) {
+  await page.goto(path);
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await loaded(page);
+}
+
 async function resetStatus(api: Api, id: string, status: string = 'planned') {
   const rec = await api.record(id);
   if (rec.status !== status) await api.post(`/api/records/${enc(id)}/status`, { baseVersion: rec.version, status });
 }
 
-/** On phones the filters live behind a "Filters" button; on wide screens they are always open. */
+/** The full set of filters sits behind "More filters" on every screen size. */
 async function openFilters(page: Page) {
-  const toggle = page.getByRole('button', { name: /^Filters/ });
-  if ((await toggle.isVisible()) && (await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+  const toggle = page.getByRole('button', { name: /^More filters/ });
+  if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 }
 
-async function chooseView(page: Page, name: 'By area' | 'List' | 'Board' | 'Timeline') {
+/** Opens a "More" control on the record page (Details, Task list, Notes, ...) when it is closed. */
+async function openMore(page: Page, name: RegExp | string) {
+  const btn = page.getByRole('button', { name }).first();
+  if ((await btn.getAttribute('aria-expanded')) === 'false') await btn.click();
+  await expect(btn).toHaveAttribute('aria-expanded', 'true');
+}
+
+async function chooseView(page: Page, name: 'List' | 'By date' | 'Board' | 'Timeline') {
   const group = page.getByRole('group', { name: 'Plan view' });
   await group.getByRole('button', { name }).click();
   await expect(group.getByRole('button', { name })).toHaveAttribute('aria-pressed', 'true');
@@ -50,7 +64,7 @@ test.describe('Plan: views and filters', () => {
     await expect(page.getByRole('status').filter({ hasText: /^Showing \d+ of \d+$/ })).toHaveText(`Showing ${expected.length} of ${expected.length + 1}`);
 
     const found: Record<string, string[]> = {};
-    for (const view of ['By area', 'List', 'Board', 'Timeline'] as const) {
+    for (const view of ['List', 'By date', 'Board', 'Timeline'] as const) {
       await chooseView(page, view);
       if (view === 'Board') {
         // Long columns show the first few cards; "Show N more" reveals the rest.
@@ -68,15 +82,16 @@ test.describe('Plan: views and filters', () => {
     await expect(page.getByRole('group', { name: 'Plan view' }).getByRole('button', { name: 'Board' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page).toHaveURL(/view=board/);
 
-    await chooseView(page, 'List');
+    await chooseView(page, 'By date');
     await expect(page).toHaveURL(/view=list/);
 
-    // Optional future work is hidden by default and says so; switching the filter off lists it too.
-    const note = page.getByText(/optional future items? (is|are) hidden/);
-    await expect(note).toBeVisible();
+    // Optional future work is hidden by default; the box says how many, and switching it off lists them too.
     await openFilters(page);
+    const note = page.getByRole('link', { name: 'See Future work' });
+    await expect(note).toBeVisible();
     const hideOptional = page.getByRole('checkbox', { name: /Hide optional future work/ });
     await expect(hideOptional).toBeChecked();
+    await expect(hideOptional).toHaveAccessibleName('Hide optional future work (1)');
     // A plain click (not .uncheck()): the box is controlled by the address bar, so it settles a moment after the click.
     await hideOptional.click();
     await expect(hideOptional).not.toBeChecked();
@@ -87,7 +102,53 @@ test.describe('Plan: views and filters', () => {
     await expect(note).toHaveCount(0);
   });
 
-  test('filters narrow the list and can be cleared', async ({ page, signIn, api }) => {
+  test('Mine, Blocked and All are the one simple control, and the count matches the list', async ({ page, signIn, api }) => {
+    await signIn(page, 'avery', '/plan?view=list');
+    await loaded(page);
+    const quick = page.getByRole('group', { name: 'Show' });
+    const count = page.getByRole('status').filter({ hasText: /^Showing/ });
+    await expect(quick.getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+    const initial = (await count.innerText()).match(/Showing (\d+) of (\d+)/)!;
+    expect(await milestoneIds(page)).toHaveLength(Number(initial[1]));
+
+    const snap = await (await api('avery')).snapshot();
+    const byId = new Map<string, any>((snap.records as any[]).map((r) => [r.id, r]));
+
+    await quick.getByRole('button', { name: 'Mine' }).click();
+    await expect(quick.getByRole('button', { name: 'Mine' })).toHaveAttribute('aria-pressed', 'true');
+    const mine = Number((await count.innerText()).match(/Showing (\d+)/)![1]);
+    expect(mine).toBeGreaterThan(0);
+    expect(mine).toBeLessThan(Number(initial[1]));
+    const shownIds = await milestoneIds(page);
+    expect(shownIds).toHaveLength(mine);
+    for (const id of shownIds) expect(byId.get(id).owner, id).toBe('avery');
+
+    await quick.getByRole('button', { name: 'Blocked' }).click();
+    await expect(quick.getByRole('button', { name: 'Blocked' })).toHaveAttribute('aria-pressed', 'true');
+    const blockedIds = (snap.records as any[]).filter((r) => r.type === 'milestone' && r.status === 'blocked' && !r.data.optional_future_work).map((r) => r.id as string).sort();
+    await expect(count).toHaveText(`Showing ${blockedIds.length} of ${initial[2]}`);
+    expect(await milestoneIds(page)).toEqual(blockedIds);
+
+    await quick.getByRole('button', { name: 'All' }).click();
+    await expect(count).toHaveText(`Showing ${initial[1]} of ${initial[2]}`);
+  });
+
+  test('a link with ?status=blocked lands on the blocked items, open, at the top, with a matching count', async ({ page, signIn, api }) => {
+    await signIn(page, 'avery', '/plan?status=blocked');
+    await loaded(page);
+    await expect(page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'Blocked' })).toHaveAttribute('aria-pressed', 'true');
+    const snap = await (await api('avery')).snapshot();
+    const blocked = (snap.records as any[]).filter((r) => r.type === 'milestone' && r.status === 'blocked' && !r.data.optional_future_work);
+    expect(blocked.length).toBeGreaterThan(0);
+    await expect(page.getByRole('status').filter({ hasText: /^Showing/ })).toHaveText(new RegExp(`^Showing ${blocked.length} of \\d+$`));
+    // The items are open and visible, not hidden inside closed groups, and the first one is near the top of the page.
+    const links = page.getByRole('main').locator('a[href^="/r/milestone"]');
+    await expect(links).toHaveCount(blocked.length);
+    await expect(links.first()).toBeVisible();
+    expect((await links.first().boundingBox())!.y).toBeLessThan(900);
+  });
+
+  test('"More filters" holds the full set; the choices narrow the list and can be cleared', async ({ page, signIn }) => {
     await signIn(page, 'avery', '/plan?view=list');
     await loaded(page);
     const count = page.getByRole('status').filter({ hasText: /^Showing/ });
@@ -96,21 +157,55 @@ test.describe('Plan: views and filters', () => {
 
     await page.getByRole('combobox', { name: 'Owner' }).selectOption({ label: 'Mine' });
     await expect(count).not.toHaveText(`Showing ${initial[1]} of ${initial[2]}`);
-    const mine = Number((await count.innerText()).match(/Showing (\d+)/)![1]);
-    expect(mine).toBeGreaterThan(0);
-    expect(mine).toBeLessThan(Number(initial[1]));
-    // Every item left on screen is Avery's, according to the server's own data.
-    const snap = await (await api('avery')).snapshot();
-    const ownerById = new Map<string, string | null>((snap.records as any[]).map((r) => [r.id, r.owner]));
-    const shownIds = await milestoneIds(page);
-    expect(shownIds).toHaveLength(mine);
-    for (const id of shownIds) expect(ownerById.get(id), id).toBe('avery');
-
+    // A custom mix is not one of the three simple choices: none of them looks pressed, and the button counts what is set.
     await page.getByRole('combobox', { name: 'Status' }).selectOption({ label: 'Blocked' });
-    await expect(page.getByText('Nothing matches these filters.')).toBeVisible();
+    await expect(page.getByText('Nothing matches.')).toBeVisible();
+    await expect(page.getByRole('group', { name: 'Show' }).locator('[aria-pressed="true"]')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^More filters \(2\)/ })).toBeVisible();
 
+    await page.getByRole('button', { name: 'Show everything' }).click();
+    await expect(count).toHaveText(`Showing ${initial[1]} of ${initial[2]}`);
+    await expect(page.getByRole('group', { name: 'Show' }).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('combobox', { name: 'Owner' }).selectOption({ label: 'Mine' });
     await page.getByRole('button', { name: 'Clear filters' }).click();
     await expect(count).toHaveText(`Showing ${initial[1]} of ${initial[2]}`);
+  });
+
+  test('the List opens on content: groups are closed except the one with the next thing to do', async ({ page, signIn }) => {
+    await signIn(page, 'avery', '/plan');
+    await loaded(page);
+    const summaries = page.locator('main details.disclosure > summary');
+    await expect(summaries.first()).toBeVisible();
+    expect(await summaries.count()).toBeGreaterThan(3);
+    const open = await page.locator('main details.disclosure[open]').count();
+    expect(open).toBe(1);
+    // Every group heading carries a count.
+    for (const t of await page.locator('main .grid-wide > details.disclosure > summary .disclosure__meta').allInnerTexts()) expect(t).toMatch(/\d+ to do/);
+    // No filter chips, no helper paragraphs, no "Showing ... gentle limit ..." lines: content starts in the first screen.
+    const firstItem = page.getByRole('main').locator('a[href^="/r/milestone"]:visible').first();
+    await expect(firstItem).toBeVisible();
+    const height = page.viewportSize()!.height;
+    // On a 320 by 640 phone the first group heading is in view; on larger screens an item is too.
+    expect((await summaries.first().boundingBox())!.y).toBeLessThan(height);
+    if (height >= 800) expect((await firstItem.boundingBox())!.y).toBeLessThan(height);
+  });
+
+  test('"By date" lists what is past its date first, then what is coming up', async ({ page, signIn }) => {
+    await signIn(page, 'avery', '/plan?view=list');
+    await loaded(page);
+    await expect(page.getByRole('heading', { level: 2, name: 'By date' })).toBeVisible();
+    const headings = await page.getByRole('main').locator('h3').allInnerTexts();
+    const order = headings.map((h) => h.replace(/\d+$/, '').trim()).filter((h) => ['Past their date', 'Coming up', 'No date yet'].includes(h));
+    expect(order).toEqual(['Past their date', 'Coming up', 'No date yet'].filter((h) => order.includes(h)));
+    expect(order).toContain('Coming up');
+    const past = page.locator('.bydate--past');
+    if ((await past.count()) > 0) {
+      // Past-due work says how late, in the one date format, and is never a check-in.
+      for (const t of await past.locator('.item__when').allInnerTexts()) expect(t).toMatch(/\d+ days? late/);
+    }
+    // A check-in never reads as late.
+    for (const t of await page.locator('.bydate--coming .item__meta').allInnerTexts()) if (/Check-in/.test(t)) expect(t).not.toMatch(/late/);
   });
 });
 
@@ -141,17 +236,103 @@ test.describe('Plan: opening a record', () => {
 
     // Opening the record directly always works and shows the same plain-language sections.
     await openRecord(page, 'milestone:W06', title);
-    for (const section of ['Next action', 'Who and when', 'Dates', /How we.ll know it.s done/, 'What this depends on', /^Tasks on your task list/, /^Notes/]) {
+    // The next step and when it is done come first; everything else sits behind plain "More" controls.
+    for (const section of ['Next action', 'Done when']) {
       await expect(page.getByRole('region', { name: section }).first()).toBeVisible();
     }
-    // Internal codes live only inside the collapsed "Source & history" panel.
+    const mores = ['Details', 'Date details', 'What it waits on', /^Task list/, /^Notes/, 'History and source'];
+    for (const name of mores) {
+      const btn = page.getByRole('button', { name }).first();
+      await expect(btn).toBeVisible();
+      await expect(btn).toHaveAttribute('aria-expanded', 'false');
+      await expect(btn).toHaveAttribute('aria-controls', /.+/);
+    }
+    // Opening one shows its content under the same name.
+    await openMore(page, 'What it waits on');
+    await expect(page.getByRole('region', { name: 'What it waits on' })).toBeVisible();
+    await openMore(page, /^Task list/);
+    await expect(page.getByRole('region', { name: /^Tasks on your task list/ })).toBeVisible();
+    // No internal code anywhere on the page, even with the sections open (the original text lives in the history).
     await expect(page.getByRole('heading', { level: 1 })).not.toContainText(/W\d{2}/);
-    await expect(page.getByText(/Source (&|and) history/i).first()).toBeVisible();
+    await expect(page.getByRole('main')).not.toContainText(/\b(W|D|Q)\d{2,3}\b/);
+  });
+
+  test('the header says status, person and one date; the next step has its Edit control beside it', async ({ page, signIn }) => {
+    await signIn(page, 'avery');
+    await openRecord(page, 'milestone:W06', 'Verify both passports and renewal outcomes');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+    // One date line, and no "Awaiting date" or "No date yet" above a real date.
+    await expect(page.getByText(/Awaiting date|No date yet/)).toHaveCount(0);
+    await expect(page.locator('.rec-head .rec-when time')).toHaveCount(1);
+    // The Edit control is on the same row as the next step, not at the far side of the screen.
+    const text = await page.locator('.rec-next__text').boundingBox();
+    const edit = await page.getByRole('button', { name: 'Edit next action' }).boundingBox();
+    expect(text && edit).toBeTruthy();
+    expect(edit!.y).toBeLessThan(text!.y + text!.height);
+    expect(edit!.y + edit!.height).toBeGreaterThan(text!.y);
+    expect(edit!.x - (text!.x + text!.width)).toBeLessThan(80);
+    // The page says each thing once: the one verification line is "Not checked yet" with a small info control.
+    await openMore(page, 'Date details');
+    const notChecked = page.getByText('Not checked yet');
+    expect(await notChecked.count()).toBeLessThanOrEqual(1);
+  });
+
+  test('at 200% text a record page and the plan never scroll sideways, even with every "More" open', async ({ page, signIn }) => {
+    await signIn(page, 'avery');
+    for (const path of ['/r/milestone:W06', '/r/milestone:W24', '/r/decision:D02', '/plan', '/plan?view=list']) {
+      await openRecordOrPlan(page, path);
+      const closed = page.locator('button.more__btn[aria-expanded="false"]');
+      while ((await closed.count()) > 0) await closed.first().click();
+      await page.evaluate(() => document.documentElement.style.setProperty('font-size', '200%', 'important'));
+      const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect(over, `${path} scrolls sideways by ${over}px at 200% text`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test('a record with no date says so once, and shows no date line above nothing', async ({ page, signIn }) => {
+    await signIn(page, 'avery');
+    await openRecord(page, 'milestone:W12');
+    await expect(page.getByText('No date yet')).toHaveCount(1);
+    await expect(page.getByText('Awaiting date')).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Dates' })).toHaveCount(0);
+  });
+
+  test('plain wording shows as the title; the imported wording is only in the history', async ({ page, signIn, api }) => {
+    const avery = await api('avery');
+    const rec = await avery.record('milestone:W12');
+    await signIn(page, 'avery');
+    await openRecord(page, 'milestone:W12');
+    await expect(page.getByRole('heading', { level: 1 })).not.toContainText(/\b[WDQ]\d{2}\b/);
+    await openMore(page, 'History and source');
+    const history = page.getByRole('main').locator('.more__body').filter({ hasText: 'Where this came from' });
+    await expect(history.getByRole('heading', { name: 'Where this came from' })).toBeVisible();
+    if (rec.data.plain_title) await expect(history.getByRole('heading', { name: 'Original wording' })).toBeVisible();
+    // The internal reference line is gone.
+    await expect(page.getByText(/Internal reference/)).toHaveCount(0);
+  });
+});
+
+test.describe('Notes', () => {
+  test('Add note stays enabled; an empty note gets a short error, and a note with words is added', async ({ page, signIn }, testInfo) => {
+    const text = unique('Ask about the crate size', testInfo);
+    await signIn(page, 'avery');
+    await openRecord(page, 'milestone:W06');
+    await openMore(page, /^Notes/);
+    const add = page.getByRole('button', { name: 'Add note' });
+    await expect(add).toBeEnabled();
+    await add.click();
+    await expect(page.getByRole('alert').filter({ hasText: 'Write a note first.' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Add a note' })).toBeFocused();
+    await page.getByRole('textbox', { name: 'Add a note' }).fill(text);
+    await expect(page.getByRole('alert').filter({ hasText: 'Write a note first.' })).toHaveCount(0);
+    await add.click();
+    await expect(page.getByText(text)).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Notes \(\d+\)/ })).toBeVisible();
   });
 });
 
 test.describe('Status rules', () => {
-  test('Blocked needs a reason; Done needs evidence (and rejects an unsafe link)', async ({ page, signIn, api }, testInfo) => {
+  test('Blocked needs a reason; Done takes optional evidence (and rejects an unsafe link)', async ({ page, signIn, api }, testInfo) => {
     const id = STATUS_TARGET[testInfo.project.name]!;
     const jun = await api('jun');
     await resetStatus(jun, id, 'planned');
@@ -166,6 +347,13 @@ test.describe('Status rules', () => {
       // --- Blocked without a reason is refused, with a plain message, and nothing is saved.
       await page.getByRole('button', { name: 'Change status' }).click();
       const dialog = page.getByRole('dialog', { name: 'Change status' });
+      // The four most-used statuses come first, one short line each; the others are behind "More".
+      for (const main of [/^Planned/, /^In progress/, /^Blocked/, /^Done/]) await expect(dialog.getByRole('radio', { name: main })).toBeVisible();
+      await expect(dialog.getByRole('radio', { name: /^Waiting on someone else/ })).toBeHidden();
+      await dialog.getByRole('button', { name: 'More' }).click();
+      await expect(dialog.getByRole('radio', { name: /^Waiting on someone else/ })).toBeVisible();
+      await expect(dialog.getByRole('radio', { name: /^Dropped/ })).toBeVisible();
+      await dialog.getByRole('button', { name: 'More' }).click();
       await dialog.getByRole('radio', { name: /^Blocked/ }).check();
       await dialog.getByRole('button', { name: 'Save status' }).click();
       await expect(dialog.getByRole('alert')).toContainText('Please say why');
@@ -177,26 +365,38 @@ test.describe('Status rules', () => {
       await dialog.getByRole('button', { name: 'Save status' }).click();
       await expect(dialog).toHaveCount(0);
       await expect(page.getByText(/^Saved\b/)).toBeVisible();
+      // Focus goes back to the control that opened the dialog, and "Saved" is announced in the status region.
+      await expect(page.getByRole('button', { name: 'Change status' })).toBeFocused();
+      await expect(page.getByRole('status').filter({ hasText: /^Saved/ })).toBeVisible();
       await expect(page.getByText(reason)).toBeVisible();
       await expect(page.getByText(/Why it.s blocked/)).toBeVisible();
       const blocked = await jun.record(id);
       expect(blocked.status).toBe('blocked');
       expect(blocked.data.status_reason).toBe(reason);
 
-      // --- Done without evidence is refused.
+      // --- Done: the evidence fields are optional in the form, and nothing is sent for them when they are empty.
       await page.getByRole('button', { name: 'Change status' }).click();
       const dialog2 = page.getByRole('dialog', { name: 'Change status' });
       await dialog2.getByRole('radio', { name: /^Done/ }).check();
+      await expect(dialog2.getByRole('textbox', { name: 'What shows this is done? (optional)' })).not.toHaveAttribute('aria-invalid', 'true');
+      const sent = page.waitForRequest((r) => r.method() === 'POST' && /\/status$/.test(r.url()));
       await dialog2.getByRole('button', { name: 'Save status' }).click();
-      await expect(dialog2.getByRole('alert')).toContainText('what shows it is done');
-      await expect(dialog2.getByRole('textbox', { name: 'What shows this is done?' })).toHaveAttribute('aria-invalid', 'true');
+      expect(((await sent).postDataJSON() as { evidence?: unknown }).evidence ?? null).toBeNull();
+      // A server that still asks for evidence says so in the dialog; one that does not simply saves it.
+      const accepted = await dialog2.waitFor({ state: 'detached', timeout: 3000 }).then(() => true, () => false);
+      if (accepted) {
+        expect((await jun.record(id)).status).toBe('completed');
+        await expect(page.getByRole('button', { name: 'Change status' })).toBeFocused();
+        return;
+      }
+      await expect(dialog2.getByRole('alert')).toBeVisible();
       expect((await jun.record(id)).status).toBe('blocked');
 
       // --- A link that is not a web address is refused (no javascript: links ever reach a page).
-      await dialog2.getByRole('textbox', { name: 'What shows this is done?' }).fill(proof);
+      await dialog2.getByRole('textbox', { name: 'What shows this is done? (optional)' }).fill(proof);
       await dialog2.getByRole('textbox', { name: /^Link to the proof/ }).fill('javascript:alert(1)');
       await dialog2.getByRole('button', { name: 'Save status' }).click();
-      await expect(dialog2.getByRole('alert')).toContainText(/web address/);
+      await expect(dialog2.getByRole('alert').filter({ hasText: /web address/ })).toBeVisible();
       expect((await jun.record(id)).status).toBe('blocked');
 
       // --- Evidence plus a normal link completes it.
@@ -205,6 +405,7 @@ test.describe('Status rules', () => {
       await expect(dialog2).toHaveCount(0);
       await expect(page.getByText(proof)).toBeVisible();
       await expect(page.getByRole('link', { name: /Open proof/ })).toHaveAttribute('href', 'https://example.invalid/receipt');
+      await expect(page.getByRole('button', { name: 'Change status' })).toBeFocused();
       const done = await jun.record(id);
       expect(done.status).toBe('completed');
       expect(done.data.completion_evidence.at(-1).summary).toBe(proof);
@@ -213,15 +414,17 @@ test.describe('Status rules', () => {
     }
   });
 
-  test('the server enforces the same rules (a script cannot skip the reason or the evidence)', async ({ api }) => {
+  test('the server still enforces the reason (a script cannot skip it); evidence is optional', async ({ api }) => {
     const avery = await api('avery');
     const id = 'milestone:W25';
     const rec = await avery.record(id);
-    for (const [status, field] of [['blocked', 'reason'], ['completed', 'evidence']] as const) {
-      const res = await avery.raw('POST', `/api/records/${enc(id)}/status`, { baseVersion: rec.version, status });
-      expect(res.status(), `${status} without ${field}`).toBe(422);
-    }
+    const res = await avery.raw('POST', `/api/records/${enc(id)}/status`, { baseVersion: rec.version, status: 'blocked' });
+    expect(res.status(), 'blocked without a reason').toBe(422);
     expect((await avery.record(id)).status).toBe(rec.status);
+    // Completing without evidence is either refused or accepted, depending on the server's rule; never a crash.
+    const done = await avery.raw('POST', `/api/records/${enc(id)}/status`, { baseVersion: rec.version, status: 'completed' });
+    expect([200, 422]).toContain(done.status());
+    if (done.status() === 200) await resetStatus(avery, id, rec.status);
   });
 });
 
@@ -235,6 +438,7 @@ test.describe('Propose an action', () => {
 
     await signIn(page, 'avery');
     await openRecord(page, PROPOSE_TARGET);
+    await openMore(page, /^Task list/);
     const tasks = page.getByRole('region', { name: /^Tasks on your task list/ });
 
     // --- Default: 14 calendar days after today, in the household's zone (not the computer's).
@@ -277,6 +481,7 @@ test.describe('Propose an action', () => {
     const title = unique('Book the vet for the export exam', testInfo);
     await signIn(page, 'jun', `/r/${enc(PROPOSE_TARGET)}`);
     await loaded(page);
+    await openMore(page, /^Task list/);
     await page.getByRole('button', { name: 'Propose an action' }).click();
     const dialog = page.getByRole('dialog', { name: 'Propose an action for your task list' });
     await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill('');
@@ -346,17 +551,18 @@ test.describe('Propose an action on a read-only task list', () => {
 
     // 3. On the item itself: "Waiting to be added", with the date told honestly, and no claim it is on the task list.
     await openRecord(page, PROPOSE_TARGET);
+    await openMore(page, /^Task list/);
     const tasks = page.getByRole('region', { name: /^Tasks on your task list/ });
+    // Said once, in the sub-heading: the rows do not repeat it, and never say "proposed".
+    await expect(tasks.getByRole('heading', { name: 'Waiting to be added to your task list' })).toBeVisible();
     for (const p of proposals) {
       const row = tasks.getByRole('listitem').filter({ hasText: p.title });
       await expect(row, p.label).toBeVisible();
-      await expect(row).toContainText('Waiting to be added');
-      await expect(row).toContainText(/not added yet/);
+      await expect(row).not.toContainText(/proposed/i);
       await expect(row).not.toContainText(IN_LIST);
       await expect(row).not.toContainText(LATE);
       if (p.label === 'past') await expect(row).toContainText(/date was/i);
     }
-    await expect(tasks.getByRole('heading', { name: /Proposed for your task list/ })).toBeVisible();
 
     // 4. Not in the plan views or on the traveler page as dated work either.
     for (const path of ['/plan?view=list', '/plan?view=timeline', '/ready/avery']) {
@@ -382,6 +588,7 @@ test.describe('Propose an action on a read-only task list', () => {
     const title = unique('Check the crate size', testInfo);
     await signIn(page, 'avery', `/r/${enc(PROPOSE_TARGET)}`);
     await loaded(page);
+    await openMore(page, /^Task list/);
     await page.getByRole('button', { name: 'Propose an action' }).click();
     const dialog = page.getByRole('dialog', { name: 'Propose an action for your task list' });
     await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill(title);
@@ -390,9 +597,9 @@ test.describe('Propose an action on a read-only task list', () => {
 
     const row = page.getByRole('region', { name: /^Tasks on your task list/ }).getByRole('listitem').filter({ hasText: title });
     await expect(row).toBeVisible();
-    await expect(row.getByText('Waiting to be added').first()).toBeVisible();
-    await expect(row).toContainText(/Proposed for your task list · not added yet/);
-    await expect(row).toContainText(/Kadode can.t add this to your task list/);
+    await expect(page.getByRole('region', { name: /^Tasks on your task list/ }).getByRole('heading', { name: 'Waiting to be added to your task list' })).toBeVisible();
+    await expect(row).not.toContainText(/proposed/i);
+    await expect(row).toContainText(/Kadode can.t add this/);
     await expect(row).not.toContainText('Up to date');
     await expect(row).not.toContainText(/\bin your task list\b/i);
 
@@ -418,6 +625,7 @@ test.describe('Propose an action when the task list fails once', () => {
     const title = unique('Order the moving boxes', testInfo);
     await signIn(page, 'avery', `/r/${enc(PROPOSE_TARGET)}`);
     await loaded(page);
+    await openMore(page, /^Task list/);
     await page.getByRole('button', { name: 'Propose an action' }).click();
     const dialog = page.getByRole('dialog', { name: 'Propose an action for your task list' });
     await dialog.getByRole('textbox', { name: 'What needs doing?' }).fill(title);

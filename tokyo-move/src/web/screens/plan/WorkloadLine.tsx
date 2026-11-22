@@ -37,7 +37,7 @@ export function WorkloadLine({ idx, dir }: { idx: Indexes; dir: Directory }) {
 
   return (
     <div className="workload">
-      <p className="small muted">
+      <p className="muted">
         <strong>{PHASE_LABEL[phase]}:</strong>{' '}
         {counts.map((c, i) => (
           <span key={c.id}>
@@ -47,21 +47,18 @@ export function WorkloadLine({ idx, dir }: { idx: Indexes; dir: Directory }) {
         ))}
         {together > 0 && ` · ${together} together`}
         {unassigned > 0 && ` · ${unassigned} without an owner`}.
-        {over.length > 0 && (
-          <span>
-            {' '}
-            That is more than the {limit} you set for {over.map((c) => c.name).join(' and ')}; it may be worth moving something.
-          </span>
-        )}{' '}
-        {!editing && (
-          <Button variant="quiet" small onClick={() => setEditing(true)}>
-            {limit ? 'Change the limit' : 'Set a gentle limit'}
-          </Button>
-        )}
+        {over.length > 0 && <span> {over.map((c) => c.name).join(' and ')} has more than {limit}.</span>}
       </p>
+      {!editing && (
+        <div>
+          <Button variant="quiet" onClick={() => setEditing(true)}>
+            {limit ? 'Change the limit' : 'Set a limit'}
+          </Button>
+        </div>
+      )}
       {editing && (
         <div className="workload__edit">
-          <Field label="Mention it when one person has more than this many open items" hint="Saved on this device only. Leave empty for no limit.">
+          <Field label="Warn when one person has more open items than" hint="Saved on this device only.">
             <TextInput type="number" inputMode="numeric" min={1} value={draft} onChange={(e) => setDraft(e.target.value)} />
           </Field>
           <div className="row-actions" style={{ marginTop: 0 }}>

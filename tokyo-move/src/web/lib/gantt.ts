@@ -12,6 +12,7 @@
 import { addCalendarDays, addCalendarMonths, diffDays, isCivilDate } from '@shared/dates';
 import { DEADLINE_KIND_LABEL, PHASE_LABEL, PHASE_ORDER, PHASE_SHORT_LABEL, WORK_STATUS_LABEL } from '@shared/labels';
 import type { AnchorData, DeadlineKind, PhaseKey, Person, PlanningTarget, WorkStatus } from '@shared/types';
+import { displayTitle, type KeyLookup } from '@shared/plain';
 import { civil } from './format';
 import type { PlanItemData } from './plan';
 
@@ -172,6 +173,8 @@ export interface PlaceInput {
   baselineOn: string | null;
   target: PlanningTarget | null;
   departures: DepartureAnchors;
+  /** Turns a code in imported wording into the item's name (see `keyLookup` in @shared/plain). */
+  lookup?: KeyLookup;
 }
 
 /** Days before a date that a bar starts when its phase window starts on or after it (or when there is no window). */
@@ -189,7 +192,7 @@ export function placeItem(it: PlanItemData, input: Omit<PlaceInput, 'items'>): G
   const base: GanttItem = {
     id: m.id,
     key: m.key,
-    title: m.title,
+    title: displayTitle(m, input.lookup),
     status: m.status,
     owner: m.owner ?? null,
     ownerProposed: Boolean(m.owner_proposed),

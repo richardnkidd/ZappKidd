@@ -77,7 +77,7 @@ Times are counted back from the arrival date. "T" is the day the household lands
 | **T − 4 months** | Order a state Driver History Record. Find every old passport. Pull I-94 travel history. Keep the physical licence valid past the likely test date. | Tokyo police require proof of three months in the issuing country after the licence was first issued. | **V** [TMPD-conversion] |
 | **T − 3 months** | Decide the housing route: bridge stay first, or lease from abroad. Brief a bilingual agent on the dog. | Pet-friendly stock is a minority and lists faster than the rest. | **S** [LIFULL-pets] |
 | **T − 3 months** | Decide what happens to US accounts, brokerage, mail and state tax domicile. Do not open Japanese funds. | Japanese-domiciled funds are generally PFICs for a US person. | **V** [IRS-8621] |
-| **T − 40 days at the latest** | Dog: advance notification to the Animal Quarantine Service through NACCS. Fix the flight and airport first. | Later filings are not accepted in principle, and the arrival date cannot then be moved earlier. | **V** [AQS-dog] |
+| **T − 40 days at the latest** | Dog: advance notification to the Animal Quarantine Service through NACCS. The flight may be left "to be determined". | Later filings are not accepted in principle, and the arrival date cannot then be moved earlier. | **V** [AQS-dog] |
 | **T − 14 days at the latest** | Medicines: Narcotics Control Department permission (Vyvanse, narcotics). Import Confirmation for more than a month's supply of ordinary prescriptions. | "At least 14 days prior"; no last-minute applications. Holiday periods have earlier cut-offs. | **V** [NCD] [MHLW-import] |
 | **T − 10 days to T** | Dog: clinical examination by an accredited vet within 10 days before boarding, then USDA APHIS endorsement of the certificate. | The window is fixed; the endorsement has to fit inside it. | **V** [AQS-dog] [APHIS] |
 | **T** | Dog cleared at one of the 11 designated airports (Narita and Haneda included): within 12 hours if every step was met. | | **V** [AQS-dog] |
@@ -348,14 +348,19 @@ Things that catch people out:
   ISO chip. Check the dates on the records before assuming a shorter path.
 - A December 2025 notice warns that some microchip number prefixes are duplicated across manufacturers and may force
   re-chipping and a restart. Check the chip number against that notice early.
-- Fix the flight and the airport before filing the notification. The arrival date can be moved later, not earlier.
+- The notification does not have to wait for a ticket: the service accepts "to be determined" for the flight and
+  a provisional airport, amended before the scheduled arrival. The arrival date can be moved later, never earlier,
+  so file for the earliest date that is possible. [AQS-qa]
 - Hawaii and Guam are "designated regions": a dog resident there for 180 days needs no rabies vaccination, antibody
   test or wait. The chip, the 40-day notification and the examination within 10 days still apply, and the flight
   must not pass through a non-designated region such as the mainland. None of this applies to a mainland dog.
 - For a dog travelling as accompanied baggage the quarantine service says it "is available anytime"; fixed
   reception hours apply to cargo. If someone other than the owner presents the dog, family included, a power of
   attorney is needed. [AQS-qa]
-- Pet food containing meat cannot be brought in. A prescription diet has to be sourced in Japan. [AQS-qa]
+- Pet food is not a simple yes or no. The service's dog and cat FAQ still says meat-containing pet food cannot be
+  brought in, but its exclusion criteria in force from 1 July 2026 take canned or retort pet food and extruded dry
+  pet food out of quarantine scope, with dry food to be declared on each import. Ask about the exact product
+  before packing any, and line up a Japanese supply of any prescription diet regardless. [AQS-qa] [AQS-products]
 - "What if the dog arrives later?" is a legitimate option when the 180 days cannot be met: the dog waits it out in the
   US and follows with a second trip or a pet shipper, rather than waiting in quarantine.
 
@@ -889,6 +894,7 @@ not be opened and a report of it was used.
 - **[APHIS]** USDA APHIS, pet travel from the US to Japan. https://www.aphis.usda.gov/pet-travel/us-to-another-country-export/pet-travel-us-japan
 - **[TMG-dog]** Tokyo Metropolitan Government, dog registration and ordinance. https://www.hokeniryo.metro.tokyo.lg.jp/kankyo/aigo/dog/dog02.html
 - **[AQS-qa]** AQS, questions and answers on dogs and cats. https://www.maff.go.jp/aqs/english/qanda/dogcata.html
+- **[AQS-products]** AQS, animal-product imports and exclusion criteria (in force 1 July 2026). https://www.maff.go.jp/aqs/english/product/import.html ; https://www.maff.go.jp/aqs/english/product/shiteigai.html
 - **[Minato-dog]** Minato City, dog registration (updated 1 April 2025); Environment Ministry microchip registry. https://www.env.go.jp/nature/dobutsu/aigo/pickup/chip.html
 
 **Tax and social security**

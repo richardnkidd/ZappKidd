@@ -212,7 +212,8 @@ A second checking pass added or corrected the following in the guide. These rows
 | Concerta is a ready fallback for adults. | Corrected | Labelled for adults, but on limited shipment since September 2025; in June 2026 the maker asked prescribers not to start new patients. |
 | Guide: register the dog at the ward within 30 days. | Corrected | In wards using the microchip scheme (Minato confirmed) the national database entry is the registration. |
 | A dog arriving as accompanied baggage must land in office hours. | Contradicted | "Available anytime" for accompanied baggage; fixed hours apply to cargo. |
-| Pet food may be carried in with the animal. | Contradicted | Food containing meat cannot be brought in. |
+| Pet food may be carried in with the animal. | Corrected | The FAQ still says meat-containing pet food cannot be brought in, but canned, retort and extruded dry pet food have been outside quarantine scope since 1 July 2026, with dry food declared on each import. An earlier version of this row said "contradicted". |
+| The quarantine notification must wait for a confirmed flight. | Contradicted | "Fill in the estimated flight number or 'to be determined'"; amend before the scheduled arrival. |
 | Holders of Diplomat or Official status follow the resident procedures. | Contradicted | They are not issued residence cards and are outside the resident-register law. |
 
 ## What the review got right, and where it fell short

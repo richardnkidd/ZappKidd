@@ -77,6 +77,21 @@ export const AUDIENCE_LABEL: Record<string, string> = {
   employer: 'employer',
   accountant: 'accountant',
   lawyer: 'lawyer',
+  realtor: 'realtor',
+  condo_association: 'condo association',
+  loan_servicer: 'mortgage company',
+  escrow_company: 'escrow company',
+  insurer: 'insurer',
+  airline: 'airline',
+  prescriber: 'prescriber',
+  travel_office: 'travel office',
+  health_unit: 'health unit',
+  health_plan: 'health plan',
+  security_office: 'security office',
+  embassy_hr: 'embassy HR',
+  narcotics_control_department: 'Narcotics Control Department',
+  hawaii_animal_quarantine: 'Hawaii animal quarantine',
+  animal_quarantine_service: 'Animal Quarantine Service',
 };
 
 export function audienceLabel(audience: string): string {

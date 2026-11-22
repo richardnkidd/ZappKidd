@@ -19,7 +19,7 @@ export const RECORD_TYPES: { type: RecordType; label: string }[] = [
   { type: 'property', label: 'Property' },
   { type: 'anchor', label: 'Travel dates' },
   { type: 'deadline_rule', label: 'Date rules' },
-  { type: 'existing_commitment', label: 'Existing commitments' },
+  { type: 'existing_commitment', label: 'Dates we already agreed' },
   { type: 'finding', label: 'Plan review findings' },
   { type: 'note', label: 'Notes' },
   { type: 'review_session', label: 'Couple reviews' },

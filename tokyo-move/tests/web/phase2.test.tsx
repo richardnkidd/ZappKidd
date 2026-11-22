@@ -7,7 +7,7 @@ import { checksOf, cleanNote, directCheckOf, evidenceVerification, lastCheckedOf
 import { dayIn } from '../../src/web/lib/format';
 import { selectComingUp, type FilterContext } from '../../src/web/lib/home';
 import type { ScenarioSettings } from '../../src/shared/types';
-import { cashStatement, fxChangeInput, fxChangePercent, fxEffectSentence, knownSoFar, scenarioExplanation, scenarioLabel } from '../../src/web/lib/money';
+import { cashStatement, missingLineCount, fxChangeInput, fxChangePercent, fxEffectSentence, knownSoFar, scenarioExplanation, scenarioLabel } from '../../src/web/lib/money';
 import { buildPack, sensitivityOf } from '../../src/web/lib/pack';
 import { buildDirectory, buildIndexes } from '../../src/web/lib/records';
 import { buildReviewSummary } from '../../src/web/lib/reviewSummary';
@@ -123,7 +123,7 @@ describe('money wording', () => {
     expect(fxChangeInput(0.9)).toBe('10');
     expect(fxChangeInput(1.1)).toBe('-10');
   });
-  it("says 'Can't conclude yet' with the real number of unknowns, and never claims headroom while unknowns remain", () => {
+  it("says 'Not enough numbers yet' with the real number of lines, and never claims anything left over while unknowns remain", () => {
     const total = (n: number) => ({ known_usd: 0, unknown_count: n, unknown_keys: [], excluded_count: 0, complete: n === 0 });
     const model = {
       horizon_months: 3, one_time_unpaid: total(30), tokyo_monthly: total(10), us_monthly: total(5), staged_overlap: total(4), extra_us_months: 0,
@@ -131,9 +131,10 @@ describe('money wording', () => {
       modeled_income_usd: null, state: 'incomplete' as const, missing: [],
     };
     const statement = cashStatement(model, 1);
-    expect(statement.headline).toBe("Can't conclude yet");
-    // The real number of unknowns is said once, in one short line, and totals are never shown without it.
-    expect(statement.detail).toBe('Totals count only what is known. Missing: 49 amounts and one income.');
+    expect(statement.headline).toBe('Not enough numbers yet');
+    // The real number of lines is said once, in one short line, and it is the same number the list uses.
+    expect(statement.detail).toBe('49 lines still need an amount.');
+    expect(missingLineCount(model)).toBe(49);
   });
 });
 

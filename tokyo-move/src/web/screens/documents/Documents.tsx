@@ -69,6 +69,15 @@ export function holderOf(d: Partial<DocumentData>): string {
   return stripCodes((d.custodian ?? '').replace(/\s*\((?:proposed|tbc|draft)\)/gi, '')).trim();
 }
 
+/** Imported wording such as "Each document holder" names a role, not a person. */
+const PLACEHOLDER_HOLDER = /^(each|every|any|whoever|someone|somebody|tbc|tbd|unknown|n\/a|none|not set)\b|\bholder\b/i;
+
+/** The holder when it is a real person or place, else an empty string (the screen then says "Holder not set yet"). */
+export function realHolderOf(d: Partial<DocumentData>): string {
+  const h = holderOf(d);
+  return PLACEHOLDER_HOLDER.test(h) ? '' : h;
+}
+
 export function DocumentCard({
   record,
   idx,
@@ -92,7 +101,7 @@ export function DocumentCard({
   const H = headingLevel === 2 ? 'h2' : 'h3';
   const lookup = useMemo(() => keyLookup(idx.byKey), [idx]);
   const title = displayTitle(record, lookup);
-  const holder = holderOf(d);
+  const holder = realHolderOf(d);
   const neededBy = stripCodes(d.needed_by ?? '', lookup).trim();
   const forWhom = scope.length ? scope.map((p) => dir.nameOf(p)).join(' and ') : d.for_whom || 'Household';
 
@@ -106,7 +115,7 @@ export function DocumentCard({
         </div>
         <div className="fact">
           <dt>Who holds it</dt>
-          <dd>{holder || 'Not decided yet'}</dd>
+          <dd>{holder || 'Holder not set yet'}</dd>
         </div>
         <div className="fact">
           <dt>Needed by</dt>
@@ -149,7 +158,7 @@ export function DocumentCard({
   );
 
   if (compact) {
-    const showHolder = holder !== '' && holder !== commonHolder;
+    const showHolder = holder !== commonHolder;
     return (
       <div className="doc-row" role="group" aria-labelledby={`doc-${record.key}`}>
         <div className="row-1">
@@ -159,7 +168,7 @@ export function DocumentCard({
             </p>
             <p className="doc-row__meta">
               <DocStatus status={record.status} />
-              {showHolder && <span className="muted"> Held by {holder}</span>}
+              {showHolder && <span className="muted"> {holder ? `Held by ${holder}` : 'Holder not set yet'}</span>}
             </p>
           </div>
           <Button variant="quiet" small className="row-1__side" onClick={() => setEdit(true)} aria-label={`Update status: ${title}`}>
@@ -382,8 +391,8 @@ function DocumentList({ idx, dir }: { idx: Indexes; dir: Directory }) {
   const commonHolder = useMemo(() => {
     const count = new Map<string, number>();
     for (const r of docs) {
-      const h = holderOf(dataOf<DocumentData>(r));
-      if (h) count.set(h, (count.get(h) ?? 0) + 1);
+      const h = realHolderOf(dataOf<DocumentData>(r));
+      count.set(h, (count.get(h) ?? 0) + 1);
     }
     const top = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
     return top && top[1] >= 3 && top[1] * 2 > docs.length ? top[0] : null;
@@ -428,7 +437,7 @@ function DocumentList({ idx, dir }: { idx: Indexes; dir: Directory }) {
             </InfoNote>
           </div>
           <h2 className="visually-hidden">Documents</h2>
-          {commonHolder && !narrowed && <p className="quiet-line">Held by: {commonHolder}</p>}
+          {commonHolder !== null && !narrowed && <p className="quiet-line">{commonHolder ? `Held by: ${commonHolder}` : 'Holder not set yet'}</p>}
           {shown.length === 0 ? (
             <Card>
               <EmptyState icon="doc" title={q ? 'No document has that name.' : filter === 'now' ? 'Nothing needs action right now.' : 'Nothing here.'} />

@@ -280,17 +280,16 @@ function MoneyBody({ scenarios, idx, dir, people }: { scenarios: ScenarioSetting
             <p className="cash__headline">
               <Icon name={statement.tone === 'matcha' ? 'check' : 'info'} size={18} /> {statement.headline}
             </p>
-            {statement.detail && <p className="muted money-once">{statement.detail}</p>}
             <dl className="money-figs">
               <Figure label={model.need_complete ? 'Need' : 'Known need so far'} value={needKnown ? model.need_usd_known : null} />
-              <Figure label="Cash on hand" value={model.cash_usd} note={model.cash_as_of ? `as of ${civil(model.cash_as_of)}` : null} />
-              <Figure label="Protected reserve" value={model.return_reserve_usd} />
-              <Figure label="Other commitments" value={model.other_commitments_usd} />
-              <Figure label="Headroom" value={model.headroom_usd} />
+              {model.cash_usd !== null && <Figure label="Cash on hand" value={model.cash_usd} note={model.cash_as_of ? `as of ${civil(model.cash_as_of)}` : null} />}
+              {model.return_reserve_usd !== null && <Figure label="Protected reserve" value={model.return_reserve_usd} />}
+              {model.other_commitments_usd !== null && <Figure label="Other bills we already owe" value={model.other_commitments_usd} />}
+              <Figure label="Left over" value={model.headroom_usd} />
               {model.modeled_income_usd !== null && <Figure label="Income counted" value={model.modeled_income_usd} />}
             </dl>
             {model.missing.length > 0 && (
-              <More label={`What is missing (${model.missing.length})`}>
+              <More label={statement.detail ?? 'What is still missing'} className="money-missing">
                 <ul className="plain-list">
                   {model.missing.map((m) => (
                     <li key={m}>{stripCodes(m, lookup)}</li>

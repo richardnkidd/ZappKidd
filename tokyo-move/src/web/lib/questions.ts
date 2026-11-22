@@ -43,14 +43,20 @@ export function countsLine(c: Pick<Record<QuestionState, number>, 'open' | 'answ
   return c.answered > 0 ? `${c.open} open · ${c.answered} answered` : `${c.open} open`;
 }
 
-const KNOWN_AUDIENCES = new Set(['immigration_adviser', 'tax_adviser', 'veterinarian', 'vet', 'employer', 'accountant', 'lawyer']);
 const SHOUT = new Set(['hr', 'it', 'id']);
+/** Audiences whose label already reads as a name, so it takes no article. */
+const NO_ARTICLE = new Set(['embassy_hr']);
 
 /** Group heading for a question audience: "For the tax adviser", "For embassy HR". `label` is `audienceLabel(audience)`. */
 export function forAudience(audience: string, label: string): string {
-  if (KNOWN_AUDIENCES.has(audience)) return `For the ${label}`;
-  const words = label.split(/\s+/).map((w) => (SHOUT.has(w) ? w.toUpperCase() : w));
-  return `For ${words.join(' ')}`;
+  const words = label.split(/\s+/).map((w) => (SHOUT.has(w) ? w.toUpperCase() : w)).join(' ');
+  return NO_ARTICLE.has(audience) ? `For ${words}` : `For the ${words}`;
+}
+
+/** The question as it is copied: no leading "Ask <someone>: " (the list is already addressed), first letter capital. */
+export function copyLine(text: string): string {
+  const stripped = text.replace(/^\s*ask\s+[^:?\n]{1,60}:\s*/i, '').trim();
+  return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 }
 
 /** Copy text with the clipboard API, or a hidden text area when that is not available. Resolves false when both fail. */

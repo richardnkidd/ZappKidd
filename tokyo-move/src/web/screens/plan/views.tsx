@@ -23,6 +23,7 @@ import { ShowAllList } from '../arrival/ShowAll';
 import { GanttChart } from './Gantt';
 import { ownerDisputed } from './ownerNote';
 import { PlanGroup } from './PlanGroup';
+import { useNarrow } from './useNarrow';
 
 /* ------------------------------------------------------------------ shared */
 
@@ -108,7 +109,7 @@ export function WorkstreamView({ items, idx, today, filtered = false, focusRef }
             title={g.title}
             count={open.length}
             countLabel="to do"
-            note={blocked ? `${blocked} stuck` : undefined}
+            note={blocked ? (blocked === open.length ? 'all stuck' : `${blocked} stuck`) : undefined}
             defaultOpen={filtered || g.key === firstWithWork}
           >
             {open.length > 0 ? <ShowAllList first={FIRST} rows={open.map((it) => card(it, done))} label={`in ${g.title}`} /> : <p className="muted">All finished or set aside.</p>}
@@ -146,7 +147,12 @@ export function ListView({ items, idx, today, focusRef }: { items: PlanItemData[
       <div className="plan-done-note">{done.note}</div>
       {block('past', 'Past their date', parts.past)}
       {block('coming', 'Coming up', parts.coming)}
-      {block('undated', 'No date yet', parts.undated)}
+      {parts.undated.length > 0 && (
+        // Work with no date is the quietest part: it starts closed unless nothing else is listed.
+        <PlanGroup id="bydate:undated" title="No date yet" count={parts.undated.length} defaultOpen={parts.past.length + parts.coming.length === 0} className="bydate bydate--undated">
+          <ShowAllList first={FIRST} rows={parts.undated.map((it) => card(it, true))} label="no date yet" />
+        </PlanGroup>
+      )}
       {parts.closed.length > 0 && (
         <PlanGroup id="bydate:closed" title="Finished or set aside" count={parts.closed.length} defaultOpen={false}>
           <ShowAllList first={FIRST} rows={parts.closed.map((it) => card(it, false))} label="finished or set aside" />
@@ -180,31 +186,43 @@ export function BoardView({
   const lookup = useLookup(idx);
   const byStatus = useMemo(() => groupByStatus(sortPlanItems(items, 'date', (o) => o ?? '')), [items]);
   const closedOnes = [...(byStatus.get('eliminated') ?? []), ...(byStatus.get('not_applicable') ?? [])];
+  const narrow = useNarrow();
+  const openColumn = (byStatus.get('in_progress')?.length ?? 0) > 0 ? 'in_progress' : (BOARD_MAIN.find((st) => (byStatus.get(st)?.length ?? 0) > 0) ?? 'planned');
   return (
     <div className="stack">
       <div className="board">
         {BOARD_MAIN.map((s) => {
           const list = byStatus.get(s) ?? [];
+          const cards = (
+            <ShowAllList
+              className="item-list item-list--compact"
+              first={FIRST}
+              all={Boolean(expanded[s])}
+              onAll={() => setExpanded((e) => ({ ...e, [s]: true }))}
+              label={`in ${WORK_STATUS_LABEL[s]}`}
+              rows={list.map((it) => (
+                <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} idx={idx} showStatus={false} slim />
+              ))}
+            />
+          );
+          // On a phone the columns stack, so each heading is a button and only one column starts open: the one with
+          // work being done, else the first with anything in it. Beside each other (wider screens) they all show.
+          if (narrow && list.length > 0) {
+            return (
+              <section key={s} className={`board-col board-col--${s}`}>
+                <PlanGroup id={`board:${s}`} title={<StatusBadge status={s} />} count={list.length} defaultOpen={s === openColumn} className="pgroup--flat">
+                  {cards}
+                </PlanGroup>
+              </section>
+            );
+          }
           return (
             <section key={s} className={`board-col board-col--${s}`} aria-labelledby={`col-${s}`}>
               <h3 id={`col-${s}`} className="board-col__title">
                 <StatusBadge status={s} />
                 <span className="count">{list.length}</span>
               </h3>
-              {list.length === 0 ? (
-                <p className="faint small board-col__empty">Nothing here.</p>
-              ) : (
-                <ShowAllList
-                  className="item-list item-list--compact"
-                  first={FIRST}
-                  all={Boolean(expanded[s])}
-                  onAll={() => setExpanded((e) => ({ ...e, [s]: true }))}
-                  label={`in ${WORK_STATUS_LABEL[s]}`}
-                  rows={list.map((it) => (
-                    <PlanItemCard key={it.m.id} it={it} today={today} lookup={lookup} idx={idx} showStatus={false} slim />
-                  ))}
-                />
-              )}
+              {list.length === 0 ? <p className="faint small board-col__empty">Nothing here.</p> : cards}
             </section>
           );
         })}

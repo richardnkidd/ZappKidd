@@ -324,10 +324,36 @@ describe('printable arrival pack', () => {
     expect(pack.sensitive.medical.map((i) => i.title)).toContain('Register with a clinic');
   });
 
-  it('prints practical checks once, under the item', () => {
+  it('prints one line for each step: the plain title, its date and the document to bring, and no rationale', () => {
     const pack = buildPack(sidx, dir, deadlines, adult.id);
     const day = pack.sections.find((s) => s.key === 'arrival_day')!;
-    expect(day.items.find((i) => i.id === 'arrival:AVET')?.check).toBe('Keep the originals in hand luggage.');
+    const item = day.items.find((i) => i.id === 'arrival:AVET')!;
+    expect(item.title).toBe('Show the vaccination papers at the airport');
+    // The review note, the action text and the trigger are rationale: they stay in the app.
+    expect(Object.keys(item).sort()).toEqual(['bring', 'date', 'id', 'title']);
+    expect(JSON.stringify(pack)).not.toContain('Keep the originals in hand luggage');
+  });
+
+  it('names the document to bring when a carried document points at the step', () => {
+    const doc = records.find((r) => r.type === 'document')!;
+    const linked = buildIndexes(
+      [
+        ...sensitiveRecords.map((r) => (r.id === doc.id ? ({ ...r, data: { ...(r.data as object), linked_records: ['AVET'], traveler_scope: [], carry_on_arrival: [] } } as BaseRecord) : r)),
+      ],
+      taskLinks,
+    );
+    const day = buildPack(linked, dir, deadlines, adult.id).sections.find((s) => s.key === 'arrival_day')!;
+    expect(day.items.find((i) => i.id === 'arrival:AVET')?.bring).toBeTruthy();
+  });
+
+  it('strips codes, slashes and bracketed asides from every printed line', () => {
+    const messy = buildIndexes(
+      [...sensitiveRecords, { ...base, id: 'arrival:AMESSY', key: 'AMESSY', title: 'Bring W06 / receipts (originals); keep copies', data: { ...(base.data as object), plain_title: null, window_key: 'first_week', action: 'x', traveler_scope: [], sensitivity: null } } as BaseRecord],
+      taskLinks,
+    );
+    const week = buildPack(messy, dir, deadlines, adult.id).sections.find((s) => s.key === 'first_week')!;
+    const line = week.items.find((i) => i.id === 'arrival:AMESSY')!.title;
+    expect(line).not.toMatch(/[/;()]|\bW\d{2}\b/);
   });
 
   it('lists only reachable contacts, and says so when there are none', () => {
@@ -346,7 +372,7 @@ describe('printable arrival pack', () => {
     const pack = buildPack(sidx, dir, deadlines, adult.id);
     expect(pack.sections.map((s) => s.key)).toEqual(['arrival_day', 'first_week', 'first_30', 'documents', 'contacts']);
     const docs = pack.sections.find((s) => s.key === 'documents')!;
-    for (const d of docs.items) expect(Object.keys(d).sort()).toEqual(['check', 'detail', 'id', 'link', 'meta', 'title'].sort());
+    for (const d of docs.items) expect(Object.keys(d).sort()).toEqual(['detail', 'id', 'link', 'meta', 'title'].sort());
   });
 
   it('carries only the documents marked for that traveler when the plan marks any', () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dateLine, dateLineText, dayWord } from '../../src/web/lib/dateLine';
+import { checkInLineText, dateLine, dateLineText, dayWord } from '../../src/web/lib/dateLine';
 
 const T = '2026-11-22';
 
@@ -27,5 +27,12 @@ describe('dateLine: the one date format', () => {
     expect(dayWord(1)).toBe('1 day');
     expect(dateLineText(null, T)).toBe('Awaiting date');
     expect(dateLineText('2026-11-30', T)).toBe('Mon, Nov 30 (8 days)');
+  });
+  it('a check-in reads like every other date, with its own word, so a past one says how late', () => {
+    expect(checkInLineText('2026-11-11', T)).toBe('Check-in 11 days late');
+    expect(checkInLineText('2026-11-30', T)).toBe('Check-in Mon, Nov 30 (8 days)');
+    expect(checkInLineText(T, T)).toBe('Check-in Today');
+    // The same wording the record page and Home use for the same date.
+    expect(checkInLineText('2026-11-11', T)).toContain(dateLine('2026-11-11', T).text);
   });
 });

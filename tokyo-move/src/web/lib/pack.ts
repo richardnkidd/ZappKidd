@@ -6,11 +6,11 @@
  */
 import { diffDays, isCivilDate } from '@shared/dates';
 import type { ComputedDeadline } from '@shared/engine-contracts';
-import { ARRIVAL_WINDOW_LABEL, DEADLINE_KIND_LABEL, VERIFICATION_LABEL } from '@shared/labels';
+import { ARRIVAL_WINDOW_LABEL } from '@shared/labels';
 import type { ArrivalData, ContactData, DeadlineRuleData, DocumentData, Sensitivity as DataSensitivity } from '@shared/types';
-import { civil, safeHref } from './format';
-import { displayTitle, keyLookup, stripCodes } from '@shared/plain';
-import { splitTitleAction } from './prose';
+import { safeHref } from './format';
+import { dateLineText } from './dateLine';
+import { displayNext, displayTitle, keyLookup, stripCodes } from '@shared/plain';
 import { dataOf, type AnyRecord, type Directory, type Indexes } from './records';
 
 export type Sensitivity = NonNullable<DataSensitivity>;
@@ -22,13 +22,19 @@ export function sensitivityOf(record: AnyRecord | null | undefined): Sensitivity
   return s === 'medical' || s === 'financial' || s === 'identity' ? s : null;
 }
 
+/**
+ * One line on paper. An arrival step is its plain title, its date and the document to bring, and nothing else: the
+ * reasons, rules and review notes stay in the app. `detail` and `meta` are only for the document and contact rows
+ * (who holds it, its status, how to reach someone).
+ */
 export interface PackItem {
   id: string;
   title: string;
-  /** What to do, said once. */
+  /** The date, in the one short format with no distance ("Mon, Nov 30"). */
+  date?: string | null;
+  /** The document to bring for this step, when a document is linked to it. */
+  bring?: string | null;
   detail?: string | null;
-  /** Practical checks from the record's review note. */
-  check?: string | null;
   meta?: string[];
   link?: string | null;
 }
@@ -44,24 +50,20 @@ export interface PackSection {
 
 export interface Pack {
   personId: string;
-  /** The starting point every arrival step counts from, when they all share it ("Actual landing"). */
-  from: string | null;
   sections: PackSection[];
   sensitive: Record<Sensitivity, PackItem[]>;
 }
 
-/** "Practical checks from the X review: …" -> the checks themselves (the section already says "Check"). */
-const checkText = (t: string | null | undefined): string | null => {
-  const x = (t ?? '').replace(/^\s*practical checks(?:\s+from\s+[^:]{1,60})?\s*:\s*/i, '').trim();
-  return x || null;
-};
-
 const same = (a: string | null | undefined, b: string | null | undefined) => (a ?? '').trim().replace(/[.\s]+$/, '').toLowerCase() === (b ?? '').trim().replace(/[.\s]+$/, '').toLowerCase();
 
-function verificationLine(d: ComputedDeadline, idx: Indexes): string | null {
-  const rule = d.rule_id ? (idx.byKey.get(d.rule_id) ?? null) : null;
-  const v = rule ? (dataOf<DeadlineRuleData>(rule).verification ?? 'not_verified') : d.kind === 'legal' && !d.deadline.verified_on ? 'not_verified' : null;
-  return v && v !== 'verified_official' ? VERIFICATION_LABEL[v] : null;
+/** A line for paper: codes removed, and no slashes, semicolons or bracketed asides (the house style for anything a person reads). */
+function plainLine(text: string | null | undefined, lookup?: ReturnType<typeof keyLookup>): string {
+  return stripCodes(text ?? '', lookup)
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\/\s*/g, ' or ')
+    .replace(/\s*;\s*/g, '. ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 /** Contact details a household may have saved. The plan's contact records have no such fields yet, so this is usually empty. */
@@ -88,28 +90,64 @@ export function buildPack(idx: Indexes, dir: Directory, deadlines: ComputedDeadl
   const person = dir.personById(personId);
   const lookup = keyLookup(idx.byKey);
 
-  // Arrival checks, grouped by window. The action text is printed once; the practical checks follow it.
+  // Documents this traveler carries. The explicit `carry_on_arrival` list wins; older data falls back to the traveler scope.
+  const docs = idx.all.filter((r) => r.type === 'document');
+  const anyCarryMarks = docs.some((r) => (dataOf<DocumentData>(r).carry_on_arrival ?? []).length > 0);
+  const carried = docs.filter((r) => {
+    const d = dataOf<DocumentData>(r);
+    if (anyCarryMarks) return (d.carry_on_arrival ?? []).includes(personId);
+    const scope = d.traveler_scope ?? [];
+    return scope.length === 0 || scope.includes(personId);
+  });
+  // Who holds a document and its status are said once above the rows when every row is the same.
+  const holderOf = (d: Partial<DocumentData>) => stripCodes((d.custodian ?? '').replace(/\s*\((?:proposed|tbc|draft)\)/gi, ''), lookup).trim();
+  const statusOf = (r: AnyRecord) => r.status.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+  const holders = new Set(carried.map((r) => holderOf(dataOf<DocumentData>(r))));
+  const statuses = new Set(carried.map(statusOf));
+  const commonHolder = carried.length > 1 && holders.size === 1 ? ([...holders][0] ?? '') : '';
+  const commonStatus = carried.length > 1 && statuses.size === 1 ? [...statuses][0]! : '';
+  const carryNote = [commonHolder ? `Held by: ${commonHolder}` : '', commonStatus ? `All: ${commonStatus}` : ''].filter(Boolean).join(' · ') || null;
+  const carry = carried
+    .map((r) => {
+      const d = dataOf<DocumentData>(r);
+      const href = safeHref(d.link);
+      const holder = holderOf(d);
+      return route(
+        { id: r.id, title: plainLine(displayTitle(r, lookup), lookup), detail: holder && !commonHolder ? `Held by: ${holder}` : null, meta: commonStatus ? [] : [statusOf(r)], link: href },
+        r,
+      );
+    })
+    .filter(keep);
+
+  // The document to bring for a step: a carried document that points at it (by key or id).
+  const bringFor = (keys: string[]): string | null => {
+    const doc = carried.find((r) => (dataOf<DocumentData>(r).linked_records ?? []).some((k) => keys.includes(k)));
+    return doc ? plainLine(displayTitle(doc, lookup), lookup) || null : null;
+  };
+
+  // Arrival checks, grouped by window. One line each: the plain title, its date and the document to bring.
   const arrivals = idx.all
     .filter((r) => r.type === 'arrival')
     .filter((r) => {
       const scope = dataOf<ArrivalData>(r).traveler_scope ?? [];
       return scope.length === 0 || scope.includes(personId);
     });
-  const triggerOf = (r: AnyRecord): string | null => {
-    const d = dataOf<ArrivalData>(r);
-    const split = splitTitleAction(displayTitle(r, lookup), d.action);
-    return d.trigger && !same(d.trigger, split.title) && !same(d.trigger, d.action) ? stripCodes(d.trigger, lookup) : null;
-  };
-  const triggers = new Set(arrivals.map(triggerOf));
-  const from = arrivals.length > 1 && triggers.size === 1 ? ([...triggers][0] ?? null) : null;
   const forWindow = (key: string): PackItem[] =>
     arrivals
       .filter((r) => (dataOf<ArrivalData>(r).window_key ?? 'ongoing') === key)
       .map((r) => {
         const d = dataOf<ArrivalData>(r);
-        const split = splitTitleAction(displayTitle(r, lookup), d.action);
-        const trigger = triggerOf(r);
-        return route({ id: r.id, title: split.title, detail: split.detail ? stripCodes(split.detail, lookup) : null, check: checkText(d.review_note), meta: trigger && !from ? [`When: ${trigger}`] : [] }, r);
+        const next = displayNext(r, lookup);
+        const title = plainLine(displayTitle(r, lookup), lookup);
+        return route(
+          {
+            id: r.id,
+            title: next && !same(next, title) ? `${title}. ${plainLine(next, lookup)}` : title,
+            date: d.deadline?.date ? dateLineText(d.deadline.date) : null,
+            bring: bringFor([r.key, r.id]),
+          },
+          r,
+        );
       })
       .filter(keep);
 
@@ -141,42 +179,13 @@ export function buildPack(idx: Indexes, dir: Directory, deadlines: ComputedDeadl
       route(
         {
           id: d.id,
-          title: d.label.replace(/\s*\(each adult\)/i, ''),
-          detail: verificationLine(d, idx),
-          meta: [d.deadline.date ? civil(d.deadline.date, 'weekday') : 'Date to be set', DEADLINE_KIND_LABEL[d.kind]],
+          title: plainLine(d.label, lookup),
+          date: dateLineText(d.deadline.date),
+          bring: bringFor(d.linked_record_keys ?? []),
         },
         ...(d.linked_record_keys ?? []).map((k) => idx.byKey.get(k)),
       ),
     )
-    .filter(keep);
-
-  // Documents this traveler carries. The explicit `carry_on_arrival` list wins; older data falls back to the traveler scope.
-  const docs = idx.all.filter((r) => r.type === 'document');
-  const anyCarryMarks = docs.some((r) => (dataOf<DocumentData>(r).carry_on_arrival ?? []).length > 0);
-  const carried = docs.filter((r) => {
-    const d = dataOf<DocumentData>(r);
-    if (anyCarryMarks) return (d.carry_on_arrival ?? []).includes(personId);
-    const scope = d.traveler_scope ?? [];
-    return scope.length === 0 || scope.includes(personId);
-  });
-  // Who holds a document and its status are said once above the rows when every row is the same.
-  const holderOf = (d: Partial<DocumentData>) => stripCodes((d.custodian ?? '').replace(/\s*\((?:proposed|tbc|draft)\)/gi, ''), lookup).trim();
-  const statusOf = (r: AnyRecord) => r.status.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
-  const holders = new Set(carried.map((r) => holderOf(dataOf<DocumentData>(r))));
-  const statuses = new Set(carried.map(statusOf));
-  const commonHolder = carried.length > 1 && holders.size === 1 ? ([...holders][0] ?? '') : '';
-  const commonStatus = carried.length > 1 && statuses.size === 1 ? [...statuses][0]! : '';
-  const carryNote = [commonHolder ? `Held by: ${commonHolder}` : '', commonStatus ? `All: ${commonStatus}` : ''].filter(Boolean).join(' · ') || null;
-  const carry = carried
-    .map((r) => {
-      const d = dataOf<DocumentData>(r);
-      const href = safeHref(d.link);
-      const holder = holderOf(d);
-      return route(
-        { id: r.id, title: displayTitle(r, lookup), detail: holder && !commonHolder ? `Held by: ${holder}` : null, check: null, meta: commonStatus ? [] : [statusOf(r)], link: href },
-        r,
-      );
-    })
     .filter(keep);
 
   // Contacts only when someone could be reached, and only the ones that matter in Tokyo (or the pet's vet for the pet).
@@ -186,13 +195,12 @@ export function buildPack(idx: Indexes, dir: Directory, deadlines: ComputedDeadl
     .map((r) => ({ r, d: dataOf<ContactData>(r) }))
     .filter(({ d }) => reachableVia(d) !== null)
     .filter(({ d }) => (isPet ? /\bvet(erinar\w*)?\b/i.test(d.role ?? '') : !/\bvet(erinar\w*)?\b/i.test(d.role ?? '')))
-    .map(({ r, d }) => route({ id: r.id, title: `${d.name} — ${d.role}`.replace(/ — $/, ''), detail: reachableVia(d) }, r))
+    .map(({ r, d }) => route({ id: r.id, title: plainLine(`${d.name} — ${d.role}`.replace(/ — $/, ''), lookup), detail: reachableVia(d) }, r))
     .filter(keep);
 
   const section = (key: string, title: string, items: PackItem[], empty: string, note: string | null = null): PackSection => ({ key, title, items, empty, note });
   return {
     personId,
-    from,
     sections: [
       section('arrival_day', ARRIVAL_WINDOW_LABEL.arrival_day ?? 'Arrival day', forWindow('arrival_day'), 'Nothing listed for arrival day.'),
       section('first_week', 'First week', forWindow('first_week'), 'Nothing listed for the first week.'),

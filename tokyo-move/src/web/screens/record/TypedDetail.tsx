@@ -12,7 +12,8 @@ import { usePlain } from '../../components/People';
 import { Prose } from '../../components/Prose';
 import { RecordLink } from '../../components/RecordLink';
 import { ruleCountSentence } from '../../lib/dateWords';
-import { civil, instant, safeHref } from '../../lib/format';
+import { dateLineText } from '../../lib/dateLine';
+import { instant, safeHref } from '../../lib/format';
 import { dataOf, type AnyRecord, type Decision, type Directory, type Indexes, type Question, type Risk } from '../../lib/records';
 import { useData } from '../../state/data';
 import { usePrefs } from '../../state/prefs';
@@ -50,6 +51,7 @@ function AnchorDetail({ record, dir }: { record: AnyRecord; dir: Directory }) {
 }
 
 function RuleDetail({ record, idx }: { record: AnyRecord; idx: Indexes }) {
+  const { today } = useData();
   const d = dataOf<DeadlineRuleData & { reviewer?: string | null; plan_rule_status?: string | null; source_title?: string | null }>(record);
   const plain = usePlain();
   const anchor = idx.anchors.find((a) => (a.data?.code ?? a.key) === d.anchor);
@@ -68,7 +70,7 @@ function RuleDetail({ record, idx }: { record: AnyRecord; idx: Indexes }) {
         {d.superseded_by && <span className="chip chip--neutral chip--sm">Replaced by a newer rule</span>}
       </div>
       <VerificationNote verification={d.verification ?? 'not_verified'} kind={d.kind} />
-      {d.verification === 'verified_official' && <p className="small muted">{VERIFICATION_LABEL.verified_official}{d.verified_on ? ` on ${civil(d.verified_on)}` : ''}.</p>}
+      {d.verification === 'verified_official' && <p className="small muted">{VERIFICATION_LABEL.verified_official}{d.verified_on ? ` on ${dateLineText(d.verified_on, today, { open: false })}` : ''}.</p>}
       <dl className="facts facts--tight">
         {counted && (
           <div className="fact fact--wide">
@@ -166,6 +168,7 @@ function CommitmentDetail({ record, idx }: { record: AnyRecord; idx: Indexes }) 
 }
 
 function ReviewDetail({ record, dir }: { record: AnyRecord; dir: Directory }) {
+  const { today } = useData();
   const d = dataOf<ReviewSessionData>(record);
   const { zone } = usePrefs();
   return (
@@ -175,7 +178,7 @@ function ReviewDetail({ record, dir }: { record: AnyRecord; dir: Directory }) {
         {d.participants?.length ? ` · with ${d.participants.map((p) => dir.nameOf(p)).join(' and ')}` : ''}
       </p>
       {d.summary && <p className="preline">{d.summary}</p>}
-      {d.next_review_on && !/next review/i.test(d.summary ?? '') && <p>Next review: {civil(d.next_review_on)}</p>}
+      {d.next_review_on && !/next review/i.test(d.summary ?? '') && <p>Next review: {dateLineText(d.next_review_on, today)}</p>}
     </Card>
   );
 }
